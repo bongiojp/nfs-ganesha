@@ -713,7 +713,7 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
     {
       rpcxid = get_rpc_xid(ptr_req);
       LogFullDebug(COMPONENT_DISPATCH, "NFS DISPATCH: Request has xid=%u", rpcxid);
-      previous_res_nfs = nfs_dupreq_get(rpcxid, &status);
+      previous_res_nfs = nfs_dupreq_get(rpcxid, ptr_req, preqnfs->xprt, &status);
       if(status == DUPREQ_SUCCESS)
         {
           /* Request was known, use the previous reply */
@@ -1063,6 +1063,7 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
         {
           if(nfs_dupreq_add(rpcxid,
                             ptr_req,
+			    preqnfs->xprt,
                             &res_nfs,
                             lru_dupreq, &pworker_data->dupreq_pool) != DUPREQ_SUCCESS)
             {
