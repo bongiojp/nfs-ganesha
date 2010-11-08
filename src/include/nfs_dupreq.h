@@ -107,18 +107,17 @@ int clean_entry_dupreq(LRU_entry_t * pentry, void *addparam);
 int nfs_dupreq_gc_function(LRU_entry_t * pentry, void *addparam);
 
 nfs_res_t nfs_dupreq_get(long xid, struct svc_req *ptr_req, SVCXPRT *xprt, int *pstatus);
-int nfs_dupreq_delete(long xid, struct svc_req *ptr_req, SVCXPRT *xprt,
+int nfs_dupreq_delete(hash_buffer_t buffkey, hash_buffer_t buffval,
                       struct prealloc_pool *dupreq_pool);
 int nfs_dupreq_add_not_finished(long xid,
 				struct svc_req *ptr_req,
 				SVCXPRT *xprt,
 				struct prealloc_pool *dupreq_pool,
-				nfs_res_t *res_nfs);
+				nfs_res_t *res_nfs,
+                                hash_buffer_t *buffkey,
+                                hash_buffer_t *buffval);
 
-int nfs_dupreq_finish(long xid,
-		      struct svc_req *ptr_req,
-		      SVCXPRT *xprt,
-		      nfs_res_t * p_res_nfs,
+int nfs_dupreq_finish(hash_buffer_t buffval, nfs_res_t * p_res_nfs,
 		      LRU_list_t * lru_dupreq);
 
 unsigned long dupreq_value_hash_func(hash_parameter_t * p_hparam,
