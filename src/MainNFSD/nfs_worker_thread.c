@@ -691,7 +691,8 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
                                        &pworker_data->dupreq_pool,
                                        &res_nfs,
                                        &buffkey,
-                                       &buffval);
+                                       &buffval,
+                                       &(preqnfs->msg));
   switch(status)
     {
       /* a new request, continue processing it */

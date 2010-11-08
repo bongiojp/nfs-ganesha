@@ -288,6 +288,13 @@ if test "$enable_stat_exporter" == "yes"; then
 	AC_DEFINE(_USE_STAT_EXPORTER,1,[export GANESHA NFS request statistics with a dedicated thread and socket])
 fi
 
+# duplicate request checksum
+GA_ENABLE_AM_CONDITION([dupreq-checksum], [Checksum each NFS request to make sure it is not a duplicate request], [USE_DUPREQ_CHECKSUM])
+if test "$enable_dupreq_checksum" == "yes"; then
+	AC_DEFINE(_USE_DUPREQ_CHECKSUM,1,[Checksum each NFS request to make sure it is not a duplicate request])
+fi
+
+
 
 GA_ENABLE_AM_CONDITION([efence],[link with efence memory debug library],[USE_EFENCE])
 

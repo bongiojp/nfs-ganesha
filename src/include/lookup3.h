@@ -9,5 +9,4 @@
 #include "log_macros.h"
 
 uint32_t Lookup3_hash_buff( char * str, uint32_t len ) ;
-
 #endif                          /* _LOOKUP3_H */

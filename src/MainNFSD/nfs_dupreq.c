@@ -318,7 +318,7 @@ int clean_entry_dupreq(LRU_entry_t * pentry, void *addparam)
 
 /**
  *
- *  dupreq_rbt_hash_func: computes the hash value for the entry in dupreq cache.
+ *  dupreq_value_hash_func: computes the hash value for the entry in dupreq cache.
  * 
  * Computes the hash value for the entry in dupreq cache. In fact, it just use the Xid modulo the hash array size.
  * This function is called internal in the HasTable_* function
@@ -490,7 +490,8 @@ int nfs_dupreq_add_not_finished(long xid,
 				struct prealloc_pool *dupreq_pool,
 				nfs_res_t *res_nfs,
                                 hash_buffer_t *newbuffkey,
-                                hash_buffer_t *newbuffval)
+                                hash_buffer_t *newbuffval,
+                                struct rpc_msg *pmsg)
 {
   hash_buffer_t buffkey;
   hash_buffer_t buffval;
@@ -516,8 +517,12 @@ int nfs_dupreq_add_not_finished(long xid,
 
   pdupkey->xid = xid;
 
+#ifdef _USE_DUPREQ_CHECKSUM
   /* Checksum the request */
+  pdupkey->checksum = Lookup3_hash_buff((char *)pmsg, 200);
+#else
   pdupkey->checksum = 0;
+#endif
 
   /* I have to keep an integer as key, I wil use the pointer buffkey->pdata for this, 
    * this also means that buffkey->len will be 0 */
@@ -633,7 +638,8 @@ int nfs_dupreq_finish(hash_buffer_t buffval, nfs_res_t * p_res_nfs,
  * @return the result previously set if *pstatus == DUPREQ_SUCCESS
  *
  */
-nfs_res_t nfs_dupreq_get(long xid, struct svc_req *ptr_req, SVCXPRT *xprt, int *pstatus)
+nfs_res_t nfs_dupreq_get(long xid, struct svc_req *ptr_req, SVCXPRT *xprt, int *pstatus,
+                         struct rpc_msg *pmsg)
 {
   hash_buffer_t buffkey;
   hash_buffer_t buffval;
@@ -647,8 +653,13 @@ nfs_res_t nfs_dupreq_get(long xid, struct svc_req *ptr_req, SVCXPRT *xprt, int *
   memcpy((char *)&pdupkey.addr, (char *)phostaddr,
 	 sizeof(pdupkey.addr));
   pdupkey.xid = xid;
+#ifdef _USE_DUPREQ_CHECKSUM
   /* Checksum the request */
+  pdupkey.checksum =  Lookup3_hash_buff((char *)pmsg, 200);
+#else
   pdupkey.checksum = 0;
+#endif
+
   /* I have to keep an integer as key, I wil use the pointer buffkey->pdata for this, 
    * this also means that buffkey->len will be 0 */
   buffkey.pdata = (caddr_t) &pdupkey;
