@@ -405,6 +405,8 @@
 
 1.0.3	- 
         - A regression in FSAL_PROXY was fixed (size of NFSv4 handles)
-
-	 
+        - HashTable support hash functions that compute hashval and rbtval in one pass
+        - Cache_inode uses a "dual value compute function" in its hashtable
+        - Reverse clientid mapper uses a "dual value compute function" in its hashtable
+        - pNFS/LAYOUT4_NFSV4_1_FILES : several bug fixed (see git log)
 	
