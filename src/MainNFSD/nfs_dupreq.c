@@ -347,8 +347,9 @@ unsigned long dupreq_value_hash_func(hash_parameter_t * p_hparam,
 #ifdef _USE_TIRPC_IPV6
   else if(key->addr.sa_family == AF_INET)
     {
-      //      addr_hash += ((struct sockaddr_in6 *)key->addr)->sin6_addr.s6_addr;
-      //      addr_hash += ((struct sockaddr_in6 *)key->addr)->sin6_port;
+      addr_hash += ((struct sockaddr_in *)&key->addr)->sin6_addr.s6_addr;
+      port = ((struct sockaddr_in6 *)&key->addr)->sin6_port;
+      addr_hash ^= (port<<16);
     }
 #endif                          /* _USE_TIRPC_IPV6 */
   else
@@ -388,6 +389,9 @@ unsigned long dupreq_rbt_hash_func(hash_parameter_t * p_hparam, hash_buffer_t * 
 #ifdef _USE_TIRPC_IPV6
   else if(key->addr.sa_family == AF_INET)
     {
+      addr_hash += ((struct sockaddr_in *)&key->addr)->sin6_addr.s6_addr;
+      port = ((struct sockaddr_in6 *)&key->addr)->sin6_port;
+      addr_hash ^= (port<<16);
       //      addr_hash += ((struct sockaddr_in6 *)key->addr)->sin6_addr.s6_addr;
       //      addr_hash += ((struct sockaddr_in6 *)key->addr)->sin6_port;
     }
