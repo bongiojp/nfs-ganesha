@@ -213,6 +213,11 @@ fsal_status_t WRAP_HPSSFSAL_write(fsal_file_t * p_file_descriptor,      /* IN */
                         buffer_size, buffer, p_write_amount);
 }
 
+fsal_status_t WRAP_HPSSFSAL_sync(fsal_file_t * p_file_descriptor    /* IN */)
+{
+  return HPSSFSAL_sync((hpssfsal_file_t *) p_file_descriptor);
+}
+
 fsal_status_t WRAP_HPSSFSAL_close(fsal_file_t * p_file_descriptor /* IN */ )
 {
   return HPSSFSAL_close((hpssfsal_file_t *) p_file_descriptor);
@@ -686,6 +691,7 @@ fsal_functions_t fsal_hpss_functions = {
   .fsal_open = WRAP_HPSSFSAL_open,
   .fsal_read = WRAP_HPSSFSAL_read,
   .fsal_write = WRAP_HPSSFSAL_write,
+  .fsal_sync = WRAP_HPSSFSAL_sync,
   .fsal_close = WRAP_HPSSFSAL_close,
   .fsal_open_by_fileid = WRAP_HPSSFSAL_open_by_fileid,
   .fsal_close_by_fileid = WRAP_HPSSFSAL_close_by_fileid,
