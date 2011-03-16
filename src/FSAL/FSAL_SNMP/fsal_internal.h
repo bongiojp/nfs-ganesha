@@ -165,6 +165,8 @@ fsal_status_t SNMPFSAL_write(snmpfsal_file_t * p_file_descriptor,       /* IN */
                              caddr_t buffer,    /* IN */
                              fsal_size_t * p_write_amount /* OUT */ );
 
+fsal_status_t SNMPFSAL_sync(snmpfsal_file_t * p_file_descriptor   /* IN */);
+
 fsal_status_t SNMPFSAL_close(snmpfsal_file_t * p_file_descriptor /* IN */ );
 
 fsal_status_t SNMPFSAL_open_by_fileid(snmpfsal_handle_t * filehandle,   /* IN */

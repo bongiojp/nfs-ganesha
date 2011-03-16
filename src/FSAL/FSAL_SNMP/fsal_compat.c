@@ -207,6 +207,11 @@ fsal_status_t WRAP_SNMPFSAL_write(fsal_file_t * p_file_descriptor,      /* IN */
                         buffer_size, buffer, p_write_amount);
 }
 
+fsal_status_t WRAP_SNMPFSAL_sync(fsal_file_t * p_file_descriptor    /* IN */)
+{
+  return SNMPFSAL_sync((SNMPfsal_file_t *) p_file_descriptor);
+}
+
 fsal_status_t WRAP_SNMPFSAL_close(fsal_file_t * p_file_descriptor /* IN */ )
 {
   return SNMPFSAL_close((snmpfsal_file_t *) p_file_descriptor);
@@ -679,6 +684,7 @@ fsal_functions_t fsal_snmp_functions = {
   .fsal_open = WRAP_SNMPFSAL_open,
   .fsal_read = WRAP_SNMPFSAL_read,
   .fsal_write = WRAP_SNMPFSAL_write,
+  .fsal_sync = WRAP_SNMPFSAL_sync,
   .fsal_close = WRAP_SNMPFSAL_close,
   .fsal_open_by_fileid = WRAP_SNMPFSAL_open_by_fileid,
   .fsal_close_by_fileid = WRAP_SNMPFSAL_close_by_fileid,
