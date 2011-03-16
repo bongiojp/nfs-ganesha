@@ -207,6 +207,11 @@ fsal_status_t WRAP_ZFSFSAL_write(fsal_file_t * p_file_descriptor,       /* IN */
                        buffer_size, buffer, p_write_amount);
 }
 
+fsal_status_t WRAP_ZFSFSAL_sync(fsal_file_t * p_file_descriptor    /* IN */)
+{
+  return ZFSFSAL_sync((zfsfsal_file_t *) p_file_descriptor);
+}
+
 fsal_status_t WRAP_ZFSFSAL_close(fsal_file_t * p_file_descriptor /* IN */ )
 {
   return ZFSFSAL_close((zfsfsal_file_t *) p_file_descriptor);
@@ -675,6 +680,7 @@ fsal_functions_t fsal_zfs_functions = {
   .fsal_open = WRAP_ZFSFSAL_open,
   .fsal_read = WRAP_ZFSFSAL_read,
   .fsal_write = WRAP_ZFSFSAL_write,
+  .fsal_sync = WRAP_ZFSFSAL_sync,
   .fsal_close = WRAP_ZFSFSAL_close,
   .fsal_open_by_fileid = WRAP_ZFSFSAL_open_by_fileid,
   .fsal_close_by_fileid = WRAP_ZFSFSAL_close_by_fileid,
