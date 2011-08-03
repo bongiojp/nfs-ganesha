@@ -14,6 +14,8 @@
 #include "fsal.h"
 #include "fsal_internal.h"
 #include "fsal_convert.h"
+#include "cache_inode.h"
+#include "nfs_proto_tools.h"
 #include <pwd.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -33,6 +35,72 @@
  * 
  * @{
  */
+
+static pthread_t inode_update_thread = 0;
+
+void *inode_update(void *argp)
+{
+  int rc = 0;
+  int rc2 = 0;
+  struct stat64 buf;
+  struct flock fl;
+  struct callback_arg callback;
+  cache_inode_fsal_data_t pfsal_data;
+  int reason = 0;
+  unsigned int *fhP;
+
+  gpfsfsal_export_context_t *p_export_context = (gpfsfsal_export_context_t *)argp;
+
+  SetNameFunction("inode_update_thread");
+
+  LogInfo(COMPONENT_FSAL,
+               "inode_update: pid %p: start",
+               (caddr_t) pthread_self());
+
+  pfsal_data.cookie = 0;
+  pfsal_data.handle.data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
+  pfsal_data.handle.data.handle.handle_key_size = 0;
+  callback.mountdirfd = p_export_context->mount_root_fd;
+  callback.handle = &pfsal_data.handle.data.handle;
+  callback.reason = &reason;
+  callback.buf = &buf;
+  callback.fl = (struct glock *) &fl;
+
+  while(rc == 0)
+    {
+      rc = gpfs_ganesha(OPENHANDLE_INODE_UPDATE, &callback);
+      LogDebug(COMPONENT_FSAL,
+               "inode update: pid %p: rc %d reason %d update ino %ld",
+                (caddr_t) pthread_self(), rc, reason,
+                callback.buf->st_ino);
+      LogDebug(COMPONENT_FSAL,
+               "inode update: handle size = %u key_size = %u",
+                callback.handle->handle_size,
+                callback.handle->handle_key_size);
+      fhP = (int *)&(callback.handle->f_handle[0]);
+      LogDebug(COMPONENT_FSAL,
+               "inode update: handle %08x %08x %08x %08x %08x %08x %08x\n",
+                fhP[0],fhP[1],fhP[2],fhP[3],fhP[4],fhP[5],fhP[6]);
+
+      if (reason == INODE_GOT_LOCK)
+      {
+        LogDebug(COMPONENT_FSAL,
+               "inode update: pid %p: lock pid %d type %d start %lld len %lld",
+                (caddr_t) pthread_self(), fl.l_pid, fl.l_type, (long long) fl.l_start,
+                (long long) fl.l_len);
+        continue;
+      }
+      rc2 =  cache_inode_invalidate (0, &pfsal_data);
+      if ( rc2 ) {
+        LogDebug(COMPONENT_FSAL,
+                "Inode update: invalidate cache failed with %d", rc2);
+      }
+    }
+    LogInfo(COMPONENT_FSAL,
+                 "inode_update: pid %p: error %d exit",
+                 (caddr_t) pthread_self(), rc);
+  return(0);
+}
 
 /**
  * build the export entry
@@ -123,6 +191,9 @@ fsal_status_t GPFSFSAL_BuildExportContext(fsal_export_context_t *export_context,
                status.minor);
       ReturnCode(ERR_FSAL_INVAL, 0);
     }
+
+  if (inode_update_thread == 0)
+    pthread_create(&inode_update_thread, NULL, inode_update, p_export_context);
 
   Return(ERR_FSAL_NO_ERROR, 0, INDEX_FSAL_BuildExportContext);
 }

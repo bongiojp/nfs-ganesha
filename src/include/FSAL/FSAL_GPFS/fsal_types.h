@@ -85,6 +85,7 @@
 #define AT_FDCWD   -100
 
 #define OPENHANDLE_HANDLE_LEN 40
+#define OPENHANDLE_KEY_LEN 28
 #define OPENHANDLE_DRIVER_MAGIC     'O'
 #define OPENHANDLE_OFFSET_OF_FILEID (2 * sizeof(int))
 

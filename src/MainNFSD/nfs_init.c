@@ -1688,6 +1688,10 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
                cache_inode_err_str(cache_status));
     }
 
+    if ((locate_table( LOCATE_INODE_TABLE, LOCATE_HASH_TABLE_SET, ht)) != ht ) {
+      LogMajor(COMPONENT_INIT, "NFS_INIT: locate hash table set failed. library could not be initialized");
+      exit(1);
+    }
 #ifdef _USE_NLM
   if(state_lock_init(&state_status,
                      nfs_param.cache_layers_param.cache_param.cookie_param)

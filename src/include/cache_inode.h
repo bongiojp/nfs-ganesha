@@ -134,8 +134,9 @@ extern char *cache_inode_function_names[];
 #define CACHE_INODE_UPDATE_STATE        31
 #define CACHE_INODE_DEL_ALL_STATE       32
 #define CACHE_INODE_COMMIT              33
+#define CACHE_INODE_INVALIDATE          34
 
-#define CACHE_INODE_NB_COMMAND      34
+#define CACHE_INODE_NB_COMMAND      35
 
 typedef enum cache_inode_expire_type__
 { CACHE_INODE_EXPIRE = 0,
@@ -223,7 +224,8 @@ typedef enum cache_inode_endofdir__
 
 typedef enum cache_inode_entry_valid_state__
 { VALID = 1,
-  INVALID = 2
+  INVALID = 2,
+  STALE = 3
 } cache_inode_entry_valid_state_t;
 
 typedef enum cache_inode_op__
@@ -863,6 +865,14 @@ cache_inode_status_t cache_inode_invalidate_all_cached_dirent(cache_entry_t *
 void cache_inode_set_attributes(cache_entry_t * pentry, fsal_attrib_list_t * pattr);
 
 void cache_inode_get_attributes(cache_entry_t * pentry, fsal_attrib_list_t * pattr);
+
+int cache_inode_invalidate( u_long not_yet_used, cache_inode_fsal_data_t *psal_data );
+
+#define LOCATE_INODE_TABLE    1
+#define LOCATE_HASH_TABLE_SET 1
+#define LOCATE_HASH_TABLE_GET 2
+
+hash_table_t *locate_table(int what, int which, hash_table_t *source);
 
 cache_inode_file_type_t cache_inode_fsal_type_convert(fsal_nodetype_t type);
 
