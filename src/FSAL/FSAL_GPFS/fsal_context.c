@@ -82,7 +82,7 @@ void *inode_update(void *argp)
                "inode update: handle %08x %08x %08x %08x %08x %08x %08x\n",
                 fhP[0],fhP[1],fhP[2],fhP[3],fhP[4],fhP[5],fhP[6]);
 
-      if (reason == INODE_GOT_LOCK)
+      if (reason == INODE_LOCK_GRANTED)
       {
         LogDebug(COMPONENT_FSAL,
                "inode update: pid %p: lock pid %d type %d start %lld len %lld",
