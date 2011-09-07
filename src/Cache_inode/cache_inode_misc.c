@@ -2026,72 +2026,88 @@ int cache_inode_invalidate (ulong not_used,
   cache_entry_t *pentry = NULL;
   hash_table_t *ht = NULL;
   fsal_attrib_list_t attr;
-  uint *prpoint;
 
+#if 0
+  if(isFullDebug(COMPONENT_CACHE_INODE))
+    {
+      uint *prpoint;
 
-  if(isFullDebug(COMPONENT_CACHE_CONTENT)) {
+      LogFullDebug(COMPONENT_CACHE_INODE,
+                   "Invalidate cache called handle size = %u key_size = %u",
+                   pfsal_data->handle.data.handle.handle_size, pfsal_data->handle.data.handle.handle_key_size);
 
-    LogFullDebug(COMPONENT_CACHE_CONTENT, "Invalidate cache called handle size = %u key_size = %u", pfsal_data->handle.data.handle.handle_size, pfsal_data->handle.data.handle.handle_key_size);
+      prpoint = ( uint  * ) pfsal_data->handle.data.handle.f_handle;
+      LogFullDebug(COMPONENT_CACHE_INODE,
+                   "handle %08x %08x %08x %08x %08x %08x %08x\n",
+                   prpoint[0], prpoint[1], prpoint[2],prpoint[3],prpoint[4],prpoint[5],prpoint[6]);
+    }
+#endif
 
-    prpoint = ( uint  * ) pfsal_data->handle.data.handle.f_handle;
-    LogFullDebug(COMPONENT_CACHE_CONTENT, "handle %08x %08x %08x %08x %08x %08x %08x\n", prpoint[0], prpoint[1], prpoint[2],prpoint[3],prpoint[4],prpoint[5],prpoint[6]);
-  }
+  if(!(ht = locate_table( LOCATE_INODE_TABLE, LOCATE_HASH_TABLE_GET, NULL)))
+    {
+      LogDebug(COMPONENT_CACHE_INODE,
+               "locate_table failed.");
+      return -1;
+    }
 
-  if (!(ht = locate_table( LOCATE_INODE_TABLE, LOCATE_HASH_TABLE_GET, NULL))) {
-        
-    LogDebug(COMPONENT_CACHE_CONTENT, " locate_table failed. " );
-    return(-1);
-  }
   pfsal_data->cookie = DIR_START; /* XXX */
   if((pentry = cache_inode_get(pfsal_data,
                                &attr, ht, NULL, NULL, &cache_status)) == NULL)
-  {
-    LogDebug(COMPONENT_CACHE_CONTENT, " cache inode get failed. " );
-/* Not an error. Expecting some nodes will not have it in cache in a cluster. */
-    return(0);
-  }
+    {
+      LogDebug(COMPONENT_CACHE_INODE,
+               "cache inode get failed.");
+      /* Not an error. Expecting some nodes will not have it in cache in a cluster. */
+      return 0;
+    }
        
-  LogDebug(COMPONENT_CACHE_CONTENT, "Invalidate cache found entry %p type %u", pentry, pentry->internal_md.type);
+  LogDebug(COMPONENT_CACHE_INODE,
+           "Invalidate cache found entry %p type %u",
+           pentry, pentry->internal_md.type);
   /* Lock the entry */
   P_w(&pentry->lock);
   pentry->internal_md.valid_state = STALE;
-  if ( pentry->internal_md.type == DIR_BEGINNING ) {
-    pentry->object.dir_begin.has_been_readdir = CACHE_INODE_RENEW_NEEDED;
-    LogDebug(COMPONENT_CACHE_CONTENT, "Invalidate reset directory." );
-  }
+  if(pentry->internal_md.type == DIR_BEGINNING)
+    {
+      pentry->object.dir_begin.has_been_readdir = CACHE_INODE_RENEW_NEEDED;
+      LogDebug(COMPONENT_CACHE_INODE,
+               "Invalidate reset directory.");
+    }
+
   V_w(&pentry->lock);
-  return( 0 );
+  return 0;
 }
 hash_table_t *locate_table(int what, int which, hash_table_t *source)
 {
   static hash_table_t *inode_table;
 
-  if (!what || !which)
-    return(NULL);
+  if(!what || !which)
+    return NULL;
 
-  switch (what) {
-  default:
-    return(NULL);
-    break;
-  case LOCATE_INODE_TABLE:
-    break;
-  }
+  switch(what)
+    {
+      default:
+        return NULL;
 
-  switch (which) {
-  case LOCATE_HASH_TABLE_GET:
-    if ( what == LOCATE_INODE_TABLE )
-      return( inode_table );
-    else
-      return( NULL );
-    break;
-  default:
-    return(NULL);
-    break;
-  case LOCATE_HASH_TABLE_SET:
-    inode_table = source;
-    return(source);
-    break;
-  }
-/* Not Reached. */
-  return( NULL );
+      case LOCATE_INODE_TABLE:
+        break;
+    }
+
+  switch(which)
+    {
+      case LOCATE_HASH_TABLE_GET:
+        if(what == LOCATE_INODE_TABLE)
+          return inode_table;
+        else
+          return NULL;
+
+      default:
+        return NULL;
+
+      case LOCATE_HASH_TABLE_SET:
+        inode_table = source;
+        return source;
+    }
+
+  /* Not Reached. */
+  return NULL;
 }
