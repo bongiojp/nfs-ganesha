@@ -111,6 +111,9 @@ struct file_handle
 
 /** end of open by handle structures */
 
+/* Allow aliasing of fsal_handle_t since FSALs will be
+ * casting between pointer types
+ */
 typedef struct
 {
   struct
@@ -118,7 +121,7 @@ typedef struct
     //  unsigned int fsid[2];
     struct file_handle handle;
   } data ;
-} gpfsfsal_handle_t;  /**< FS object handle */
+} __attribute__((__may_alias__)) gpfsfsal_handle_t;  /**< FS object handle */
 
 /** Authentification context.    */
 

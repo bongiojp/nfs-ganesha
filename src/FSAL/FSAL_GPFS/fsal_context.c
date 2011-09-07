@@ -46,6 +46,7 @@ void *inode_update(void *argp)
   struct flock fl;
   struct callback_arg callback;
   cache_inode_fsal_data_t pfsal_data;
+  gpfsfsal_handle_t *phandle = (gpfsfsal_handle_t *) &pfsal_data.handle;
   int reason = 0;
   unsigned int *fhP;
 
@@ -58,10 +59,10 @@ void *inode_update(void *argp)
                (caddr_t) pthread_self());
 
   pfsal_data.cookie = 0;
-  pfsal_data.handle.data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
-  pfsal_data.handle.data.handle.handle_key_size = 0;
+  phandle->data.handle.handle_size = OPENHANDLE_HANDLE_LEN;
+  phandle->data.handle.handle_key_size = 0;
   callback.mountdirfd = p_export_context->mount_root_fd;
-  callback.handle = &pfsal_data.handle.data.handle;
+  callback.handle = &phandle->data.handle;
   callback.reason = &reason;
   callback.buf = &buf;
   callback.fl = (struct glock *) &fl;
