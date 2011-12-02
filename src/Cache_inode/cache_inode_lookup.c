@@ -517,7 +517,6 @@ cache_entry_t *cache_inode_lookup(cache_entry_t * pentry_parent,
  */
 cache_entry_t *cache_inode_valid_lookup(cache_entry_t * pentry_parent,
                                         fsal_name_t * pname,
-                                        cache_inode_policy_t policy,
                                         fsal_attrib_list_t * pattr,
                                         hash_table_t * ht,
                                         cache_inode_client_t * pclient,
@@ -526,7 +525,7 @@ cache_entry_t *cache_inode_valid_lookup(cache_entry_t * pentry_parent,
 {
   cache_entry_t *pentry;
   cache_inode_status_t cache_status;
-  pentry = cache_inode_lookup_sw(pentry_parent, pname, policy, pattr, ht,
+  pentry = cache_inode_lookup_sw(pentry_parent, pname, pattr, ht,
                                  pclient, pcontext, pstatus, TRUE);
 
   /* cache_inode_lookup_sw() could have given a STALE inode entry.
