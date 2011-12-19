@@ -57,6 +57,13 @@
 #include <pthread.h>
 #include <assert.h>
 
+/* Function to test if numlinks == 0 and to clean up that inode entry
+ * if there is no state or locks on that inode. */
+static cache_inode_status_t isNumlinksZero(cache_entry_t *pentry,
+                                           cache_inode_client_t *pclient,
+                                           hash_table_t *ht,
+                                           fsal_attrib_list_t *object_attributes);
+
 /**
  *
  * cache_inode_renew_entry: Renews the attributes for an entry.
@@ -231,6 +238,14 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
           return *pstatus;
         }
 
+      /* A directory could be removed by something other than Ganesha. */
+      if (isNumlinksZero(pentry, pclient, ht, &object_attributes)
+          != CACHE_INODE_SUCCESS)
+        {
+          *pstatus = CACHE_INODE_FSAL_ESTALE;
+          return *pstatus;
+        }
+
       LogDebug(COMPONENT_CACHE_INODE,
                "cache_inode_renew_entry: Entry=%p, type=%d, Cached Time=%d, FSAL Time=%d",
                pentry, pentry->internal_md.type,
@@ -352,6 +367,14 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
             }
         }
 
+      /* A directory could be removed by something other than Ganesha. */
+      if (isNumlinksZero(pentry, pclient, ht, &object_attributes)
+          != CACHE_INODE_SUCCESS)
+        {
+          *pstatus = CACHE_INODE_FSAL_ESTALE;
+          return *pstatus;
+        }
+
       cache_inode_set_attributes(pentry, &object_attributes);
 
       /* Return the attributes as set */
@@ -439,6 +462,14 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
           LogDebug(COMPONENT_CACHE_INODE,
                    "cache_inode_renew_entry returning %d (%s) from FSAL_getattrs for directory entries (2)",
                    *pstatus, cache_inode_err_str(*pstatus));
+          return *pstatus;
+        }
+
+      /* A directory could be removed by something other than Ganesha. */
+      if (isNumlinksZero(pentry, pclient, ht, &object_attributes)
+          != CACHE_INODE_SUCCESS)
+        {
+          *pstatus = CACHE_INODE_FSAL_ESTALE;
           return *pstatus;
         }
 
@@ -547,6 +578,15 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
           return *pstatus;
         }
 
+      /* Check if the file was deleted by something other than Ganesha. 
+       * If Ganesha has open fd, then numlinks=0 but we still see the file. */
+      if (isNumlinksZero(pentry, pclient, ht, &object_attributes)
+          != CACHE_INODE_SUCCESS)
+        {
+          *pstatus = CACHE_INODE_FSAL_ESTALE;
+          return *pstatus;
+        }
+
       /* Keep the new attribute in cache */
       cache_inode_set_attributes(pentry, &object_attributes);
 
@@ -639,3 +679,48 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
            *pstatus, cache_inode_err_str(*pstatus));
   return *pstatus;
 }                               /* cache_inode_renew_entry */
+
+
+
+static cache_inode_status_t isNumlinksZero(cache_entry_t *pentry,
+                                           cache_inode_client_t *pclient,
+                                           hash_table_t *ht,
+                                           fsal_attrib_list_t *object_attributes)
+{
+  int no_state_or_lock = 1;
+
+  LogDebug(COMPONENT_CACHE_INODE, "cache_inode_renew_entry: numlinks=%lu",
+           object_attributes->numlinks);
+
+  if (pentry->internal_md.type == REGULAR_FILE
+      && (! glist_empty(&pentry->object.file.state_list)
+          || ! glist_empty(&pentry->object.file.lock_list)))
+    no_state_or_lock = 0;
+
+  if (object_attributes->numlinks == 0 && no_state_or_lock )
+    {
+      cache_inode_status_t kill_status;
+      
+      LogDebug(COMPONENT_CACHE_INODE, "cache_inode_renew_entry: numlinks=0,"
+               "deleting inode entry and returning STALE.");
+      /* Now check if we have any locks on the file. If so, then perhaps
+       * a process that doesn't respect locks deleted the file. We should
+       * not close in that case.*/
+      if (pentry->internal_md.type == REGULAR_FILE)
+        if(cache_inode_close(pentry, pclient, &kill_status) !=
+           CACHE_INODE_SUCCESS)
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "cache_inode_renew_entry: Could not close open fd for"
+                  " entry %p, status = %u",
+                  pentry, kill_status);
+      
+      pentry->internal_md.valid_state = STALE;
+      if(cache_inode_kill_entry(pentry, ht, pclient, &kill_status) !=
+         CACHE_INODE_SUCCESS)
+        LogCrit(COMPONENT_CACHE_INODE,
+                "cache_inode_renew_entry: Could not kill entry %p, "
+                "status = %u", pentry, kill_status);
+      return CACHE_INODE_FSAL_ESTALE;
+    }
+  return CACHE_INODE_SUCCESS;
+}
