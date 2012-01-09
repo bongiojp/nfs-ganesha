@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * --------------------------------------- */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -145,7 +145,8 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
   /* get the characteristic value for readdir operation */
   dircount = arg_READDIR4.dircount;
   maxcount = arg_READDIR4.maxcount*0.9;
-  cookie = (unsigned int)arg_READDIR4.cookie;
+  cookie = arg_READDIR4.cookie;
+  space_used = sizeof(entry4);
 
   /* dircount is considered meaningless by many nfsv4 client (like the CITI
    * one).  we use maxcount instead. */
@@ -302,7 +303,7 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
             }
 
           /* Set the cookie value */
-          entry_nfs_array[i].cookie = dirent_array[i]->cookie;
+          entry_nfs_array[i].cookie = dirent_array[i]->hk.k;
 
           /* Get the pentry for the object's attributes and filehandle */
           if( ( pentry = cache_inode_lookup_no_mutex( dir_pentry,
