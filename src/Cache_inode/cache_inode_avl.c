@@ -53,6 +53,8 @@ void cache_inode_avl_init(cache_entry_t *entry)
     avltree_init(&entry->object.dir.avl, avl_dirent_hk_cmpf, 0 /* flags */);
 }
 
+#define MIN_COOKIE_VAL 3
+
 /*
  * Insert with quadatic, linear probing.  A unique k is assured for
  * any k whenever size(t) < max(uint64_t).
@@ -79,6 +81,11 @@ int cache_inode_avl_qp_insert(
 
     for (j = 0; j < UINT64_MAX; j++) {
         v->hk.k = (v->hk.k + (j * 2));
+
+        /* unlikely:  avoid reserved cookie values */ 
+        if (v->hk.k < MIN_COOKIE_VAL)
+            continue;
+
         node = avltree_insert(&v->node_hk, t);
         if (! node) {
             /* success, note iterations and return */
