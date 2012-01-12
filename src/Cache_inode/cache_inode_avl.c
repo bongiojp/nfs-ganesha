@@ -121,26 +121,6 @@ int cache_inode_avl_qp_insert(
     return (-1);
 }
 
-static inline struct avltree_node *
-avltree_inline_lookup(
-    const struct avltree_node *key,
-    const struct avltree *tree)
-{
-    struct avltree_node *node = tree->root;
-    int is_left = 0, res = 0;
-
-    while (node) {
-        res = avl_dirent_hk_cmpf(node, key);
-        if (res == 0)
-            return node;
-        if ((is_left = res > 0))
-            node = node->left;
-        else
-            node = node->right;
-    }
-    return NULL;
-}
-
 cache_inode_dir_entry_t *
 cache_inode_avl_lookup_k(
     cache_entry_t *entry, cache_inode_dir_entry_t *v)
@@ -148,7 +128,7 @@ cache_inode_avl_lookup_k(
     struct avltree *t = &entry->object.dir.avl;
     struct avltree_node *node;
 
-    node = avltree_inline_lookup(&v->node_hk, t);
+    node = avltree_lookup(&v->node_hk, t);
     if (node)
         return (avltree_container_of(node, cache_inode_dir_entry_t, node_hk));
     else
@@ -170,7 +150,7 @@ cache_inode_avl_qp_lookup_s(
 
     for (j = 0; j < maxj; j++) {
         v->hk.k = (v->hk.k + (j * 2));
-        node = avltree_inline_lookup(&v->node_hk, t);
+        node = avltree_lookup(&v->node_hk, t);
         if (node) {
             /* ensure that node is related to v */
             v2 = avltree_container_of(node, cache_inode_dir_entry_t, node_hk);

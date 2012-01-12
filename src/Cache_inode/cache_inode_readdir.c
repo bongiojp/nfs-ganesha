@@ -1272,12 +1272,12 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
       dirent_node = avltree_first(&dir_pentry->object.dir.avl);
   }
 
-  LogDebug(COMPONENT_NFS_READDIR,
-           "About to readdir in  cache_inode_readdir: pentry=%p "
-           "cookie=%"PRIu64" collisions %d",
-           dir_pentry,
-           cookie,
-           dir_pentry->object.dir.collisions
+  LogFullDebug(COMPONENT_NFS_READDIR,
+               "About to readdir in  cache_inode_readdir: pentry=%p "
+               "cookie=%"PRIu64" collisions %d",
+               dir_pentry,
+               cookie,
+               dir_pentry->object.dir.collisions
       );
 
   /* Now satisfy the request from the cached readdir--stop when either
