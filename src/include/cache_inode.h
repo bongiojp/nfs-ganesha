@@ -135,14 +135,31 @@ typedef enum cache_inode_policy__
 } cache_inode_policy_t ;
 
 typedef enum cache_inode_expire_type__
-{ 
+{
   CACHE_INODE_EXPIRE = 0,
   CACHE_INODE_EXPIRE_NEVER = 1,
   CACHE_INODE_EXPIRE_IMMEDIATE = 2
 } cache_inode_expire_type_t;
 
-typedef struct func_inode_stats__
+                typedef struct cache_inode_lru__
+        {
+    struct glist_head q;
+    pthread_mutex_t mtx;
+    unsigned long refcount; /* we do want a preferred unsigned type for the machine */
+} cache_inode_lru_t;
+
+typedef struct cache_inode_stat__
 {
+    /* XXX this should change to report cache_inode_lru metrics:
+     * entries active
+     * lengths of specific queues
+     * progress toward high and low water marks
+     */
+    unsigned int nb_gc_lru_active;        /**< Number of active entries in Garbagge collecting list */
+    unsigned int nb_gc_lru_total;         /**< Total mumber of entries in Garbagge collecting list  */
+
+  struct func_inode_stats__
+  {
     unsigned int nb_call[CACHE_INODE_NB_COMMAND];                         /**< total number of calls per functions     */
     unsigned int nb_success[CACHE_INODE_NB_COMMAND];                      /**< succesfull calls per function           */
     unsigned int nb_err_retryable[CACHE_INODE_NB_COMMAND];                /**< failed/retryable calls per function     */
@@ -335,9 +352,7 @@ struct cache_entry_t
 #endif
   rw_lock_t lock;                             /**< a reader-writter lock used to protect the data     */
   cache_inode_internal_md_t internal_md;      /**< My metadata (from this cache's point of view)      */
-  LRU_entry_t *gc_lru_entry;                  /**< related LRU entry in the LRU list used for GC      */
-  LRU_list_t *gc_lru;                         /**< related LRU list for GC                            */    
-
+  cache_inode_lru_t lru;                      /**< New style LRU       */
    
   /* List of parent cache entries of directory entries related by
    * hard links */

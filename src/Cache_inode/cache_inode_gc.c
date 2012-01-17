@@ -101,14 +101,6 @@ static int cache_inode_gc_clean_entry(cache_entry_t * pentry,
                (caddr_t)pthread_self(),
                pentry, pentry->internal_md.type);
 
-  /* sanity check */
-  if((pentry->gc_lru_entry != NULL) &&
-     ((cache_entry_t *) pentry->gc_lru_entry->buffdata.pdata) != pentry)
-    {
-      LogCrit(COMPONENT_CACHE_INODE_GC,
-              "cache_inode_gc_clean_entry: LRU entry pointed by this pentry doesn't match the GC LRU");
-    }
-
   /* Get the FSAL handle */
   if((pfsal_handle = cache_inode_get_fsal_handle(pentry, &status)) == NULL)
     {
