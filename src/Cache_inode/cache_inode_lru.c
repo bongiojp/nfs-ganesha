@@ -34,18 +34,19 @@
 #include "solaris_port.h"
 #endif                          /* _SOLARIS */
 
-#include "log_macros.h"
-#include "stuff_alloc.h"
-#include "nlm_list.h"
-#include "fsal.h"
-#include "cache_inode.h"
-#include "cache_inode_lru.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/param.h>
 #include <time.h>
 #include <pthread.h>
 #include <assert.h>
+#include "stuff_alloc.h"
+#include "nlm_list.h"
+#include "fsal.h"
+#include "nfs_core.h"
+#include "log_macros.h"
+#include "cache_inode.h"
+#include "cache_inode_lru.h"
 
 /**
  *
@@ -72,17 +73,19 @@
  *
  */
 
-/* Cache inode entry lookup table */
-static hash_table_t ht_;
-static pthread_mutex_t lru_mtx;
-
 /* Cahe inode entry weakref table */
 /* static hash_table_t weakref_; */
 
+struct lru_q_pair
+{
+    struct glist_head q; /* LRU is at HEAD, MRU at tail */
+    uint64_t size;
+};
+
 struct lru_q_
 {
-    struct glist_head lru; /* LRU is at HEAD, MRU at tail */
-    struct glist_head lru_pinned; /* uncollectable, due to state */
+    struct lru_q_pair lru;
+    struct lru_q_pair lru_pinned; /* uncollectable, due to state */
 };
 
 /* Initially, we implement a single-level cache.  The algorithm here
@@ -90,6 +93,19 @@ struct lru_q_
  */
 #define N_LRU_Q 1
 static struct lru_q_ lru_q[N_LRU_Q];
+
+static pthread_mutex_t lru_mtx;
+static pthread_cond_t lru_cv;
+
+#define LRU_SLEEPING 0x0001
+#define LRU_SHUTDOWN 0x0002
+
+static struct lru_thread_state
+{
+    pthread_t thread_id;
+    uint32_t flags;
+} lru_thread_state;
+
 
 /* The refcount mechanism distinguishes 3 key object states:
  *
@@ -127,20 +143,28 @@ static struct lru_q_ lru_q[N_LRU_Q];
 /*
  * Initialize subsystem
  */
-void cache_inode_lru_pkginit(void)
+void cache_inode_lru_pkginit(pthread_attr_t *attr_thr)
 {
-    int ix;
+    int ix, code = 0;
 
     pthread_mutex_init(&lru_mtx, NULL);
+    pthread_cond_init(&lru_cv, NULL);
 
     for (ix = 0; ix < N_LRU_Q; ++ix) {
+
         /* init queues at each level */
-        init_glist(&lru_q[ix].lru);
-        init_glist(&lru_q[ix].lru_pinned);
+        init_glist(&lru_q[ix].lru.q);
+        lru_q[ix].lru.size = 0;
+
+        init_glist(&lru_q[ix].lru_pinned.q);
+        lru_q[ix].lru_pinned.size = 0;
+
     }
 
     /* spawn LRU background thread */
-    /* TODO: finish */
+    code = pthread_create(&lru_thread_state.thread_id, attr_thr, lru_thread,
+                          (void *) NULL);
+    assert(code == 0);
 }
 
 /*
@@ -151,9 +175,6 @@ void cache_inode_lru_pkgshutdown(void)
 {
     /* post and wait for shutdown of LRU background thread */
 }
-
-#define LRU_GET_FLAG_NONE    0x0000
-#define LRU_GET_FLAG_REF     0x0001
 
 /* convenience function to decrease entry refcount, permissible
  * IFF the caller has an initial reference */
@@ -200,13 +221,16 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     cache_inode_lru_t *lru;
     cache_entry_t *entry = NULL;
 
+    struct lru_q_pair *qp = &lru_q[1].lru;
+
+
     P(lru_mtx);
     /* victim at LRU */
-    lru = glist_first_entry(&lru_q[1].lru, cache_inode_lru_t, q);
+    lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
     entry = container_of(lru, cache_entry_t, lru);
     if (entry && entry->lru.refcount == SENTINEL_REFCOUNT) {
         glist_del(&entry->lru.q);
-        glist_add_tail(&lru_q[1].lru, &entry->lru.q); /* MRU */
+        glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
         V(lru_mtx);
 
         P(entry->lru.mtx);
@@ -237,6 +261,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
         goto out;
     }
 
+    entry->lru.flags = LRU_FLAG_Q_LRU; /* queue partition */
     entry->lru.refcount = 0;
     if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
         ReleaseToPool(entry, &pclient->pool_entry);
@@ -253,7 +278,8 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
         ++(entry->lru.refcount);
 
     P(lru_mtx);
-    glist_add_tail(&lru_q[1].lru, &entry->lru.q); /* MRU */
+    glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
+    (qp->size)++;
     V(lru_mtx);
         
     *pstatus = CACHE_INODE_SUCCESS;
@@ -264,22 +290,40 @@ out:
 cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
                                          uint32_t flags)
 {
+    struct lru_q_pair *qp;
+
+    /* queue partition */
+    if (entry->lru.flags & LRU_FLAG_Q_LRU)
+        qp = &lru_q[1].lru;
+    else
+        qp = &lru_q[1].lru_pinned;
+
     P(entry->lru.mtx);
     ++(entry->lru.refcount);
 
     /* adjust LRU */
     P(lru_mtx);
     glist_del(&entry->lru.q);
-    glist_add_tail(&lru_q[1].lru, &entry->lru.q); /* MRU */
+    glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
 
     V(lru_mtx);
     V(entry->lru.mtx);
+
+    return (CACHE_INODE_SUCCESS);
 }
 
 cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                                            cache_inode_client_t *pclient,
                                            uint32_t flags)
 {
+    struct lru_q_pair *qp;
+
+    /* queue partition */
+    if (entry->lru.flags & LRU_FLAG_Q_LRU)
+        qp = &lru_q[1].lru;
+    else
+        qp = &lru_q[1].lru_pinned;
+
     P(lru_mtx);
     P(entry->lru.mtx);
 
@@ -288,6 +332,8 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
     if (--(entry->lru.refcount) == 0) {
         /* entry is UNREACHABLE -- the call path is recycling entry */
         glist_del(&entry->lru.q);
+        (qp->size)--;
+   
         V(entry->lru.mtx);
         if (entry->internal_md.type == SYMBOLIC_LINK)
             cache_inode_release_symlink(entry, &pclient->pool_entry_symlink);
@@ -300,6 +346,59 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
  
 unlock:   
     V(lru_mtx);
+
+    return (CACHE_INODE_SUCCESS);
 }
 
+#define S_NSECS 1000000000UL	/* nsecs in 1s */
+#define MS_NSECS 1000000UL	/* nsecs in 1ms */
 
+static void
+lru_thread_delay_ms(unsigned long ms)
+{
+    time_t now;
+    struct timespec then;
+    unsigned long long nsecs;
+
+    now = time(0);
+    nsecs = (S_NSECS * now) + (MS_NSECS * ms);
+    then.tv_sec = nsecs / S_NSECS;
+    then.tv_nsec = nsecs % S_NSECS;
+    
+    pthread_mutex_lock(&lru_mtx);
+    pthread_cond_timedwait(&lru_cv, &lru_mtx, &then);
+    pthread_mutex_unlock(&lru_mtx);
+}
+
+/* Async thread to perform long-term reorganization, compaction,
+ * other operations that cannot be performed in constant time. */
+void *lru_thread(void *arg)
+{
+    SetNameFunction("lru_thread");
+
+    while (1) {
+
+        if (lru_thread_state.flags & LRU_SHUTDOWN)
+            break;
+
+        LogCrit(COMPONENT_CACHE_INODE,
+                "%s: top of poll loop", __func__);
+
+
+        /* do stuff */
+
+        lru_thread_delay_ms(1000 * 5);
+    }
+
+    LogCrit(COMPONENT_CACHE_INODE,
+            "%s: shutdown", __func__);
+
+    return (NULL);
+}
+
+void wakeup_lru_thread() {
+    P(lru_mtx);
+    if (lru_thread_state.flags & LRU_SLEEPING)
+        pthread_cond_signal(&lru_cv);
+    V(lru_mtx);
+}

@@ -145,7 +145,8 @@ typedef enum cache_inode_expire_type__
         {
     struct glist_head q;
     pthread_mutex_t mtx;
-    unsigned long refcount; /* we do want a preferred unsigned type for the machine */
+    unsigned long refcount;
+    uint32_t flags;
 } cache_inode_lru_t;
 
 typedef struct cache_inode_stat__

@@ -66,12 +66,14 @@
  *
  */
 
-#define LRU_FLAG_NONE        0x0000
-#define LRU_GET_FLAG_REF     0x0001
+#define LRU_FLAG_NONE          0x0000
+#define LRU_GET_FLAG_REF       0x0001
+#define LRU_FLAG_Q_LRU         0x0002
+#define LRU_FLAG_Q_PINNED      0x0004
 
 #define SENTINEL_REFCOUNT    1
 
-extern void cache_inode_lru_pkginit(void);
+extern void cache_inode_lru_pkginit(pthread_attr_t *attr_thr);
 extern void cache_inode_lru_pkgshutdown(void);
 
 /* convenience function to increase entry refcount, permissible
@@ -94,4 +96,7 @@ extern cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
 extern cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                                                   cache_inode_client_t *pclient,
                                                   uint32_t flags);
+void *lru_thread(void *arg);
+void wakeup_lru_thread();
+
 #endif /* _CACHE_INODE_LRU_H */
