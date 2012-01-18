@@ -366,7 +366,9 @@ lru_thread_delay_ms(unsigned long ms)
     then.tv_nsec = nsecs % S_NSECS;
     
     pthread_mutex_lock(&lru_mtx);
+    lru_thread_state.flags |= LRU_SLEEPING;
     pthread_cond_timedwait(&lru_cv, &lru_mtx, &then);
+    lru_thread_state.flags &= ~LRU_SLEEPING;
     pthread_mutex_unlock(&lru_mtx);
 }
 
