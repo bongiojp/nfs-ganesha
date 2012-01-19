@@ -50,7 +50,7 @@
 
 /**
  *
- * \file cache_inode_lifecycle.c
+ * \file cache_inode_lru.c
  * \author Matt Benjamin
  * \brief Constant-time cache inode cache management implementation
  *
@@ -223,7 +223,6 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
 
     struct lru_q_pair *qp = &lru_q[1].lru;
 
-
     P(lru_mtx);
     /* victim at LRU */
     lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
@@ -292,13 +291,14 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
 {
     struct lru_q_pair *qp;
 
+    P(entry->lru.mtx);
+
     /* queue partition */
     if (entry->lru.flags & LRU_FLAG_Q_LRU)
         qp = &lru_q[1].lru;
     else
         qp = &lru_q[1].lru_pinned;
 
-    P(entry->lru.mtx);
     ++(entry->lru.refcount);
 
     /* adjust LRU */
@@ -318,14 +318,14 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
 {
     struct lru_q_pair *qp;
 
+    P(lru_mtx);
+    P(entry->lru.mtx);
+
     /* queue partition */
     if (entry->lru.flags & LRU_FLAG_Q_LRU)
         qp = &lru_q[1].lru;
     else
         qp = &lru_q[1].lru_pinned;
-
-    P(lru_mtx);
-    P(entry->lru.mtx);
 
     assert(entry->lru.refcount >= 1);
 
@@ -348,6 +348,63 @@ unlock:
     V(lru_mtx);
 
     return (CACHE_INODE_SUCCESS);
+}
+
+cache_inode_status_t cache_inode_lru_pin(cache_entry_t * entry)
+{
+    P(lru_mtx);
+    P(entry->lru.mtx);
+
+    /* already pinned */
+    if (entry->lru.flags & LRU_FLAG_Q_PINNED)
+        goto unlock;
+
+    assert(entry->lru.flags & LRU_FLAG_Q_LRU);
+
+    glist_del(&entry->lru.q);
+    (lru_q[1].lru.size)--;
+
+    /* also adjusts, seems harmless */
+    glist_add_tail(&lru_q[1].lru_pinned.q, &entry->lru.q); /* MRU */
+    (lru_q[1].lru_pinned.size)++;
+
+    entry->lru.flags &= ~LRU_FLAG_Q_LRU;
+    entry->lru.flags |= LRU_FLAG_Q_PINNED;
+
+unlock:
+    V(entry->lru.mtx);
+    V(lru_mtx);
+
+    return (CACHE_INODE_SUCCESS);    
+}
+
+cache_inode_status_t cache_inode_lru_unpin(cache_entry_t * entry)
+{
+
+    P(lru_mtx);
+    P(entry->lru.mtx);
+
+    /* not pinned */
+    if (entry->lru.flags & LRU_FLAG_Q_LRU)
+        goto unlock;
+
+    assert(entry->lru.flags & LRU_FLAG_Q_PINNED);
+
+    glist_del(&entry->lru.q);
+    (lru_q[1].lru_pinned.size)--;
+
+    /* also adjusts, seems harmless */
+    glist_add_tail(&lru_q[1].lru.q, &entry->lru.q); /* MRU */
+    (lru_q[1].lru.size)++;
+
+    entry->lru.flags &= ~LRU_FLAG_Q_PINNED;
+    entry->lru.flags |= LRU_FLAG_Q_LRU;
+
+unlock:
+    V(entry->lru.mtx);
+    V(lru_mtx);
+
+    return (CACHE_INODE_SUCCESS);    
 }
 
 #define S_NSECS 1000000000UL	/* nsecs in 1s */
@@ -385,7 +442,6 @@ void *lru_thread(void *arg)
 
         LogCrit(COMPONENT_CACHE_INODE,
                 "%s: top of poll loop", __func__);
-
 
         /* do stuff */
 
