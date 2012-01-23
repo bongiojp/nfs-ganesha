@@ -24,6 +24,7 @@
 #include "HashTable.h"
 #include "fsal.h"
 #include "cache_inode.h"
+#include "cache_inode_lru.h"
 #include "cache_content.h"
 #include "stuff_alloc.h"
 
@@ -133,6 +134,9 @@ cache_inode_status_t cache_inode_clean_internal(cache_entry_t * to_remove_entry,
   /* release the key that was stored in hash table */
   if(rc != HASHTABLE_ERROR_NO_SUCH_KEY)
     {
+      /* return Hashtable (sentinel) reference */
+      (void) cache_inode_lru_unref(to_remove_entry, pclient, LRU_FLAG_NONE);
+
       /* Sanity check: old_value.pdata is expected to be equal to pentry,
        * and is released later in this function */
       if((cache_entry_t *) old_value.pdata != to_remove_entry ||

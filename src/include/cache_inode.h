@@ -145,7 +145,7 @@ typedef enum cache_inode_expire_type__
         {
     struct glist_head q;
     pthread_mutex_t mtx;
-    unsigned long refcount;
+    int64_t refcount; /* negative refcount is easy to spot */
     uint32_t flags;
 } cache_inode_lru_t;
 

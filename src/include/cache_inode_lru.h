@@ -70,6 +70,7 @@
 #define LRU_GET_FLAG_REF       0x0001
 #define LRU_FLAG_Q_LRU         0x0002
 #define LRU_FLAG_Q_PINNED      0x0004
+#define LRU_FLAG_LOCKED        0x0008
 
 #define SENTINEL_REFCOUNT    1
 
@@ -85,6 +86,17 @@ static inline void cache_inode_ref(cache_entry_t *entry)
     V(entry->lru.mtx);
 }
 
+static inline int64_t cache_inode_readref(cache_entry_t *entry)
+{
+    int64_t cnt;
+    
+    P(entry->lru.mtx);
+    cnt = entry->lru.refcount;
+    V(entry->lru.mtx);
+    
+    return (cnt);
+}
+
 extern void cache_inode_unref(cache_entry_t *entry,
                               cache_inode_client_t *pclient,
                               uint32_t flags);
@@ -96,8 +108,6 @@ extern cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
 extern cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                                                   cache_inode_client_t *pclient,
                                                   uint32_t flags);
-extern cache_inode_status_t cache_inode_lru_pin(cache_entry_t * entry);
-extern cache_inode_status_t cache_inode_lru_unpin(cache_entry_t * entry);
 extern void *lru_thread(void *arg);
 extern void wakeup_lru_thread();
 

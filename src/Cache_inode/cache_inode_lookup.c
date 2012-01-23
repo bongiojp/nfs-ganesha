@@ -49,6 +49,7 @@
 #include "fsal.h"
 #include "cache_inode.h"
 #include "cache_inode_avl.h"
+#include "cache_inode_lru.h"
 #include "stuff_alloc.h"
 
 #include <unistd.h>
@@ -202,7 +203,15 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
       FSAL_namecpy(&dirent_key->name, pname);
       dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
       if (dirent)
+       {
           pentry = dirent->pentry;
+	  (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
+	  if (cache_inode_lru_readref(pentry) < 1) {
+	  	LogCrit(COMPONENT_CACHE_INODE, "%s: refcount invariant violated (entry refcount < 1 after "
+		"dirent lookup)",
+		__func__);
+	  }
+       }
 
       if(pentry == NULL)
         {

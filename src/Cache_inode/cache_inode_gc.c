@@ -101,6 +101,9 @@ static int cache_inode_gc_clean_entry(cache_entry_t * pentry,
                (caddr_t)pthread_self(),
                pentry, pentry->internal_md.type);
 
+  /* XXXX this function is INCOMPATIBLE with new LRU */
+  abort();
+
   /* Get the FSAL handle */
   if((pfsal_handle = cache_inode_get_fsal_handle(pentry, &status)) == NULL)
     {

@@ -48,6 +48,7 @@
 #include "HashTable.h"
 #include "fsal.h"
 #include "cache_inode.h"
+#include "cache_inode_lru.h"
 #include "stuff_alloc.h"
 
 #include <unistd.h>
@@ -145,6 +146,9 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
     case HASHTABLE_SUCCESS:
       /* Entry exists in the cache and was found */
       pentry = (cache_entry_t *) value.pdata;
+      
+      /* get initial reference for this call path */
+      (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
 
       /* return attributes additionally */
       *pattr = pentry->attributes;
@@ -239,6 +243,10 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
                            "cache_inode_get: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                            pentry, fsal_status.major, fsal_status.minor);
 
+		  /* return reference we just took */
+                  (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+
+                  /* hashtable refcount will likely drop to zero now */
                   if(cache_inode_kill_entry(pentry, NO_LOCK, ht, pclient, &kill_status) !=
                      CACHE_INODE_SUCCESS)
                     LogCrit(COMPONENT_CACHE_INODE,
@@ -320,3 +328,27 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
 
   return pentry;
 }  /* cache_inode_get_located */
+
+/**
+ *
+ * cache_inode_put:  release logical reference to a cache entry conferred by
+ * a previous call to cache_inode_get (cache_inode_get_located).
+ *
+ * The result is typically to decrement the reference count on entry, but
+ * additional side effects include LRU adjustment, movement to/from the
+ * protected LRU partition, or recyling if the caller has raced an operation
+ * which made entry unreachable (and this current caller has the last
+ * reference).  Caller MUST NOT make further accesses to the memory pointed
+ * to by entry.
+ *
+ * @param entry [IN] cache entry being returned
+ * @param pclient [INOUT] ressource allocated by the client for the nfs management.
+ * 
+ * @return status.
+ *
+ */
+cache_inode_status_t cache_inode_put(cache_entry_t *entry,
+                                     cache_inode_client_t *pclient)
+{
+    return (cache_inode_lru_unref(entry, pclient, LRU_FLAG_NONE));
+}

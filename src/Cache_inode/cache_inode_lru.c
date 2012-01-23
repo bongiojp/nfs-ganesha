@@ -134,6 +134,8 @@ static struct lru_thread_state
  * cache_inode_lru_get -- get initial reference, aka, EvictBlock()
  * cache_inode_lru_ref -- increment refcount and adjust LRU
  * cache_inode_lru_unref -- decrement refcount, cond recycle
+ * cache_inode_lru_pin -- move to protected partition
+ * cache_inode_lru_unpin -- move to reclaimable partition
  *
  * other ideas:
  * weakrefs -- planned for use in dirent
@@ -174,6 +176,10 @@ void cache_inode_lru_pkginit(pthread_attr_t *attr_thr)
 void cache_inode_lru_pkgshutdown(void)
 {
     /* post and wait for shutdown of LRU background thread */
+    P(lru_mtx);
+    lru_thread_state.flags |= LRU_SHUTDOWN;
+    wakeup_lru_thread(LRU_FLAG_NONE);
+    V(lru_mtx);
 }
 
 /* convenience function to decrease entry refcount, permissible
@@ -286,6 +292,75 @@ out:
     return (entry);
 }
 
+static inline cache_inode_status_t cache_inode_lru_pin(
+    cache_entry_t * entry,
+    uint32_t flags)
+{
+    if (! (flags & LRU_FLAG_LOCKED)) {
+        P(lru_mtx);
+        P(entry->lru.mtx);
+    }
+
+    /* already pinned */
+    if (entry->lru.flags & LRU_FLAG_Q_PINNED)
+        goto unlock;
+
+    assert(entry->lru.flags & LRU_FLAG_Q_LRU);
+
+    glist_del(&entry->lru.q);
+    (lru_q[1].lru.size)--;
+
+    /* also adjusts, seems harmless */
+    glist_add_tail(&lru_q[1].lru_pinned.q, &entry->lru.q); /* MRU */
+    (lru_q[1].lru_pinned.size)++;
+
+    entry->lru.flags &= ~LRU_FLAG_Q_LRU;
+    entry->lru.flags |= LRU_FLAG_Q_PINNED;
+
+unlock:
+    if (! (flags & LRU_FLAG_LOCKED)) {
+        V(entry->lru.mtx);
+        V(lru_mtx);
+    }
+
+    return (CACHE_INODE_SUCCESS);    
+}
+
+static inline cache_inode_status_t cache_inode_lru_unpin(
+    cache_entry_t * entry,
+    uint32_t flags)
+{
+
+    if (! (flags & LRU_FLAG_LOCKED)) {
+        P(lru_mtx);
+        P(entry->lru.mtx);
+    }
+
+    /* not pinned */
+    if (entry->lru.flags & LRU_FLAG_Q_LRU)
+        goto unlock;
+
+    assert(entry->lru.flags & LRU_FLAG_Q_PINNED);
+
+    glist_del(&entry->lru.q);
+    (lru_q[1].lru_pinned.size)--;
+
+    /* also adjusts, seems harmless */
+    glist_add_tail(&lru_q[1].lru.q, &entry->lru.q); /* MRU */
+    (lru_q[1].lru.size)++;
+
+    entry->lru.flags &= ~LRU_FLAG_Q_PINNED;
+    entry->lru.flags |= LRU_FLAG_Q_LRU;
+
+unlock:
+    if (! (flags & LRU_FLAG_LOCKED)) {
+        V(entry->lru.mtx);
+        V(lru_mtx);
+    }
+
+    return (CACHE_INODE_SUCCESS);    
+}
+
 cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
                                          uint32_t flags)
 {
@@ -305,6 +380,9 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
     P(lru_mtx);
     glist_del(&entry->lru.q);
     glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
+
+    /* cond (un)pin */
+    cache_inode_lru_pin(entry, LRU_FLAG_LOCKED);
 
     V(lru_mtx);
     V(entry->lru.mtx);
@@ -341,6 +419,9 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
         goto unlock;
     }
 
+    /* cond (un)pin */
+    cache_inode_lru_pin(entry, LRU_FLAG_LOCKED);
+
     /* no LRU adjustment */
     V(entry->lru.mtx);
  
@@ -348,63 +429,6 @@ unlock:
     V(lru_mtx);
 
     return (CACHE_INODE_SUCCESS);
-}
-
-cache_inode_status_t cache_inode_lru_pin(cache_entry_t * entry)
-{
-    P(lru_mtx);
-    P(entry->lru.mtx);
-
-    /* already pinned */
-    if (entry->lru.flags & LRU_FLAG_Q_PINNED)
-        goto unlock;
-
-    assert(entry->lru.flags & LRU_FLAG_Q_LRU);
-
-    glist_del(&entry->lru.q);
-    (lru_q[1].lru.size)--;
-
-    /* also adjusts, seems harmless */
-    glist_add_tail(&lru_q[1].lru_pinned.q, &entry->lru.q); /* MRU */
-    (lru_q[1].lru_pinned.size)++;
-
-    entry->lru.flags &= ~LRU_FLAG_Q_LRU;
-    entry->lru.flags |= LRU_FLAG_Q_PINNED;
-
-unlock:
-    V(entry->lru.mtx);
-    V(lru_mtx);
-
-    return (CACHE_INODE_SUCCESS);    
-}
-
-cache_inode_status_t cache_inode_lru_unpin(cache_entry_t * entry)
-{
-
-    P(lru_mtx);
-    P(entry->lru.mtx);
-
-    /* not pinned */
-    if (entry->lru.flags & LRU_FLAG_Q_LRU)
-        goto unlock;
-
-    assert(entry->lru.flags & LRU_FLAG_Q_PINNED);
-
-    glist_del(&entry->lru.q);
-    (lru_q[1].lru_pinned.size)--;
-
-    /* also adjusts, seems harmless */
-    glist_add_tail(&lru_q[1].lru.q, &entry->lru.q); /* MRU */
-    (lru_q[1].lru.size)++;
-
-    entry->lru.flags &= ~LRU_FLAG_Q_PINNED;
-    entry->lru.flags |= LRU_FLAG_Q_LRU;
-
-unlock:
-    V(entry->lru.mtx);
-    V(lru_mtx);
-
-    return (CACHE_INODE_SUCCESS);    
 }
 
 #define S_NSECS 1000000000UL	/* nsecs in 1s */
@@ -454,9 +478,14 @@ void *lru_thread(void *arg)
     return (NULL);
 }
 
-void wakeup_lru_thread() {
-    P(lru_mtx);
+void wakeup_lru_thread(uint32_t flags) {
+
+    if (! (flags & LRU_FLAG_LOCKED))
+        P(lru_mtx);
+
     if (lru_thread_state.flags & LRU_SLEEPING)
         pthread_cond_signal(&lru_cv);
-    V(lru_mtx);
+
+    if (! (flags & LRU_FLAG_LOCKED))
+        V(lru_mtx);
 }
