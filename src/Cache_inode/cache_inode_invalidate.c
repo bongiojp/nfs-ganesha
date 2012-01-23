@@ -142,10 +142,10 @@ cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle
 
   /* pentry is lock, I call cache_inode_kill_entry with 'locked' flag set */
   P_w( &pentry->lock );
-  rc = cache_inode_kill_entry( pentry, WT_LOCK, ht, pclient, pstatus );
+  *pstatus = cache_inode_kill_entry( pentry, WT_LOCK, ht, pclient, pstatus );
 
   /* we still hold an extra ref */
   cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
 
-  return (rc);
+  return (*pstatus);
 } /* cache_inode_invalidate */
