@@ -453,6 +453,14 @@ typedef union cache_inode_create_arg__
 #define DIR_START     0
 
 /*
+ * Flags
+ */
+#define CACHE_INODE_FLAG_NONE        0x00000
+#define CACHE_INODE_FLAG_CREATE      0x00001
+#define CACHE_INODE_FLAG_LOCK        0x00002
+#define CACHE_INODE_FLAG_EXREF       0x00004 /* return refcount +1 */
+
+/*
  * Prototypes for the functions 
  */
 
@@ -628,7 +636,8 @@ cache_entry_t *cache_inode_lookup_sw( cache_entry_t * pentry_parent,
                                       hash_table_t * ht,
                                       cache_inode_client_t * pclient,
                                       fsal_op_context_t * pcontext,
-                                      cache_inode_status_t * pstatus, int use_mutex);
+                                      cache_inode_status_t * pstatus,
+                                      unsigned int flags);
 
 cache_entry_t *cache_inode_lookup_no_mutex(cache_entry_t * pentry_parent,
                                            fsal_name_t * pname,
@@ -646,7 +655,8 @@ cache_entry_t *cache_inode_lookup( cache_entry_t * pentry_parent,
                                    hash_table_t * ht,
                                    cache_inode_client_t * pclient,
                                    fsal_op_context_t * pcontext,
-                                   cache_inode_status_t * pstatus);
+                                   cache_inode_status_t * pstatus,
+				   unsigned int flags);
 
 cache_entry_t *cache_inode_valid_lookup(cache_entry_t * pentry_parent,
                                         fsal_name_t * pname,
@@ -661,19 +671,22 @@ cache_entry_t *cache_inode_lookupp_sw(cache_entry_t * pentry,
                                       hash_table_t * ht,
                                       cache_inode_client_t * pclient,
                                       fsal_op_context_t * pcontext,
-                                      cache_inode_status_t * pstatus, int use_mutex);
+                                      cache_inode_status_t * pstatus,
+				      unsigned int flags);
 
 cache_entry_t *cache_inode_lookupp_no_mutex(cache_entry_t * pentry,
                                             hash_table_t * ht,
                                             cache_inode_client_t * pclient,
                                             fsal_op_context_t * pcontext,
-                                            cache_inode_status_t * pstatus);
+                                            cache_inode_status_t * pstatus,
+					    unsigned int flags);
 
 cache_entry_t *cache_inode_lookupp(cache_entry_t * pentry,
                                    hash_table_t * ht,
                                    cache_inode_client_t * pclient,
                                    fsal_op_context_t * pcontext,
-                                   cache_inode_status_t * pstatus);
+                                   cache_inode_status_t * pstatus,
+				   unsigned int flags);
 
 cache_inode_status_t cache_inode_readlink(cache_entry_t * pentry,
                                           fsal_path_t * plink_content,
@@ -793,7 +806,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t * pfsdata,
                                      hash_table_t * ht,
                                      cache_inode_client_t * pclient,
                                      fsal_op_context_t * pcontext,
-                                     unsigned int create_flag,
+                                     unsigned int flags,
                                      cache_inode_status_t * pstatus);
 
 cache_inode_status_t cache_inode_add_data_cache(cache_entry_t * pentry,

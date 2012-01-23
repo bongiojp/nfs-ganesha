@@ -260,8 +260,8 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     GetFromPool(entry, &pclient->pool_entry, cache_entry_t);
     if(entry == NULL) {
         LogCrit(COMPONENT_CACHE_INODE,
-                "cache_inode_lru_get: "
-                "Can't allocate a new entry from cache pool");
+                "%s: Can't allocate a new entry from cache pool",
+                __func__);
         *pstatus = CACHE_INODE_MALLOC_ERROR;
         goto out;
     }
@@ -271,8 +271,8 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
         ReleaseToPool(entry, &pclient->pool_entry);
           LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_lru_get: pthread_mutex_init of "
-                  "lru.mtx returned %d (%s)",
+                  "%s: pthread_mutex_init of lru.mtx returned %d (%s)",
+                  __func__,
                   errno,
                   strerror(errno));
           *pstatus = CACHE_INODE_INIT_ENTRY_FAILED;

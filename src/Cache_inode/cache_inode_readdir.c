@@ -482,6 +482,12 @@ cache_entry_t *cache_inode_lookup_cached_dirent(cache_entry_t * pentry_parent,
  *
  * cache_inode_add_cached_dirent: Adds a directory entry to a cached directory.
  *
+ * A dirent pointing to a cache entry counts as an internal reference to that entry,
+ * similar to the internal reference owned by the hash table.  So when this function
+ * returns successfully, pentry_added->refcount is increased by 1, but the increase
+ * is not charged to the call path (and should not be returned until the dirent
+ * becomes unreachable).
+ *
  * Adds a directory entry to a cached directory. This is use when creating a
  * new entry through nfs and keep it to the cache. It also allocates and caches
  * the entry.  This function can be call iteratively, within a loop (like what
@@ -572,6 +578,10 @@ cache_inode_status_t cache_inode_add_cached_dirent(
   /* we're going to succeed */  
   pentry_parent->object.dir.nbactive++;  
   new_dir_entry->pentry = pentry_added;
+  
+  /* XXX take internal ref.  I believe we know that pentry_parent is locked, but
+   * we should cross-check and annotate that. */
+  (void) cache_inode_lru_ref(new_dir_entry);
 
   /* link with the parent entry (insert as first entry) */
   next_parent_entry->parent = pentry_parent;
@@ -978,7 +988,7 @@ cache_inode_status_t cache_inode_readdir_populate(
 		                              ht, 
 		                              pclient, 
 		                              pcontext, 
-		                              FALSE,  /* This is population and no creation */
+		                              CACHE_INODE_FLAG_EXREF, /* no creation flag */
 		                              pstatus)) == NULL)
             return *pstatus;
 

@@ -690,7 +690,8 @@ int nsm_client_Get_Pointer(state_nsm_client_t * pkey,
                    "KEY {%s}", str);
     }
 
-  if(HashTable_GetRef(ht_nsm_client, &buffkey, &buffval, Hash_inc_nsm_client_ref) != HASHTABLE_SUCCESS)
+  if(HashTable_GetRef(ht_nsm_client, &buffkey, &buffval,
+                      Hash_inc_nsm_client_ref, NULL) != HASHTABLE_SUCCESS)
     {
       LogFullDebug(COMPONENT_STATE,
                    "NOTFOUND");
@@ -1138,7 +1139,8 @@ int nlm_client_Get_Pointer(state_nlm_client_t * pkey,
                    "KEY {%s}", str);
     }
 
-  if(HashTable_GetRef(ht_nlm_client, &buffkey, &buffval, Hash_inc_nlm_client_ref) != HASHTABLE_SUCCESS)
+  if(HashTable_GetRef(ht_nlm_client, &buffkey, &buffval,
+                      Hash_inc_nlm_client_ref, NULL) != HASHTABLE_SUCCESS)
     {
       LogFullDebug(COMPONENT_STATE,
                    "NOTFOUND");
@@ -1407,7 +1409,8 @@ static int nlm_owner_Get_Pointer(state_owner_t  * pkey,
   if(HashTable_GetRef(ht_nlm_owner,
                       &buffkey,
                       &buffval,
-                      Hash_inc_state_owner_ref) != HASHTABLE_SUCCESS)
+                      Hash_inc_state_owner_ref,
+                      NULL) != HASHTABLE_SUCCESS)
     {
       LogFullDebug(COMPONENT_STATE,
                    "NOTFOUND");

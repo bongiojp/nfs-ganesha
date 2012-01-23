@@ -59,7 +59,8 @@
  *
  * cache_inode_create: creates an entry through the cache.
  *
- * Creates an entry through the cache.
+ * Creates an entry through the cache.  If an entry is returned, its refcount charged to the
+ * call path is +1.
  *
  * @param pentry_parent [IN] pointer to the pentry parent
  * @param pname         [IN] pointer to the name of the object in the destination directory.
@@ -164,7 +165,8 @@ cache_inode_create(cache_entry_t * pentry_parent,
                                  ht, 
                                  pclient, 
                                  pcontext, 
-                                 pstatus);
+                                 pstatus,
+				 CACHE_INODE_FLAG_EXREF);
     if (pentry != NULL)
         {
             *pstatus = CACHE_INODE_ENTRY_EXISTS;
@@ -365,7 +367,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
                                             ht, 
                                             pclient, 
                                             pcontext,
-                                            TRUE, /* This is a creation and not a population */
+                                            CACHE_INODE_FLAG_CREATE | CACHE_INODE_FLAG_EXREF, /* This is a creation and not a population */
                                             pstatus);
             if (pentry == NULL)
                 {
@@ -382,7 +384,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
                    (char *)&object_handle, sizeof(mfsl_object_t));
 #endif
 
-            /* Add this entry to the directory */
+            /* Add this entry to the directory (also takes an internal ref) */
             status = cache_inode_add_cached_dirent(pentry_parent,
                                                    pname, pentry,
                                                    ht,

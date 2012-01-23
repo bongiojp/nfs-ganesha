@@ -95,7 +95,7 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
                                       ht,
                                       pclient, 
                                       pcontext, 
-                                      FALSE,    /* This is a population, not a creation */
+                                      CACHE_INODE_FLAG_EXREF, /* no create flag */
                                       pstatus)) != NULL)
     {
       GetFromPool(next_parent_entry, &pclient->pool_parent,

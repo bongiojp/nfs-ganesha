@@ -86,7 +86,7 @@ static inline void cache_inode_ref(cache_entry_t *entry)
     V(entry->lru.mtx);
 }
 
-static inline int64_t cache_inode_readref(cache_entry_t *entry)
+static inline int64_t cache_inode_lru_readref(cache_entry_t *entry)
 {
     int64_t cnt;
     

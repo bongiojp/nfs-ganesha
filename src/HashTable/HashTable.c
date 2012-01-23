@@ -697,8 +697,10 @@ int HashTable_Test_And_Set(hash_table_t * ht, hash_buffer_t * buffkey,
  * @see HashTable_Del
  */
 
-int HashTable_GetRef(hash_table_t * ht, hash_buffer_t * buffkey, hash_buffer_t * buffval,
-                     void (*get_ref)(hash_buffer_t *) )
+int HashTable_GetRef(hash_table_t *ht, hash_buffer_t *buffkey,
+                     hash_buffer_t *buffval,
+                     void (*get_ref)(hash_buffer_t *),
+                     void **htoken)
 {
   unsigned long hashval;
   unsigned long rbt_value = 0;
@@ -730,6 +732,11 @@ int HashTable_GetRef(hash_table_t * ht, hash_buffer_t * buffkey, hash_buffer_t *
   /* Acquire mutex */
   P_r(&(ht->array_lock[hashval]));
 
+  /* if htoken != NULL, then it is an opaque indirect pointer we will use
+   * to extend a critical section to a future call to HashTable_Release. */
+  if (htoken)
+      *htoken = &(ht->array_lock[hashval]);
+
   /* I get the node with this value that is located on the left (first with this value in the rbtree) */
   if((rc = Key_Locate(ht, buffkey, hashval, rbt_value, &pn)) != HASHTABLE_SUCCESS)
     {
@@ -748,16 +755,30 @@ int HashTable_GetRef(hash_table_t * ht, hash_buffer_t * buffkey, hash_buffer_t *
   if(get_ref != NULL)
     get_ref(buffval);
 
-  /* Release mutex */
-  V_r(&(ht->array_lock[hashval]));
+  /* Release mutex, unless the caller is extending the critical section */
+  if (! htoken)
+      V_r(&(ht->array_lock[hashval]));
 
   return HASHTABLE_SUCCESS;
 }                               /* HashTable_Get */
 
-int HashTable_Get(hash_table_t * ht, hash_buffer_t * buffkey, hash_buffer_t * buffval)
+int HashTable_Get(hash_table_t *ht, hash_buffer_t *buffkey,
+                  hash_buffer_t *buffval)
 {
-  return HashTable_GetRef(ht, buffkey, buffval, NULL);
+    return HashTable_GetRef(ht, buffkey, buffval, NULL, NULL);
 }                               /* HashTable_Get */
+
+int HashTable_GetEx(hash_table_t *ht, hash_buffer_t *buffkey,
+                    hash_buffer_t *buffval, void **htoken)
+{
+    return HashTable_GetRef(ht, buffkey, buffval, NULL, htoken);
+}                               /* HashTable_Get */
+
+int HashTable_Release(hash_table_t *ht, void *htoken)
+{
+  if (htoken)
+      V_r((rw_lock_t *) htoken);
+}
 
 /**
  * 

@@ -66,6 +66,8 @@
  * Looks up for a name in a directory indicated by a cached entry. The directory
  * should have been cached before.
  *
+ * If a cache entry is returned, the refcount on entry is +1.
+ *
  * @param pentry_parent [IN]    entry for the parent directory to be managed.
  * @param name          [IN]    name of the entry that we are looking for in the
  *        cache.
@@ -92,7 +94,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
                                      cache_inode_client_t * pclient,
                                      fsal_op_context_t    * pcontext,
                                      cache_inode_status_t * pstatus, 
-                                     int use_mutex)
+                                     unsigned int flags)
 {
   /* avl */
   cache_inode_dir_entry_t dirent_key[1], *dirent = NULL;
@@ -126,7 +128,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
    * make the flag explicit (shared vs. exclusive), we don't know
    * whether a mutating operation is safe--and, the caller should have
    * already renewed the entry */
-  if(use_mutex == TRUE) {
+  if(flags & CACHE_INODE_FLAG_LOCK) {
       P_w(&pentry_parent->lock);
 
       cache_status = cache_inode_renew_entry(pentry_parent, pattr, ht,
@@ -153,7 +155,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
       /* stats */
       (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_LOOKUP])++;
 
-      if(use_mutex == TRUE)
+      if(flags & CACHE_INODE_FLAG_LOCK)
         V_r(&pentry_parent->lock);
 
       return NULL;
@@ -173,7 +175,8 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
        * 'lookup( .. )' in something that is no dir. */
       pentry =
           cache_inode_lookupp_no_mutex(pentry_parent, ht, pclient, pcontext,
-                                       pstatus);
+                                       pstatus,
+				       CACHE_INODE_FLAG_NONE); /* if (pentry), pentry->refcount is +1 */
     }
   else
     {
@@ -190,7 +193,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
                                      pcontext,
                                      pstatus) != CACHE_INODE_SUCCESS)
         {
-          if(use_mutex == TRUE)
+          if(flags & CACHE_INODE_FLAG_LOCK)
             V_r(&pentry_parent->lock);
 
           (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_GETATTR])++;
@@ -205,12 +208,9 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
       if (dirent)
        {
           pentry = dirent->pentry;
+	  /* XXX we need an extra ref, we are protected by pentry_parent lock, which we
+	   * believe this call path necessarily holds */
 	  (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
-	  if (cache_inode_lru_readref(pentry) < 1) {
-	  	LogCrit(COMPONENT_CACHE_INODE, "%s: refcount invariant violated (entry refcount < 1 after "
-		"dirent lookup)",
-		__func__);
-	  }
        }
 
       if(pentry == NULL)
@@ -259,7 +259,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
             {
               *pstatus = cache_inode_error_convert(fsal_status);
 
-              if(use_mutex == TRUE)
+              if(flags & CACHE_INODE_FLAG_LOCK)
                 V_r(&pentry_parent->lock);
 
               /* Stale File Handle to be detected and managed */
@@ -313,7 +313,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
               if(FSAL_IS_ERROR(fsal_status))
                 {
                   *pstatus = cache_inode_error_convert(fsal_status);
-                  if(use_mutex == TRUE)
+                  if(flags & CACHE_INODE_FLAG_LOCK)
                     V_r(&pentry_parent->lock);
 
                   /* Stale File Handle to be detected and managed */
@@ -361,10 +361,10 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
                                               ht, 
                                               pclient, 
                                               pcontext, 
-                                              FALSE,      /* This is a population and not a creation */
+                                              CACHE_INODE_FLAG_EXREF, /* no create flag, need ref */
                                               pstatus ) ) == NULL )
             {
-              if(use_mutex == TRUE)
+              if(flags & CACHE_INODE_FLAG_LOCK)
                 V_r(&pentry_parent->lock);
 
               /* stats */
@@ -387,7 +387,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
           if(cache_status != CACHE_INODE_SUCCESS
              && cache_status != CACHE_INODE_ENTRY_EXISTS)
             {
-              if(use_mutex == TRUE)
+              if(flags & CACHE_INODE_FLAG_LOCK)
                 V_r(&pentry_parent->lock);
 
               /* stats */
@@ -402,9 +402,16 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
   /* Return the attributes */
   *pattr = pentry->attributes;
 
+  /* XXX we should have already ensured refcount +1 */
+  if (cache_inode_lru_readref(pentry) < 1) {
+      LogCrit(COMPONENT_CACHE_INODE, 
+              "%s: refcount invariant violated (entry refcount < 1 after ref)",
+              __func__);
+  }
+
   *pstatus = cache_inode_valid(pentry_parent, CACHE_INODE_OP_GET, pclient);
 
-  if(use_mutex == TRUE)
+  if(flags & CACHE_INODE_FLAG_LOCK)
     V_r(&pentry_parent->lock);
 
   /* stat */
@@ -418,10 +425,14 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
 
 /**
  *
- * cache_inode_lookup_no_mutex: looks up for a name in a directory indicated by a cached entry (no mutex management).
+ * cache_inode_lookup_no_mutex: looks up for a name in a directory indicated by a cached entry (no
+ * mutex management).
  * 
- * Looks up for a name in a directory indicated by a cached entry. The directory should have been cached before.
- * This function has no mutex management and suppose that is it properly done in the clling function
+ * Looks up for a name in a directory indicated by a cached entry. The directory should have been
+ * cached before.  This function has no mutex management and suppose that is it properly done in the
+ * calling function.
+ *
+ * If a cache entry is returned, the refcount on entry is +1.
  *
  * @param pentry_parent [IN]    entry for the parent directory to be managed.
  * @param name          [IN]    name of the entry that we are looking for in the cache.
@@ -452,14 +463,17 @@ cache_entry_t *cache_inode_lookup_no_mutex(cache_entry_t        * pentry_parent,
                                 pclient, 
                                 pcontext,  
                                 pstatus, 
-                                FALSE);
+                                CACHE_INODE_FLAG_NONE);
 }                               /* cache_inode_lookup_no_mutex */
 
 /**
  *
  * cache_inode_lookup: looks up for a name in a directory indicated by a cached entry.
  * 
- * Looks up for a name in a directory indicated by a cached entry. The directory should have been cached before.
+ * Looks up for a name in a directory indicated by a cached entry. The directory should have been cached
+ * before.
+ *
+ * If a cache entry is returned, the refcount on entry is +1.
  *
  * @param pentry_parent [IN]    entry for the parent directory to be managed.
  * @param name          [IN]    name of the entry that we are looking for in the cache.
@@ -480,7 +494,8 @@ cache_entry_t *cache_inode_lookup(cache_entry_t * pentry_parent,
                                   hash_table_t * ht,
                                   cache_inode_client_t * pclient,
                                   fsal_op_context_t * pcontext,
-                                  cache_inode_status_t * pstatus)
+                                  cache_inode_status_t * pstatus,
+                                  unsigned int flags)
 {
   return cache_inode_lookup_sw( pentry_parent,
                                 pname, 
@@ -490,7 +505,7 @@ cache_entry_t *cache_inode_lookup(cache_entry_t * pentry_parent,
                                 pclient, 
                                 pcontext, 
                                 pstatus, 
-                                TRUE);
+                                CACHE_INODE_FLAG_LOCK);
 }                               /* cache_inode_lookup */
 
 /**

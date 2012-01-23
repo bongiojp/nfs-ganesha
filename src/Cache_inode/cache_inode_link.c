@@ -62,6 +62,9 @@
  *
  * Hard links a pentry to another. This is basically a equivalent of FSAL_link in the cache inode layer.
  *
+ * The caller has at least initial reference to pentry_src and pentry_dir_dest.  No refcount increment
+ * is charged to the caller.
+ *
  * @param pentry_src [IN] entry pointer the entry to be linked. This can't be a directory.
  * @param pentry_dir_dest [INOUT] entry pointer for the destination directory in which the link will be created.
  * @param plink_name [IN] pointer to the name of the object in the destination directory.
@@ -149,11 +152,16 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                                           ht,
                                           pclient, 
                                           pcontext, 
-                                          pstatus ) ) != NULL )
+                                          pstatus,
+                                          CACHE_INODE_FLAG_NONE) ) != NULL )
     {
-      /* There exists such an entry... */
+      /* There exists such an entry */
       *pstatus = CACHE_INODE_ENTRY_EXISTS;
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_LINK] += 1;
+
+      /* We hold an initial reference on pentry_lookup which is unreachable to
+       * caller, so release it. */
+      (void) cache_inode_lru_unref(pentry_lookup);
 
       return *pstatus;
     }
