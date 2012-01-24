@@ -96,7 +96,7 @@ int nfs_Getattr(nfs_arg_t * parg,
   fsal_attrib_list_t attr;
   cache_entry_t *pentry = NULL;
   cache_inode_status_t cache_status;
-  int rc = 0;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -121,7 +121,7 @@ int nfs_Getattr(nfs_arg_t * parg,
       /* Stale NFS FH ? */
       LogFullDebug(COMPONENT_NFSPROTO,
                    "nfs_Getattr returning %d", rc);
-      return rc;
+      goto out;
     }
 
   if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_getattr3.object))))
@@ -129,7 +129,7 @@ int nfs_Getattr(nfs_arg_t * parg,
       rc = nfs3_Getattr_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
       LogFullDebug(COMPONENT_NFSPROTO,
                    "nfs_Getattr returning %d from nfs3_Getattr_Xattr", rc);
-      return rc;
+      goto out;
     }
 
   /*
@@ -161,7 +161,8 @@ int nfs_Getattr(nfs_arg_t * parg,
                                   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
               LogFullDebug(COMPONENT_NFSPROTO,
                            "nfs_Getattr set failed status v2");
-              return NFS_REQ_OK;
+              rc = NFS_REQ_OK;
+              goto out;
             }
           pres->res_attr2.status = NFS_OK;
           break;
@@ -180,14 +181,16 @@ int nfs_Getattr(nfs_arg_t * parg,
 
               LogFullDebug(COMPONENT_NFSPROTO,
                            "nfs_Getattr set failed status v3");
-              return NFS_REQ_OK;
+              rc = NFS_REQ_OK;
+              goto out;
             }
           pres->res_getattr3.status = NFS3_OK;
           break;
         }                       /* switch */
 
       LogFullDebug(COMPONENT_NFSPROTO, "nfs_Getattr succeeded");
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   LogFullDebug(COMPONENT_CACHE_INODE,"nfs_Getattr: cache_inode_get() "
@@ -205,7 +208,16 @@ int nfs_Getattr(nfs_arg_t * parg,
                       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
   LogFullDebug(COMPONENT_NFSPROTO, "nfs_Getattr set failed status");
-  return NFS_REQ_OK;
+
+  rc = NFS_REQ_OK;
+
+out:
+  /* return references */
+  if (pentry)
+      cache_inode_put(pentry, pclient);
+
+  return (rc);
+
 }                               /* nfs_Getattr */
 
 /**
