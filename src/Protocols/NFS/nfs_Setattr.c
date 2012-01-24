@@ -99,8 +99,8 @@ int nfs_Setattr(nfs_arg_t * parg,
   fsal_attrib_list_t parent_attr;
   fsal_attrib_list_t *ppre_attr;
   cache_inode_status_t cache_status;
-  int rc;
   int do_trunc = FALSE;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -132,7 +132,7 @@ int nfs_Setattr(nfs_arg_t * parg,
                                   NULL, &pre_attr, pcontext, pclient, ht, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
-      return rc;
+      goto out;
     }
 
   if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_setattr3.object))))
@@ -144,7 +144,8 @@ int nfs_Setattr(nfs_arg_t * parg,
                      &pre_attr, &(pres->res_setattr3.SETATTR3res_u.resok.obj_wcc));
 
       pres->res_setattr3.status = NFS3_OK;
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   /* get directory attributes before action (for V3 reply) */
@@ -169,13 +170,15 @@ int nfs_Setattr(nfs_arg_t * parg,
            *  way.
            */
           pres->res_attr2.status = NFSERR_FBIG;
-          return NFS_REQ_OK;
+          rc = NFS_REQ_OK;
+          goto out;
         }
 
       if(nfs2_Sattr_To_FSALattr(&setattr, &new_attributes2) == 0)
         {
           pres->res_attr2.status = NFSERR_IO;
-          return NFS_REQ_OK;
+          rc = NFS_REQ_OK;
+          goto out;
         }
 
       if(new_attributes2.size != (u_int) - 1)
@@ -196,7 +199,8 @@ int nfs_Setattr(nfs_arg_t * parg,
           if(nfs3_FSALattr_To_Fattr(pexport, ppre_attr, &attributes) == 0)
             {
               pres->res_setattr3.status = NFS3ERR_NOT_SYNC;
-              return NFS_REQ_OK;
+              rc = NFS_REQ_OK;
+              goto out;
             }
           LogFullDebug(COMPONENT_NFSPROTO, "css=%d acs=%d    csn=%d acn=%d",
                  parg->arg_setattr3.guard.sattrguard3_u.obj_ctime.seconds,
@@ -210,7 +214,8 @@ int nfs_Setattr(nfs_arg_t * parg,
                  attributes.ctime.nseconds))
             {
               pres->res_setattr3.status = NFS3ERR_NOT_SYNC;
-              return NFS_REQ_OK;
+              rc = NFS_REQ_OK;
+              goto out;
             }
         }
 
@@ -220,7 +225,8 @@ int nfs_Setattr(nfs_arg_t * parg,
       if(nfs3_Sattr_To_FSALattr(&setattr, &new_attributes3) == 0)
         {
           pres->res_setattr3.status = NFS3ERR_INVAL;
-          return NFS_REQ_OK;
+          rc = NFS_REQ_OK;
+          goto out;
         }
 
       if(new_attributes3.size.set_it)
@@ -301,14 +307,18 @@ int nfs_Setattr(nfs_arg_t * parg,
           break;
         }
 
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   LogFullDebug(COMPONENT_NFSPROTO, "nfs_Setattr: failed");
 
   /* If we are here, there was an error */
   if(nfs_RetryableError(cache_status))
-    return NFS_REQ_DROP;
+  {
+    rc = NFS_REQ_DROP;
+    goto out;
+  }
 
   nfs_SetFailedStatus(pcontext, pexport,
                       preq->rq_vers,
@@ -321,7 +331,15 @@ int nfs_Setattr(nfs_arg_t * parg,
                       &(pres->res_setattr3.SETATTR3res_u.resfail.obj_wcc),
                       NULL, NULL, NULL);
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
+
+out:
+  /* return references */
+  if (pentry)
+      cache_inode_put(pentry, pclient);
+
+  return (rc);
+
 }                               /* nfs_Setattr */
 
 /**
