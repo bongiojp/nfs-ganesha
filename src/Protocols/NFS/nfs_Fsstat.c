@@ -94,7 +94,7 @@ int nfs_Fsstat(nfs_arg_t * parg,
   cache_inode_status_t cache_status;
   cache_entry_t *pentry = NULL;
   fsal_attrib_list_t attr;
-  int rc = 0;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -125,7 +125,7 @@ int nfs_Fsstat(nfs_arg_t * parg,
     {
       /* Stale NFS FH ? */
       /* return NFS_REQ_DROP ; */
-      return rc;
+      goto out;
     }
 
   /* Get statistics and convert from cache */
@@ -197,13 +197,16 @@ int nfs_Fsstat(nfs_arg_t * parg,
               break;
 
             }
-          return NFS_REQ_OK;
+          rc = NFS_REQ_OK;
+          goto out;
         }
     }
 
   /* At this point we met an error */
-  if(nfs_RetryableError(cache_status))
-    return NFS_REQ_DROP;
+  if(nfs_RetryableError(cache_status)) {
+    rc = NFS_REQ_DROP;
+    goto out;
+  }
 
   nfs_SetFailedStatus(pcontext, pexport,
                       preq->rq_vers,
@@ -212,7 +215,15 @@ int nfs_Fsstat(nfs_arg_t * parg,
                       &pres->res_fsstat3.status,
                       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
+
+out:
+  /* return references */
+  if (pentry)
+      cache_inode_put(pentry, pclient);
+
+  return (rc);
+
 }                               /* nfs_Fsstat */
 
 /**
