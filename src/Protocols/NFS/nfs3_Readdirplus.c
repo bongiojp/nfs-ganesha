@@ -107,7 +107,6 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
   uint64_t cache_inode_cookie;
   cache_inode_dir_entry_t **dirent_array = NULL;
   cookieverf3 cookie_verifier;
-  int rc;
   unsigned int i = 0;
   unsigned int num_entries;
   unsigned long space_used;
@@ -124,6 +123,7 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
   entryplus3 reference_entry;
   READDIRPLUS3resok reference_reply;
   int dir_pentry_unlock = FALSE;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO) || isDebug(COMPONENT_NFS_READDIR))
     {
@@ -163,8 +163,11 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                space_used, estimated_num_entries);
 
   /* Is this a xattr FH ? */
-  if(nfs3_Is_Fh_Xattr(&(parg->arg_readdirplus3.dir)))
-    return nfs3_Readdirplus_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+  if(nfs3_Is_Fh_Xattr(&(parg->arg_readdirplus3.dir))) {
+    rc = nfs3_Readdirplus_Xattr(parg, pexport, pcontext, pclient, ht,
+                                preq, pres);
+    goto out;
+  }
 
   /* Convert file handle into a vnode */
   if((dir_pentry = nfs_FhandleToCache(preq->rq_vers,
@@ -177,7 +180,7 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                                       &dir_attr, pcontext, pclient, ht, &rc)) == NULL)
     {
       /* return NFS_REQ_DROP ; */
-      return rc;
+      goto out;
     }
 
   /* Extract the filetype */
@@ -188,7 +191,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
   if(dir_filetype != DIRECTORY)
     {
       pres->res_readdirplus3.status = NFS3ERR_NOTDIR;
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   /* switch */
@@ -222,7 +226,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
         {
           pres->res_readdirplus3.status = NFS3ERR_BAD_COOKIE;
 
-          return NFS_REQ_OK;
+          rc = NFS_REQ_OK;
+          goto out;
         }
     }
 
@@ -232,7 +237,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
           "cache_inode_dir_entry_t in nfs3_Readdirplus")) == NULL)
     {
       pres->res_readdirplus3.status = NFS3ERR_IO;
-      return NFS_REQ_DROP;
+      rc = NFS_REQ_DROP;
+      goto out;
     }
 
   pres->res_readdirplus3.READDIRPLUS3res_u.resok.reply.entries = NULL;
@@ -313,7 +319,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
               if( !CACHE_INODE_KEEP_CONTENT( dir_pentry->policy ) ) 
                 cache_inode_release_dirent( dirent_array, num_entries, pclient ) ;
               Mem_Free((char *)dirent_array);
-              return NFS_REQ_DROP;
+              rc = NFS_REQ_DROP;
+              goto out;
             }
 
           pres->res_readdirplus3.READDIRPLUS3res_u.resok.reply.entries =
@@ -331,7 +338,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                cache_inode_release_dirent( dirent_array, num_entries, pclient ) ;
               Mem_Free((char *)dirent_array);
               Mem_Free((char *)entry_name_array);
-              return NFS_REQ_DROP;
+              rc = NFS_REQ_DROP;
+              goto out;
             }
 
           /* Allocation of the file handles */
@@ -351,7 +359,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
               Mem_Free((char *)dirent_array);
               Mem_Free((char *)entry_name_array);
 
-              return NFS_REQ_DROP;
+              rc = NFS_REQ_DROP;
+              goto out;
             }
 
           delta = 0;
@@ -378,7 +387,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                       Mem_Free((char *)fh3_array);
 
                       pres->res_readdirplus3.status = nfs3_Errno(cache_status_gethandle);
-                      return NFS_REQ_OK;
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
 
 		  fh_desc.start = (caddr_t)&(RES_READDIRPLUS_REPLY.entries[0].fileid);
@@ -413,7 +423,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                       Mem_Free((char *)fh3_array);
 
                       pres->res_readdirplus3.status = NFS3ERR_BADHANDLE;
-                      return NFS_REQ_OK;
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
 
                   RES_READDIRPLUS_REPLY.entries[0].name_attributes.attributes_follow =
@@ -448,13 +459,13 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
             {
               if(estimated_num_entries > delta)
                 {
-                  if((pentry_dot_dot = cache_inode_lookupp_sw(dir_pentry,
-							      ht,
-							      pclient,
-							      pcontext,
-							      &cache_status_gethandle,
-							      !dir_pentry_unlock)) ==
-                     NULL)
+                  if((pentry_dot_dot = cache_inode_lookupp(
+                          dir_pentry,
+                          ht,
+                          pclient,
+                          pcontext,
+                          &cache_status_gethandle,
+                          CACHE_INODE_FLAG_NONE)) == NULL)
                     {
                         /* after successful cache_inode_readdir, dir_pentry may
                          * be read locked */
@@ -468,7 +479,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                       Mem_Free((char *)fh3_array);
 
                       pres->res_readdirplus3.status = nfs3_Errno(cache_status_gethandle);
-                      return NFS_REQ_OK;
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
 
                   if((pfsal_handle = cache_inode_get_fsal_handle(pentry_dot_dot,
@@ -487,7 +499,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                       Mem_Free((char *)fh3_array);
 
                       pres->res_readdirplus3.status = nfs3_Errno(cache_status_gethandle);
-                      return NFS_REQ_OK;
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
 
 		  fh_desc.start = (caddr_t)&(RES_READDIRPLUS_REPLY.entries[delta].fileid);
@@ -521,7 +534,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                       Mem_Free((char *)fh3_array);
 
                       pres->res_readdirplus3.status = NFS3ERR_BADHANDLE;
-                      return NFS_REQ_OK;
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
 
                   RES_READDIRPLUS_REPLY.entries[delta].cookie = 2;
@@ -605,7 +619,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
 
                       pres->res_readdirplus3.status = NFS3ERR_TOOSMALL;
 
-                      return NFS_REQ_OK;
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
                   break;        /* Make post traitement */
                 }
@@ -630,7 +645,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
 
                   pres->res_readdirplus3.status =
                       nfs3_Errno(cache_status_gethandle);
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
 
 	      fh_desc.start = (caddr_t)&(RES_READDIRPLUS_REPLY.entries[i].fileid);
@@ -680,7 +696,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                   Mem_Free((char *)fh3_array);
 
                   pres->res_readdirplus3.status = NFS3ERR_BADHANDLE;
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
 
               /* Set PostPoFh3 structure */
@@ -749,7 +766,8 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
         cache_inode_release_dirent( dirent_array, num_entries, pclient ) ;
       Mem_Free((char *)dirent_array);
 
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   /* If we are here, there was an error */
@@ -767,8 +785,10 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
   Mem_Free((char *)fh3_array);
 
   /* Is this a retryable error */
-  if(nfs_RetryableError(cache_status))
-    return NFS_REQ_DROP;
+  if(nfs_RetryableError(cache_status)) {
+    rc = NFS_REQ_DROP;
+    goto out;
+  }
 
   /* Set failed status */
   nfs_SetFailedStatus(pcontext, pexport,
@@ -780,7 +800,16 @@ int nfs3_Readdirplus(nfs_arg_t * parg,
                       &(pres->res_readdirplus3.READDIRPLUS3res_u.resfail.dir_attributes),
                       NULL, NULL, NULL, NULL, NULL, NULL);
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
+
+out:
+  /* return references */
+  if (dir_pentry)
+      cache_inode_put(dir_pentry, pclient);
+
+  if (pentry_dot_dot)
+      cache_inode_put(pentry_dot_dot, pclient);
+
 }                               /* nfs3_Readdirplus */
 
 /**

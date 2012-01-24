@@ -58,6 +58,7 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "cache_content.h"
+#include "cache_inode_lru.h"
 #include "nfs_exports.h"
 #include "nfs_creds.h"
 #include "nfs_proto_functions.h"
@@ -129,6 +130,14 @@ int nfs4_op_savefh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
          data->currentFH.nfs_fh4_len);
 
   /* Keep the vnodep in mind */
+  /* XXX we must ensure that the current and saved cache entries are
+   * non-null only when the caller holds one reference corresponding
+   * to each assignment.  Code overwriting a pointer to one of these
+   * special entries must first release that reference. */
+  if (data->saved_entry) {
+      cache_inode_put(data->saved_entry, data->pclient);
+  }
+  (void) cache_inode_lru_ref(data->current_entry, LRU_FLAG_NONE);
   data->saved_entry = data->current_entry;
   data->saved_filetype = data->current_filetype;
 

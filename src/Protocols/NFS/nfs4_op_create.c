@@ -541,6 +541,14 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   /* @todo : BUGAZOMEU: fair ele free dans cette fonction */
 
   /* Keep the vnode entry for the file in the compound data */
+
+  /* XXX we must ensure that the current and saved cache entries are
+   * non-null only when the caller holds one reference corresponding
+   * to each assignment.  Code overwriting a pointer to one of these
+   * special entries must first release that reference. */
+  if (data->current_entry) {
+      cache_inode_put(data->current_entry, data->pclient);
+  }
   data->current_entry = pentry_new;
   data->current_filetype = pentry_new->internal_md.type;
 

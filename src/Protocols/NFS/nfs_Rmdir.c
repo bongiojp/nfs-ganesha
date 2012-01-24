@@ -100,9 +100,9 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
   cache_inode_file_type_t filetype;
   cache_inode_file_type_t childtype;
   cache_inode_status_t cache_status;
-  int rc;
   fsal_name_t name;
   char *dir_name = NULL;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -148,7 +148,7 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                                          pcontext, pclient, ht, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
-      return rc;
+      goto out;
     }
 
   /* get directory attributes before action (for V3 reply) */
@@ -173,7 +173,8 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
           break;
         }
 
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   switch (preq->rq_vers)
@@ -209,7 +210,9 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                                                 &pentry_child_attr,
                                                 ht,
                                                 pclient,
-                                                pcontext, &cache_status)) != NULL)
+                                                pcontext,
+                                                &cache_status,
+                                                CACHE_INODE_FLAG_NONE)) != NULL)
             {
               /* Extract the filetype */
               childtype = cache_inode_fsal_type_convert(pentry_child_attr.type);
@@ -229,7 +232,8 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                       pres->res_rmdir3.status = NFS3ERR_NOTDIR;
                       break;
                     }
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
 
               /*
@@ -261,7 +265,8 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                       pres->res_rmdir3.status = NFS3_OK;
                       break;
                     }
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
             }
         }
@@ -270,7 +275,8 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
   /* If we are here, there was an error */
   if(nfs_RetryableError(cache_status))
     {
-      return NFS_REQ_DROP;
+      rc = NFS_REQ_DROP;
+      goto out;
     }
 
   nfs_SetFailedStatus(pcontext, pexport,
@@ -283,7 +289,18 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                       ppre_attr,
                       &(pres->res_rmdir3.RMDIR3res_u.resfail.dir_wcc), NULL, NULL, NULL);
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
+
+out:
+  /* return references */
+  if (pentry_child)
+      cache_inode_put(pentry_child, pclient);
+
+  if (parent_pentry)
+      cache_inode_put(parent_pentry, pclient);
+
+  return (rc);
+
 }                               /* nfs_Rmdir */
 
 /**

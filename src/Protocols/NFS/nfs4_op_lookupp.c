@@ -185,7 +185,8 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
                                        &attrlookup,
                                        data->ht,
                                        data->pclient,
-                                       data->pcontext, &cache_status)) != NULL)
+                                       data->pcontext, &cache_status,
+                                       CACHE_INODE_FLAG_NONE)) != NULL)
     {
       /* Extract the fsal attributes from the cache inode pentry */
       pfsal_handle = cache_inode_get_fsal_handle(file_pentry, &cache_status);
@@ -207,6 +208,14 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
              (char *)(data->currentFH.nfs_fh4_val), data->currentFH.nfs_fh4_len);
       data->mounted_on_FH.nfs_fh4_len = data->currentFH.nfs_fh4_len;
 
+      /* XXXX.  Ok, someone must be responsible for:
+       * a. releasing dir_pentry, whose addr we've just overwritten in data
+       * b. releasing file_pentry, =when no subsequent operation in the compound
+       * could need it=
+       *
+       * Can the caller of this routine reliably do both?
+       */
+
       /* Keep the pointer within the compound data */
       data->current_entry = file_pentry;
       data->current_filetype = file_pentry->internal_md.type;
@@ -217,8 +226,9 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
 
     }
 
-  /* If the part of the code is reached, then something wrong occured in the lookup process, status is not HPSS_E_NOERROR 
-   * and contains the code for the error */
+  /* If the part of the code is reached, then something wrong occured in the
+   * lookup process, status is not HPSS_E_NOERROR and contains the code for
+   * the error */
 
   /* If NFS4ERR_SYMLINK should be returned for a symlink instead of ENOTDIR */
   if((cache_status == CACHE_INODE_NOT_A_DIRECTORY) &&

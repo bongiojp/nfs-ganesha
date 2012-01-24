@@ -1707,6 +1707,13 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
         }
 
       /* Keep the pentry within the compound data */
+      /* XXX we must ensure that the current and saved cache entries are
+       * non-null only when the caller holds one reference corresponding
+       * to each assignment.  Code overwriting a pointer to one of these
+       * special entries must first release that reference. */
+      if (data->current_entry) {
+          cache_inode_put(data->current_entry, data->pclient);
+      }
       data->current_entry = pentry;
       data->current_filetype = cache_inode_fsal_type_convert(attr.type);
 
@@ -1769,6 +1776,13 @@ int nfs4_op_lookupp_pseudo(struct nfs_argop4 *op,
   data->mounted_on_FH.nfs_fh4_len = data->currentFH.nfs_fh4_len;
 
   /* Keep the vnode pointer within the data compound */
+  /* XXX we must ensure that the current and saved cache entries are
+   * non-null only when the caller holds one reference corresponding
+   * to each assignment.  Code overwriting a pointer to one of these
+   * special entries must first release that reference. */
+  if (data->current_entry) {
+      cache_inode_put(data->current_entry, data->pclient);
+  }
   data->current_entry = NULL;
   data->current_filetype = UNASSIGNED;
 
@@ -1987,6 +2001,13 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
         }
 
       /* Keep the pentry within the compound data */
+      /* XXX we must ensure that the current and saved cache entries are
+       * non-null only when the caller holds one reference corresponding
+       * to each assignment.  Code overwriting a pointer to one of these
+       * special entries must first release that reference. */
+      if (data->current_entry) {
+          cache_inode_put(data->current_entry, data->pclient);
+      }
       data->current_entry = pentry;
       data->current_filetype = cache_inode_fsal_type_convert(attr.type);
 

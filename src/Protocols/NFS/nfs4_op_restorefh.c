@@ -127,9 +127,17 @@ int nfs4_op_restorefh(struct nfs_argop4 *op,
     }
 
   /* Copy the data from current FH to saved FH */
-  memcpy((char *)(data->currentFH.nfs_fh4_val), (char *)(data->savedFH.nfs_fh4_val),
-         data->savedFH.nfs_fh4_len);
+  memcpy((char *)(data->currentFH.nfs_fh4_val),
+         (char *)(data->savedFH.nfs_fh4_val), data->savedFH.nfs_fh4_len);
 
+  /* XXX we must ensure that the current and saved cache entries are
+   * non-null only when the caller holds one reference corresponding
+   * to each assignment.  Code overwriting a pointer to one of these
+   * special entries must first release that reference. */
+
+  if (data->current_entry) {
+      cache_inode_put(data->current_entry, data->pclient);
+  }
   data->current_entry = data->saved_entry;
   data->current_filetype = data->saved_filetype;
 

@@ -90,8 +90,8 @@ int nfs_Lookup(nfs_arg_t * parg,
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Lookup";
 
-  cache_entry_t *pentry_dir;
-  cache_entry_t *pentry_file;
+  cache_entry_t *pentry_dir = NULL;
+  cache_entry_t *pentry_file = NULL;
   cache_inode_status_t cache_status;
   fsal_attrib_list_t attr;
   fsal_attrib_list_t attrdir;
@@ -100,7 +100,7 @@ int nfs_Lookup(nfs_arg_t * parg,
   unsigned int xattr_found = FALSE;
   fsal_name_t name;
   fsal_handle_t *pfsal_handle;
-  int rc;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -143,7 +143,7 @@ int nfs_Lookup(nfs_arg_t * parg,
                                       &attrdir, pcontext, pclient, ht, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
-      return rc;
+      goto out;
     }
 
   switch (preq->rq_vers)
@@ -158,7 +158,6 @@ int nfs_Lookup(nfs_arg_t * parg,
     }
 
   /* Do the lookup */
-  pentry_file = NULL;
 
 #ifndef _NO_XATTRD
   /* Is this a .xattr.d.<object> name ? */
@@ -169,8 +168,11 @@ int nfs_Lookup(nfs_arg_t * parg,
     }
 #endif
 
-  if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_lookup3.what.dir))))
-    return nfs3_Lookup_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+  if((preq->rq_vers == NFS_V3) &&
+     (nfs3_Is_Fh_Xattr(&(parg->arg_lookup3.what.dir)))) {
+      rc = nfs3_Lookup_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+      goto out;
+  }
 
   if((cache_status = cache_inode_error_convert(FSAL_str2name(strpath,
                                                              FSAL_MAX_NAME_LEN,
@@ -269,8 +271,10 @@ int nfs_Lookup(nfs_arg_t * parg,
   if(cache_status != CACHE_INODE_SUCCESS)
     {
       /* If we are here, there was an error */
-      if(nfs_RetryableError(cache_status))
-        return NFS_REQ_DROP;
+        if(nfs_RetryableError(cache_status)) {
+            rc =NFS_REQ_DROP;
+            goto out;
+        }
 
       nfs_SetFailedStatus(pcontext, pexport,
                           preq->rq_vers,
@@ -282,7 +286,18 @@ int nfs_Lookup(nfs_arg_t * parg,
                           NULL, NULL, NULL, NULL, NULL, NULL);
     }
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
+
+out:
+  /* return references */
+  if (pentry_dir)
+      cache_inode_put(pentry_dir, pclient);
+
+  if (pentry_file)
+      cache_inode_put(pentry_file, pclient);
+
+  return (rc);
+
 }                               /* nfs_Lookup */
 
 /**

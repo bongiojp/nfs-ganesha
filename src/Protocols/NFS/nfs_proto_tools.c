@@ -143,6 +143,8 @@ void nfs_FhandleToStr(u_long     rq_vers,
  * 
  * Gets a cache entry using a file handle (v2/3/4) as input.
  *
+ * If a cache entry is returned, its refcount is +1.
+ *
  * @param rq_vers  [IN]    version of the NFS protocol to be used 
  * @param pfh2     [IN]    NFSv2 file handle or NULL 
  * @param pfh3     [IN]    NFSv3 file handle or NULL 

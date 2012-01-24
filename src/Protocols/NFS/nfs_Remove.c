@@ -103,9 +103,9 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
   cache_inode_file_type_t filetype;
   cache_inode_file_type_t childtype;
   cache_inode_status_t cache_status;
-  int rc;
   char *file_name = NULL;
   fsal_name_t name;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -151,11 +151,13 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
                                          pcontext, pclient, ht, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
-      return rc;
+      goto out;
     }
 
-  if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_remove3.object.dir))))
-    return nfs3_Remove_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+  if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_remove3.object.dir)))) {
+    rc = nfs3_Remove_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+    goto out;
+  }
 
   /* get directory attributes before action (for V3 reply) */
   pparent_attr = &pre_parent_attr;
@@ -179,7 +181,8 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
           pres->res_remove3.status = NFS3ERR_NOTDIR;
           break;
         }
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   switch (preq->rq_vers)
@@ -215,7 +218,9 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
                                                 &pentry_child_attr,
                                                 ht,
                                                 pclient,
-                                                pcontext, &cache_status)) != NULL)
+                                                pcontext,
+                                                &cache_status,
+                                                CACHE_INODE_FLAG_NONE)) != NULL)
             {
               /* Extract the filetype */
               childtype = cache_inode_fsal_type_convert(pentry_child_attr.type);
@@ -235,7 +240,8 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
                       pres->res_remove3.status = NFS3ERR_ISDIR;
                       break;
                     }
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
 
               LogFullDebug(COMPONENT_NFSPROTO,
@@ -269,7 +275,8 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
                       pres->res_remove3.status = NFS3_OK;
                       break;
                     }
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
             }
         }
@@ -289,10 +296,22 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
 
   if(nfs_RetryableError(cache_status))
     {
-      return NFS_REQ_DROP;
+      rc = NFS_REQ_DROP;
+      goto out;
     }
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
+
+out:
+  /* return references */
+  if (pentry_child)
+      cache_inode_put(pentry_child, pclient);
+
+  if (parent_pentry)
+      cache_inode_put(parent_pentry, pclient);
+
+  return (rc);
+
 }                               /* nfs_Remove */
 
 /**

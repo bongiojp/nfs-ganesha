@@ -133,7 +133,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       res_OPEN4.status = NFS4ERR_NOFILEHANDLE;
       LogDebug(COMPONENT_STATE,
                "NFS41 OPEN returning NFS4ERR_NOFILEHANDLE");
-      return res_OPEN4.status;
+      goto out;
     }
 
   /* If the filehandle is invalid */
@@ -142,7 +142,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       res_OPEN4.status = NFS4ERR_BADHANDLE;
       LogDebug(COMPONENT_STATE,
                "NFS41 OPEN returning NFS4ERR_BADHANDLE");
-      return res_OPEN4.status;
+      goto out;
     }
 
   /* Tests if the Filehandle is expired (for volatile filehandle) */
@@ -151,7 +151,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       res_OPEN4.status = NFS4ERR_FHEXPIRED;
       LogDebug(COMPONENT_STATE,
                "NFS41 OPEN returning NFS4ERR_FHEXPIRED");
-      return res_OPEN4.status;
+      goto out;
     }
 
   /* This can't be done on the pseudofs */
@@ -160,12 +160,14 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       res_OPEN4.status = NFS4ERR_ROFS;
       LogDebug(COMPONENT_STATE,
                "NFS41 OPEN returning NFS4ERR_ROFS");
-      return res_OPEN4.status;
+      goto out;
     }
 
   /* If Filehandle points to a xattr object, manage it via the xattrs specific functions */
-  if(nfs4_Is_Fh_Xattr(&(data->currentFH)))
-    return nfs4_op_open_xattr(op, data, resp);
+  if(nfs4_Is_Fh_Xattr(&(data->currentFH))) {
+    res_OPEN4.status = nfs4_op_open_xattr(op, data, resp);
+    goto out;
+  }
 
   /* If data->current_entry is empty, repopulate it */
   if(data->current_entry == NULL)
@@ -185,7 +187,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           res_OPEN4.status = NFS4ERR_RESOURCE;
           LogDebug(COMPONENT_STATE,
                    "NFS41 OPEN returning NFS4ERR_RESOURCE after trying to repopulate cache");
-          return res_OPEN4.status;
+          goto out;
         }
     }
 
@@ -203,7 +205,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           res_OPEN4.status = NFS4ERR_NAMETOOLONG;
           LogDebug(COMPONENT_STATE,
                    "NFS41 OPEN returning NFS4ERR_NAMETOOLONG for CLAIM_DELEGATE");
-          return res_OPEN4.status;
+          goto out;
         }
 
       /* get the filename from the argument, it should not be empty */
@@ -212,13 +214,13 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           res_OPEN4.status = NFS4ERR_INVAL;
           LogDebug(COMPONENT_STATE,
                    "NFS41 OPEN returning NFS4ERR_INVAL for CLAIM_DELEGATE");
-          return res_OPEN4.status;
+          goto out;
         }
 
       res_OPEN4.status = NFS4ERR_NOTSUPP;
       LogDebug(COMPONENT_STATE,
                "NFS41 OPEN returning NFS4ERR_NOTSUPP for CLAIM_DELEGATE");
-      return res_OPEN4.status;
+      goto out;
 
     case CLAIM_NULL:
       cause = "CLAIM_NULL";
@@ -339,7 +341,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
               res_OPEN4.status = NFS4ERR_RESOURCE;
               LogDebug(COMPONENT_STATE,
                        "NFS41 OPEN returning NFS4ERR_RESOURCE for CLAIM_NULL (could not create NFS41 Owner");
-              return res_OPEN4.status;
+              goto out;
             }
         }
 
@@ -412,7 +414,9 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                              &attr_newfile,
                                              data->ht,
                                              data->pclient,
-                                             data->pcontext, &cache_status);
+                                             data->pcontext,
+                                             &cache_status,
+                                             CACHE_INODE_FLAG_NONE);
 
           if(cache_status != CACHE_INODE_NOT_FOUND)
             {
@@ -812,7 +816,8 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                                       data->ht,
                                                       data->pclient,
                                                       data->pcontext,
-                                                      &cache_status)) == NULL)
+                                                      &cache_status,
+                                                      CACHE_INODE_FLAG_NONE)) == NULL)
                 {
                   res_OPEN4.status = nfs4_Errno(cache_status);
                   cause2 = " cache_inode_lookup";
@@ -1160,6 +1165,16 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           dec_state_owner_ref(powner, data->pclient);
         }
     }
+
+  /* return cache entry references */
+  if (pentry_parent)
+      cache_inode_put(pentry_parent, data->pclient);
+
+  if (pentry_lookup)
+      cache_inode_put(pentry_lookup, data->pclient);
+
+  if (pentry_newfile)
+      cache_inode_put(pentry_newfile, data->pclient);
                 
   return res_OPEN4.status;
 }                               /* nfs41_op_open */

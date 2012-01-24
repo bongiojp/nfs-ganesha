@@ -96,7 +96,6 @@ int nfs_Mkdir(nfs_arg_t * parg,
   fsal_accessmode_t mode = 0;
   cache_entry_t *dir_pentry = NULL;
   cache_entry_t *parent_pentry = NULL;
-  int rc = 0;
   fsal_attrib_list_t parent_attr;
   fsal_attrib_list_t attr;
   fsal_attrib_list_t *ppre_attr;
@@ -107,6 +106,7 @@ int nfs_Mkdir(nfs_arg_t * parg,
   cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   cache_inode_status_t cache_status_lookup;
   cache_inode_create_arg_t create_arg;
+  int rc = NFS_REQ_OK;
 #ifdef _USE_QUOTA
   fsal_status_t fsal_status ;
 #endif
@@ -156,7 +156,7 @@ int nfs_Mkdir(nfs_arg_t * parg,
                                          pcontext, pclient, ht, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
-      return rc;
+      goto out;
     }
 
   /* get directory attributes before action (for V3 reply) */
@@ -181,7 +181,8 @@ int nfs_Mkdir(nfs_arg_t * parg,
           break;
         }
 
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
 
@@ -261,7 +262,8 @@ int nfs_Mkdir(nfs_arg_t * parg,
                                            ht, 
                                            pclient, 
                                            pcontext, 
-                                           &cache_status_lookup);
+                                           &cache_status_lookup,
+                                           CACHE_INODE_FLAG_NONE);
 
           if(cache_status_lookup == CACHE_INODE_NOT_FOUND)
             {
@@ -313,11 +315,11 @@ int nfs_Mkdir(nfs_arg_t * parg,
 
                         case NFS_V3:
                           /* Build file handle */
-			  pres->res_mkdir3.status =
-				  nfs3_AllocateFH(&pres->res_mkdir3.MKDIR3res_u.resok.obj.post_op_fh3_u.
-						  handle);
-			  if(pres->res_mkdir3.status !=  NFS3_OK)
-				  return NFS_REQ_OK;
+                          pres->res_mkdir3.status =
+                            nfs3_AllocateFH(&pres->res_mkdir3.MKDIR3res_u.resok.obj.post_op_fh3_u.
+                                            handle);
+                          if(pres->res_mkdir3.status !=  NFS3_OK)
+                            return NFS_REQ_OK;
 
                           if(nfs3_FSALToFhandle
                              (&pres->res_mkdir3.MKDIR3res_u.resok.obj.post_op_fh3_u.
@@ -326,7 +328,8 @@ int nfs_Mkdir(nfs_arg_t * parg,
                               Mem_Free((char *)pres->res_mkdir3.MKDIR3res_u.resok.obj.
                                        post_op_fh3_u.handle.data.data_val);
                               pres->res_mkdir3.status = NFS3ERR_INVAL;
-                              return NFS_REQ_OK;
+                              rc = NFS_REQ_OK;
+                              goto out;
                             }
                           else
                             {
@@ -363,7 +366,8 @@ int nfs_Mkdir(nfs_arg_t * parg,
 
                           break;
                         }
-                      return NFS_REQ_OK;
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
                 }
             }                   /* If( cache_status_lookup == CACHE_INODE_NOT_FOUND ) */
@@ -414,7 +418,8 @@ int nfs_Mkdir(nfs_arg_t * parg,
                                   &(pres->res_mkdir3.MKDIR3res_u.resfail.dir_wcc),
                                   NULL, NULL, NULL);
 
-              return NFS_REQ_OK;
+              rc = NFS_REQ_OK;
+              goto out;
             }
         }
     }
@@ -422,8 +427,8 @@ int nfs_Mkdir(nfs_arg_t * parg,
   /* If we are here, there was an error */
   if(nfs_RetryableError(cache_status))
     {
-      return NFS_REQ_DROP;
-
+      rc = NFS_REQ_DROP;
+      goto out;
     }
   nfs_SetFailedStatus(pcontext, pexport,
                       preq->rq_vers,
@@ -435,8 +440,17 @@ int nfs_Mkdir(nfs_arg_t * parg,
                       ppre_attr,
                       &(pres->res_mkdir3.MKDIR3res_u.resfail.dir_wcc), NULL, NULL, NULL);
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
 
+out:
+  /* return references */
+  if (dir_pentry)
+      cache_inode_put(dir_pentry, pclient);
+
+  if (parent_pentry)
+      cache_inode_put(parent_pentry, pclient);
+
+  return (rc);
 }
 
 /**

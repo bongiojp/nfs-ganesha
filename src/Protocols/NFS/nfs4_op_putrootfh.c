@@ -136,8 +136,16 @@ int nfs4_op_putrootfh(struct nfs_argop4 *op,
       res_PUTROOTFH4.status = error;
       return res_PUTROOTFH4.status;
     }
-  data->current_entry = NULL;   /* No cache inode entry for the directory within pseudo fs */
-  data->current_filetype = DIRECTORY;      /* Only directory in the pseudo fs */
+
+  /* XXX we must ensure that the current and saved cache entries are
+   * non-null only when the caller holds one reference corresponding
+   * to each assignment.  Code overwriting a pointer to one of these
+   * special entries must first release that reference. */
+  if (data->current_entry) {
+      cache_inode_put(data->current_entry, data->pclient);
+  }
+  data->current_entry = NULL; /* No cache inode entry for the directory within pseudo fs */
+  data->current_filetype = DIRECTORY; /* Only directory in the pseudo fs */
 
   /* I copy the root FH to the currentFH and, if not already done, to the publicFH */
   /* For the moment, I choose to have rootFH = publicFH */

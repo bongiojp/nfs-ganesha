@@ -103,7 +103,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
   cache_entry_t *should_not_exists = NULL;
   cache_entry_t *should_exists = NULL;
   cache_inode_status_t cache_status;
-  int rc;
   fsal_attrib_list_t *ppre_attr;
   fsal_attrib_list_t pre_attr;
   fsal_attrib_list_t *pnew_pre_attr;
@@ -113,6 +112,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
   fsal_attrib_list_t tst_attr;
   cache_inode_file_type_t parent_filetype;
   cache_inode_file_type_t new_parent_filetype;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -169,7 +169,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                          &pre_attr, pcontext, pclient, ht, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
-      return rc;
+      goto out;
     }
 
   /* Convert todir file handle into a cache_entry */
@@ -184,7 +184,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              pcontext, pclient, ht, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
-      return rc;
+      goto out;
     }
 
   /* get the attr pointers */
@@ -212,7 +212,8 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
           break;
         }
 
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   switch (preq->rq_vers)
@@ -247,7 +248,11 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              &new_entry_name,
                                              pexport->cache_inode_policy,
                                              &tst_attr,
-                                             ht, pclient, pcontext, &cache_status);
+                                             ht,
+                                             pclient,
+                                             pcontext,
+                                             &cache_status,
+                                             CACHE_INODE_FLAG_NONE);
 
       if(cache_status == CACHE_INODE_NOT_FOUND)
         {
@@ -256,7 +261,11 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              &entry_name,
                                              pexport->cache_inode_policy,
                                              &tst_attr,
-                                             ht, pclient, pcontext, &cache_status);
+                                             ht,
+                                             pclient,
+                                             pcontext,
+                                             &cache_status,
+                                             CACHE_INODE_FLAG_NONE);
 
           /* Rename entry */
           if(cache_status == CACHE_INODE_SUCCESS)
@@ -264,7 +273,9 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                &entry_name,
                                new_parent_pentry,
                                &new_entry_name,
-                               &attr, &new_attr, ht, pclient, pcontext, &cache_status);
+                               &attr, &new_attr,
+                               ht, pclient,
+                               pcontext, &cache_status);
 
           if(cache_status == CACHE_INODE_SUCCESS)
             {
@@ -296,7 +307,8 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
 
                 }
 
-              return NFS_REQ_OK;
+              rc = NFS_REQ_OK;
+              goto out;
             }
         }
       else
@@ -336,7 +348,8 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
 
                     }
 
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
 
             }
@@ -352,7 +365,10 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                                      &tst_attr,
                                                      ht,
                                                      pclient,
-                                                     pcontext, &cache_status)) != NULL)
+                                                     pcontext,
+                                                     &cache_status,
+                                                     CACHE_INODE_FLAG_NONE))
+                 != NULL)
                 {
                   /* If pentry is the same for source and target, then we are trying to rename
                    * a hard link to another hard link with the same inode. This is a noop. */
@@ -388,7 +404,8 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                           
                         }
                       
-                      return NFS_REQ_OK;                      
+                      rc = NFS_REQ_OK;
+                      goto out;
                     }
                   
                   if(cache_inode_type_are_rename_compatible
@@ -444,7 +461,8 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
 
                                 }
 
-                              return NFS_REQ_OK;
+                              rc = NFS_REQ_OK;
+                              goto out;
                             }
                         }
 
@@ -462,7 +480,8 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
   /* If we are here, there was an error */
   if(nfs_RetryableError(cache_status))
     {
-      return NFS_REQ_DROP;
+      rc = NFS_REQ_DROP;
+      goto out;
     }
 
   nfs_SetFailedStatus(pcontext, pexport,
@@ -477,7 +496,29 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                       new_parent_pentry,
                       pnew_pre_attr, &(pres->res_rename3.RENAME3res_u.resfail.todir_wcc));
 
-  return NFS_REQ_OK;
+  rc = NFS_REQ_OK;
+  
+out:
+  /* return references */
+  if (pentry)
+      cache_inode_put(pentry, pclient);
+
+  if (new_pentry)
+      cache_inode_put(new_pentry, pclient);
+
+  if (parent_pentry)
+      cache_inode_put(parent_pentry, pclient);
+
+  if (new_parent_pentry)
+      cache_inode_put(new_parent_pentry, pclient);
+
+  if (should_not_exists)
+      cache_inode_put(should_not_exists, pclient);
+
+  if (should_exists)
+      cache_inode_put(should_exists, pclient);
+
+  return (rc);
 
 }                               /* nfs_Rename */
 

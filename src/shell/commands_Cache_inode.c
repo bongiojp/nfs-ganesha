@@ -467,7 +467,8 @@ int cache_solvepath(char *io_global_path, int size_global_path, /* global path *
                                           ht,
                                           &context->client,
                                           &context->context,
-                                          &context->cache_status)) == NULL)
+                                          &context->cache_status,
+                                          CACHE_INODE_FLAG_NONE)) == NULL)
         {
           log_fprintf(output,
                       "Error executing cache_inode_lookup( \"%s\", \"%s\" ) : %J%r\n",
@@ -4620,7 +4621,8 @@ int fn_Cache_inode_open_by_name(int argc,       /* IN : number of args in argv *
                                        ht,
                                        &context->client,
                                        &context->context,
-                                       &context->cache_status)) == NULL)
+                                       &context->cache_status,
+                                       CACHE_INODE_FLAG_NONE)) == NULL)
     {
       fprintf(output, "Error: cannot lookup %s in %s : %u\n", argv[1], glob_path,
               context->cache_status);
