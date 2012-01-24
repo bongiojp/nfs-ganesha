@@ -141,6 +141,7 @@ int _9p_walk( _9p_request_data_t * preq9p,
            LogDebug( COMPONENT_9P, "TWALK (lookup): tag=%u fid=%u newfid=%u (component %u/%u :%s)",
             (u32)*msgtag, *fid, *newfid, i+1, *nwname, name.name ) ;
 
+           /* refcount +1 */
            if( ( pnewfid->pentry = cache_inode_lookup( pentry,
                                                        &name,
                                                        pfid->pexport->cache_inode_policy,
@@ -148,7 +149,8 @@ int _9p_walk( _9p_request_data_t * preq9p,
                                                        pwkrdata->ht,
                                                        &pwkrdata->cache_inode_client,
                                                        &pfid->fsal_op_context, 
-                                                       &cache_status ) ) == NULL )
+                                                       &cache_status,
+                                                       CACHE_INODE_FLAG_NONE) ) == NULL )
             {
               err = _9p_tools_errno( cache_status ) ; ;
               rc = _9p_rerror( preq9p, msgtag, &err, plenout, preply ) ;

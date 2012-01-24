@@ -175,6 +175,12 @@ int _9p_attach( _9p_request_data_t * preq9p,
   memcpy( (char *)&fsdata.handle, (char *)pexport->proot_handle, sizeof( fsal_handle_t ) ) ;
   fsdata.cookie = 0;
 
+  /* refcount */
+  if (pfid->pentry) {
+      cache_inode_put(pfid->pentry, &pwkrdata->cache_inode_client);
+  }
+
+  /* refcount +1 */
   pfid->pentry = cache_inode_get( &fsdata,
                                   pexport->cache_inode_policy,      
                                   &fsalattr, 
