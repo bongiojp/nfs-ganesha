@@ -762,7 +762,8 @@ void compound_data_Free(compound_data_t * data)
   /* Release refcounted cache entries */
   if (data->current_entry)
       cache_inode_put(data->current_entry, data->pclient);
-  if (data->current_entry)
+
+  if (data->saved_entry)
       cache_inode_put(data->saved_entry, data->pclient);
 
   if(data->currentFH.nfs_fh4_val != NULL)
