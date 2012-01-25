@@ -298,7 +298,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
       return pentry;
     }
 
-  pentry = cache_inode_lru_get(pclient, pstatus, LRU_FLAG_NONE);
+  pentry = cache_inode_lru_get(pclient, pstatus, LRU_GET_FLAG_REF);
   assert(pentry->lru.refcount == SENTINEL_REFCOUNT);
   if(pentry == NULL)
     {
