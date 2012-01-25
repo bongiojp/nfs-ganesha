@@ -581,7 +581,7 @@ cache_inode_status_t cache_inode_add_cached_dirent(
   
   /* XXX take internal ref.  I believe we know that pentry_parent is locked, but
    * we should cross-check and annotate that. */
-  (void) cache_inode_lru_ref(new_dir_entry);
+  (void) cache_inode_lru_ref(pentry_added);
 
   /* link with the parent entry (insert as first entry) */
   next_parent_entry->parent = pentry_parent;
