@@ -165,17 +165,16 @@ void cache_inode_lru_pkginit(void)
     }
 
   if(pthread_attr_init(&attr_thr) != 0)
-    LogDebug(COMPONENT_THREAD, "can't init pthread's attributes");
+      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't init pthread's attributes");
 
   if(pthread_attr_setscope(&attr_thr, PTHREAD_SCOPE_SYSTEM) != 0)
-    LogDebug(COMPONENT_THREAD, "can't set pthread's scope");
+      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's scope");
 
   if(pthread_attr_setdetachstate(&attr_thr, PTHREAD_CREATE_JOINABLE) != 0)
-    LogDebug(COMPONENT_THREAD, "can't set pthread's join state");
+      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's join state");
 
   if(pthread_attr_setstacksize(&attr_thr, THREAD_STACK_SIZE) != 0)
-    LogDebug(COMPONENT_THREAD, "can't set pthread's stack size");
-
+      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's stack size");
 
     /* spawn LRU background thread */
     code = pthread_create(&lru_thread_state.thread_id, &attr_thr, lru_thread,
@@ -260,8 +259,24 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
 
     /* victim at LRU */
     lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
+
+    LogFullDebug(COMPONENT_CACHE_INODE_LRU, "%s: head of lru %p (qp size %d)",
+                 __func__,
+                 lru,
+                 qp->size);
+
     if (lru) {
         entry = container_of(lru, cache_entry_t, lru);
+
+        if (entry) {
+            LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                         "%s: first entry %p refcount %d flags %d",
+                         __func__,
+                         entry,
+                         entry->lru.refcount,
+                         entry->lru.flags);
+        }
+
         if (entry && entry->lru.refcount == SENTINEL_REFCOUNT) {
             glist_del(&entry->lru.q);
             glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
@@ -291,7 +306,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
 
     GetFromPool(entry, &pclient->pool_entry, cache_entry_t);
     if(entry == NULL) {
-        LogCrit(COMPONENT_CACHE_INODE,
+        LogCrit(COMPONENT_CACHE_INODE_LRU,
                 "%s: Can't allocate a new entry from cache pool",
                 __func__);
         *pstatus = CACHE_INODE_MALLOC_ERROR;
@@ -302,7 +317,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     entry->lru.refcount = 0;
     if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
         ReleaseToPool(entry, &pclient->pool_entry);
-          LogCrit(COMPONENT_CACHE_INODE,
+          LogCrit(COMPONENT_CACHE_INODE_LRU,
                   "%s: pthread_mutex_init of lru.mtx returned %d (%s)",
                   __func__,
                   errno,
@@ -349,6 +364,13 @@ static inline cache_inode_status_t cache_inode_lru_pin(
     entry->lru.flags &= ~LRU_FLAG_Q_LRU;
     entry->lru.flags |= LRU_FLAG_Q_PINNED;
 
+    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                 "%s: pin entry %p refcount %d flags %d",
+                 __func__,
+                 entry,
+                 entry->lru.refcount,
+                 entry->lru.flags);
+
 unlock:
     if (! (flags & LRU_FLAG_LOCKED)) {
         V(entry->lru.mtx);
@@ -384,6 +406,13 @@ static inline cache_inode_status_t cache_inode_lru_unpin(
     entry->lru.flags &= ~LRU_FLAG_Q_PINNED;
     entry->lru.flags |= LRU_FLAG_Q_LRU;
 
+    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                 "%s: unpin entry %p refcount %d flags %d",
+                 __func__,
+                 entry,
+                 entry->lru.refcount,
+                 entry->lru.flags);
+
 unlock:
     if (! (flags & LRU_FLAG_LOCKED)) {
         V(entry->lru.mtx);
@@ -391,6 +420,15 @@ unlock:
     }
 
     return (CACHE_INODE_SUCCESS);    
+}
+
+static inline void  cache_inode_lru_cond_pin(cache_entry_t *entry,
+                                             uint32_t flags)
+{
+    if (cache_inode_file_holds_state(entry))
+        cache_inode_lru_pin(entry, flags);
+    else
+        cache_inode_lru_unpin(entry, flags);
 }
 
 cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
@@ -414,7 +452,7 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
     glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
 
     /* cond (un)pin */
-    cache_inode_lru_pin(entry, LRU_FLAG_LOCKED);
+    cache_inode_lru_cond_pin(entry, LRU_FLAG_LOCKED);
 
     V(lru_mtx);
     V(entry->lru.mtx);
@@ -496,15 +534,15 @@ void *lru_thread(void *arg)
         if (lru_thread_state.flags & LRU_SHUTDOWN)
             break;
 
-        LogCrit(COMPONENT_CACHE_INODE,
-                "%s: top of poll loop", __func__);
+        LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                     "%s: top of poll loop", __func__);
 
         /* do stuff */
 
-        lru_thread_delay_ms(1000 * 5);
+        lru_thread_delay_ms(1000 * 10);
     }
 
-    LogCrit(COMPONENT_CACHE_INODE,
+    LogCrit(COMPONENT_CACHE_INODE_LRU,
             "%s: shutdown", __func__);
 
     return (NULL);
