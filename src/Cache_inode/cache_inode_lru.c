@@ -228,6 +228,19 @@ out:
     return;
 }
 
+static inline void cache_inode_lru_clean(cache_entry_t *entry)
+{
+
+    /* do not use for entry lru init */
+    assert((entry->lru.refcount == SENTINEL_REFCOUNT) ||
+           (entry->lru.refcount == (SENTINEL_REFCOUNT-1)));
+
+    entry->lru.refcount = 0;
+    entry->lru.flags = LRU_FLAG_NONE;
+
+    cache_inode_clean_entry(entry);
+}
+
 /*
  * cache_inode_lru_get aka EvictBlock()
  *
@@ -255,7 +268,9 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
             V(lru_mtx);
 
             P(entry->lru.mtx);
-            cache_inode_clean_entry(entry);
+
+            cache_inode_lru_clean(entry);
+
             if (flags & LRU_GET_FLAG_REF)
                 ++(entry->lru.refcount);
 
