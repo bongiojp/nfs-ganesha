@@ -74,7 +74,7 @@
 
 #define SENTINEL_REFCOUNT    1
 
-extern void cache_inode_lru_pkginit(pthread_attr_t *attr_thr);
+extern void cache_inode_lru_pkginit(void);
 extern void cache_inode_lru_pkgshutdown(void);
 
 /* convenience function to increase entry refcount, permissible

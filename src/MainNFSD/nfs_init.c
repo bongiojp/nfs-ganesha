@@ -52,7 +52,6 @@
 #include "nfs_core.h"
 #include "cache_inode.h"
 #include "err_cache_inode.h"
-#include "cache_inode_lru.h"
 #include "cache_content.h"
 #include "err_cache_content.h"
 #include "nfs_file_handle.h"

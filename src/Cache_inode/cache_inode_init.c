@@ -81,6 +81,9 @@ hash_table_t *cache_inode_init(cache_inode_parameter_t param,
   else
     *pstatus = CACHE_INODE_INVALID_ARGUMENT;
 
+  /* Cache Inode LRU */
+  cache_inode_lru_pkginit();
+
   LogInfo(COMPONENT_CACHE_INODE, "Hash Table initiated");
 
   return ht;

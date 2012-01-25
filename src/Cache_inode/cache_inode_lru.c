@@ -145,8 +145,9 @@ static struct lru_thread_state
 /*
  * Initialize subsystem
  */
-void cache_inode_lru_pkginit(pthread_attr_t *attr_thr)
+void cache_inode_lru_pkginit(void)
 {
+    pthread_attr_t attr_thr;
     int ix, code = 0;
 
     pthread_mutex_init(&lru_mtx, NULL);
@@ -163,8 +164,21 @@ void cache_inode_lru_pkginit(pthread_attr_t *attr_thr)
 
     }
 
+  if(pthread_attr_init(&attr_thr) != 0)
+    LogDebug(COMPONENT_THREAD, "can't init pthread's attributes");
+
+  if(pthread_attr_setscope(&attr_thr, PTHREAD_SCOPE_SYSTEM) != 0)
+    LogDebug(COMPONENT_THREAD, "can't set pthread's scope");
+
+  if(pthread_attr_setdetachstate(&attr_thr, PTHREAD_CREATE_JOINABLE) != 0)
+    LogDebug(COMPONENT_THREAD, "can't set pthread's join state");
+
+  if(pthread_attr_setstacksize(&attr_thr, THREAD_STACK_SIZE) != 0)
+    LogDebug(COMPONENT_THREAD, "can't set pthread's stack size");
+
+
     /* spawn LRU background thread */
-    code = pthread_create(&lru_thread_state.thread_id, attr_thr, lru_thread,
+    code = pthread_create(&lru_thread_state.thread_id, &attr_thr, lru_thread,
                           (void *) NULL);
     assert(code == 0);
 }
@@ -227,27 +241,30 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     cache_inode_lru_t *lru;
     cache_entry_t *entry = NULL;
 
-    struct lru_q_pair *qp = &lru_q[1].lru;
+    struct lru_q_pair *qp = &lru_q[0].lru;
 
     P(lru_mtx);
+
     /* victim at LRU */
     lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
-    entry = container_of(lru, cache_entry_t, lru);
-    if (entry && entry->lru.refcount == SENTINEL_REFCOUNT) {
-        glist_del(&entry->lru.q);
-        glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
-        V(lru_mtx);
+    if (lru) {
+        entry = container_of(lru, cache_entry_t, lru);
+        if (entry && entry->lru.refcount == SENTINEL_REFCOUNT) {
+            glist_del(&entry->lru.q);
+            glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
+            V(lru_mtx);
 
-        P(entry->lru.mtx);
-        cache_inode_clean_entry(entry);
-        if (flags & LRU_GET_FLAG_REF)
-            ++(entry->lru.refcount);
-    
-        V(entry->lru.mtx);
+            P(entry->lru.mtx);
+            cache_inode_clean_entry(entry);
+            if (flags & LRU_GET_FLAG_REF)
+                ++(entry->lru.refcount);
 
-        *pstatus = CACHE_INODE_SUCCESS;
-        goto out;
-    }
+            V(entry->lru.mtx);
+
+            *pstatus = CACHE_INODE_SUCCESS;
+            goto out;
+        } /* entry */
+    } /* lru */
 
     V(lru_mtx);
 
@@ -308,11 +325,11 @@ static inline cache_inode_status_t cache_inode_lru_pin(
     assert(entry->lru.flags & LRU_FLAG_Q_LRU);
 
     glist_del(&entry->lru.q);
-    (lru_q[1].lru.size)--;
+    (lru_q[0].lru.size)--;
 
     /* also adjusts, seems harmless */
-    glist_add_tail(&lru_q[1].lru_pinned.q, &entry->lru.q); /* MRU */
-    (lru_q[1].lru_pinned.size)++;
+    glist_add_tail(&lru_q[0].lru_pinned.q, &entry->lru.q); /* MRU */
+    (lru_q[0].lru_pinned.size)++;
 
     entry->lru.flags &= ~LRU_FLAG_Q_LRU;
     entry->lru.flags |= LRU_FLAG_Q_PINNED;
@@ -343,11 +360,11 @@ static inline cache_inode_status_t cache_inode_lru_unpin(
     assert(entry->lru.flags & LRU_FLAG_Q_PINNED);
 
     glist_del(&entry->lru.q);
-    (lru_q[1].lru_pinned.size)--;
+    (lru_q[0].lru_pinned.size)--;
 
     /* also adjusts, seems harmless */
-    glist_add_tail(&lru_q[1].lru.q, &entry->lru.q); /* MRU */
-    (lru_q[1].lru.size)++;
+    glist_add_tail(&lru_q[0].lru.q, &entry->lru.q); /* MRU */
+    (lru_q[0].lru.size)++;
 
     entry->lru.flags &= ~LRU_FLAG_Q_PINNED;
     entry->lru.flags |= LRU_FLAG_Q_LRU;
@@ -370,9 +387,9 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
 
     /* queue partition */
     if (entry->lru.flags & LRU_FLAG_Q_LRU)
-        qp = &lru_q[1].lru;
+        qp = &lru_q[0].lru;
     else
-        qp = &lru_q[1].lru_pinned;
+        qp = &lru_q[0].lru_pinned;
 
     ++(entry->lru.refcount);
 
@@ -401,9 +418,9 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
 
     /* queue partition */
     if (entry->lru.flags & LRU_FLAG_Q_LRU)
-        qp = &lru_q[1].lru;
+        qp = &lru_q[0].lru;
     else
-        qp = &lru_q[1].lru_pinned;
+        qp = &lru_q[0].lru_pinned;
 
     assert(entry->lru.refcount >= 1);
 
