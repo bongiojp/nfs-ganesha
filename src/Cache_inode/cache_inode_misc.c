@@ -288,7 +288,8 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
        /* conditionally take an extra reference */
        if (flags & CACHE_INODE_FLAG_EXREF)
-           (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
+           (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
+                                      "cache_inode_new_entry (EXREF)");
 	 
       HashTable_Release(ht, htoken); /* XXX this is releasing alock held since HashTable_Get returned */
 
@@ -317,7 +318,8 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
   if(rw_lock_init(&(pentry->lock)) != 0)
     {
       /* recycle */
-      cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+        cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
+                              "cache_inode_new_entry (lock init fail)");
       LogCrit(COMPONENT_CACHE_INODE,
               "cache_inode_new_entry: rw_lock_init returned %d (%s)",
               errno, strerror(errno));
@@ -339,7 +341,8 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
        if(FSAL_IS_ERROR(fsal_status))
          {
-           cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+             cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
+                                   "cache_inode_new_entry (failed attrs)");
            LogCrit(COMPONENT_CACHE_INODE,
                    "cache_inode_new_entry: FSAL_getattrs failed for pentry "
                    "= %p",
@@ -1471,7 +1474,8 @@ void cache_inode_release_dirents( cache_entry_t           * pentry,
              avltree_remove(dirent_node, tree);
 	     (void) cache_inode_lru_unref(dirent->pentry,
                                           pclient,
-                                          LRU_FLAG_NONE); /* internal ref */
+                                          LRU_FLAG_NONE,
+                                          "cache_inode_release_dirents"); /* internal ref */
              ReleaseToPool(dirent, &pclient->pool_dir_entry);
 	     dirent_node = next_dirent_node;
 	   }

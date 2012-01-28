@@ -3114,6 +3114,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht)
               LogInfo(COMPONENT_INIT, "A referral is set : %s",
                       pentry->object.dir.referral);
             }
+
 #ifdef _CRASH_RECOVERY_AT_STARTUP
           /* Recover the datacache from a previous crah */
           if(pcurrent->options & EXPORT_OPTION_USE_DATACACHE)
@@ -3137,6 +3138,10 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht)
             }
 #endif
         }
+
+  /* return cache entry reference */
+  if (pentry)
+      cache_inode_put(pentry, &small_client);
 
   return TRUE;
 }                               /* nfs_export_create_root_entry */

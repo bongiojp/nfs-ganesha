@@ -195,38 +195,6 @@ void cache_inode_lru_pkgshutdown(void)
     V(lru_mtx);
 }
 
-/* convenience function to decrease entry refcount, permissible
- * IFF the caller has an initial reference */
-void cache_inode_unref(cache_entry_t *entry,
-                       cache_inode_client_t *pclient,
-                       uint32_t flags)
-{
-    P(entry->lru.mtx);
-    if (--(entry->lru.refcount) == 0) {
-        V(entry->lru.mtx);
-        P(lru_mtx);
-        P(entry->lru.mtx);
-        if (entry->lru.refcount > 0) {
-            /* won't happen */
-            V(entry->lru.mtx);
-            V(lru_mtx);
-            goto out;
-        }
-        /* entry is UNREACHABLE -- the call path is recycling entry */
-        glist_del(&entry->lru.q);
-        V(entry->lru.mtx);
-        if (entry->internal_md.type == SYMBOLIC_LINK)
-            cache_inode_release_symlink(entry, &pclient->pool_entry_symlink);
-        ReleaseToPool(entry, &pclient->pool_entry);
-        V(lru_mtx);
-        goto out;
-    }
-
-    V(entry->lru.mtx);
-out:
-    return;
-}
-
 static inline void cache_inode_lru_clean(cache_entry_t *entry)
 {
 
@@ -260,7 +228,8 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     /* victim at LRU */
     lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
 
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU, "%s: head of lru %p (qp size %d)",
+    LogFullDebug(COMPONENT_CACHE_INODE_LRU, "%s: head of lru %p (qp size "
+                 "%"PRIu64")",
                  __func__,
                  lru,
                  qp->size);
@@ -270,7 +239,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
 
         if (entry) {
             LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                         "%s: first entry %p refcount %d flags %d",
+                         "%s: first entry %p refcount %"PRIu64" flags %d",
                          __func__,
                          entry,
                          entry->lru.refcount,
@@ -364,12 +333,14 @@ static inline cache_inode_status_t cache_inode_lru_pin(
     entry->lru.flags &= ~LRU_FLAG_Q_LRU;
     entry->lru.flags |= LRU_FLAG_Q_PINNED;
 
+#if 0
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
                  "%s: pin entry %p refcount %d flags %d",
                  __func__,
                  entry,
                  entry->lru.refcount,
                  entry->lru.flags);
+#endif
 
 unlock:
     if (! (flags & LRU_FLAG_LOCKED)) {
@@ -407,7 +378,7 @@ static inline cache_inode_status_t cache_inode_lru_unpin(
     entry->lru.flags |= LRU_FLAG_Q_LRU;
 
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s: unpin entry %p refcount %d flags %d",
+                 "%s: unpin entry %p refcount %"PRIu64" flags %d",
                  __func__,
                  entry,
                  entry->lru.refcount,
@@ -432,7 +403,8 @@ static inline void  cache_inode_lru_cond_pin(cache_entry_t *entry,
 }
 
 cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
-                                         uint32_t flags)
+                                         uint32_t flags,
+                                         char *tag)
 {
     struct lru_q_pair *qp;
 
@@ -451,6 +423,21 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
     glist_del(&entry->lru.q);
     glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
 
+    if (entry->lru.refcount == 3) {
+        int stop_here = 1;
+    }
+
+    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                 "%s: %s ref entry %p refcount %"PRIu64" flags %d "
+                 "size %"PRIu64" pinned size %"PRIu64"",
+                 __func__,
+                 tag,
+                 entry,
+                 entry->lru.refcount,
+                 entry->lru.flags,
+                 lru_q[0].lru.size,
+                 lru_q[0].lru_pinned.size);
+
     /* cond (un)pin */
     cache_inode_lru_cond_pin(entry, LRU_FLAG_LOCKED);
 
@@ -462,7 +449,8 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
 
 cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                                            cache_inode_client_t *pclient,
-                                           uint32_t flags)
+                                           uint32_t flags,
+                                           char *tag)
 {
     struct lru_q_pair *qp;
 
@@ -481,6 +469,17 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
         /* entry is UNREACHABLE -- the call path is recycling entry */
         glist_del(&entry->lru.q);
         (qp->size)--;
+
+        LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                     "%s: %s unref entry %p refcount %"PRIu64" flags %d "
+                     "size %"PRIu64" pinned size %"PRIu64" RECYCLE",
+                     __func__,
+                     tag,
+                     entry,
+                     entry->lru.refcount,
+                     entry->lru.flags,
+                     lru_q[0].lru.size,
+                     lru_q[0].lru_pinned.size);
    
         V(entry->lru.mtx);
         if (entry->internal_md.type == SYMBOLIC_LINK)
@@ -488,6 +487,17 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
         ReleaseToPool(entry, &pclient->pool_entry);
         goto unlock;
     }
+
+    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                 "%s: %s unref entry %p refcount %"PRIu64" flags %d "
+                 "size %"PRIu64" pinned size %"PRIu64"",
+                 __func__,
+                 tag,
+                 entry,
+                 entry->lru.refcount,
+                 entry->lru.flags,
+                 lru_q[0].lru.size,
+                 lru_q[0].lru_pinned.size);
 
     /* cond (un)pin */
     cache_inode_lru_pin(entry, LRU_FLAG_LOCKED);

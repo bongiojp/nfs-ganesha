@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -152,10 +152,10 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
     case HASHTABLE_SUCCESS:
       /* Entry exists in the cache and was found */
       pentry = (cache_entry_t *) value.pdata;
-      
-      /* XXX pentry->refcount is +1 -- this MAY be racy, we need to extend
-       * the ht critical section to cover the ref */
-      (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
+
+      /* take an extra reference within ht critical section */
+      (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
+          "cache_inode_get (found)");
       
       HashTable_Release(ht, htoken);
 
@@ -253,14 +253,17 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
                            pentry, fsal_status.major, fsal_status.minor);
 
 		  /* return reference we just took */
-                  (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+                  (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
+                      "cache_inode_get (stale)");
 
                   /* hashtable refcount will likely drop to zero now */
                   if(cache_inode_kill_entry(pentry, NO_LOCK, ht, pclient, &kill_status) !=
                      CACHE_INODE_SUCCESS)
                     LogCrit(COMPONENT_CACHE_INODE,
-                            "cache_inode_get: Could not kill entry %p, status = %u, fsal_status=(%u,%u)",
-                            pentry, kill_status, fsal_status.major, fsal_status.minor);
+                            "cache_inode_get: Could not kill entry %p, "
+                            "status = %u",
+                            pentry,
+                            kill_status);
 
                   *pstatus = CACHE_INODE_FSAL_ESTALE;
 
@@ -272,18 +275,18 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
 
       /* Add the entry to the cache */
       if ( type == 1)
-	LogCrit(COMPONENT_CACHE_INODE,"inode get");
+        LogCrit(COMPONENT_CACHE_INODE,"inode get");
 
       if((pentry = cache_inode_new_entry( pfsdata,
-                                          &fsal_attributes, 
+                                          &fsal_attributes,
                                           type,
-                                          policy, 
-                                          &create_arg, 
+                                          policy,
+                                          &create_arg,
                                           NULL,    /* never used to add a new DIR_CONTINUE within this function */
-                                          ht, 
-                                          pclient, 
-                                          pcontext, 
-                                          FALSE,  /* This is a population, not a creation */
+                                          ht,
+                                          pclient,
+                                          pcontext,
+                                          CACHE_INODE_FLAG_EXREF, /* This is a population, not a creation */
                                           pstatus ) ) == NULL )
         {
           /* stats */
@@ -302,7 +305,8 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
       /* This should not happened */
       *pstatus = CACHE_INODE_INVALID_ARGUMENT;
       LogCrit(COMPONENT_CACHE_INODE,
-              "cache_inode_get returning CACHE_INODE_INVALID_ARGUMENT - this should not have happened");
+              "cache_inode_get returning CACHE_INODE_INVALID_ARGUMENT - this "
+              "should not have happened");
 
       if ( !pclient ) {
         /* invalidate. Just return */
@@ -341,11 +345,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
   /* Free this key */
   cache_inode_release_fsaldata_key(&key, pclient);
   
-  /* XXX pentry->refcount is +1 -- this MAY be racy, we need to extend
-   * the ht critical section to cover the ref */
-  (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
-
-  return pentry;
+  return ( pentry );
 }  /* cache_inode_get_located */
 
 /**
@@ -369,5 +369,6 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
 cache_inode_status_t cache_inode_put(cache_entry_t *entry,
                                      cache_inode_client_t *pclient)
 {
-    return (cache_inode_lru_unref(entry, pclient, LRU_FLAG_NONE));
+    return (cache_inode_lru_unref(entry, pclient, LRU_FLAG_NONE,
+                                  "cache_inode_put"));
 }

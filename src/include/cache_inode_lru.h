@@ -79,7 +79,7 @@ extern void cache_inode_lru_pkgshutdown(void);
 
 /* convenience function to increase entry refcount, permissible
  * IFF the caller has an initial reference */
-static inline void cache_inode_ref(cache_entry_t *entry)
+static inline void cache_inode_ref(cache_entry_t *entry, char *tag)
 {
     P(entry->lru.mtx);
     ++(entry->lru.refcount);
@@ -97,17 +97,14 @@ static inline int64_t cache_inode_lru_readref(cache_entry_t *entry)
     return (cnt);
 }
 
-extern void cache_inode_unref(cache_entry_t *entry,
-                              cache_inode_client_t *pclient,
-                              uint32_t flags);
 extern cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
                                            cache_inode_status_t *pstatus,
                                            uint32_t flags);
 extern cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
-                                                uint32_t flags);
+                                                uint32_t flags, char *tag);
 extern cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                                                   cache_inode_client_t *pclient,
-                                                  uint32_t flags);
+                                                  uint32_t flags, char *tag);
 extern void *lru_thread(void *arg);
 extern void wakeup_lru_thread();
 

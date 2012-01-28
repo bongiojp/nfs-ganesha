@@ -206,7 +206,8 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
     }
     
   /* return HashTable (sentinel) reference */
-  (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+  (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
+      "cache_inode_kill_entry");
 
   /* Clean up the associated ressources in the FSAL */
   if(FSAL_IS_ERROR(fsal_status = FSAL_CleanObjectResources(pfsal_handle)))

@@ -137,7 +137,8 @@ int nfs4_op_savefh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   if (data->saved_entry) {
       cache_inode_put(data->saved_entry, data->pclient);
   }
-  (void) cache_inode_lru_ref(data->current_entry, LRU_FLAG_NONE);
+  (void) cache_inode_lru_ref(data->current_entry, LRU_FLAG_NONE,
+                             "nfs4_op_savefh");
   data->saved_entry = data->current_entry;
   data->saved_filetype = data->current_filetype;
 

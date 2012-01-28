@@ -126,7 +126,8 @@ cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle
    * implies a reader lock on a portion of HashTable ht.  This ensures atomicity
    * for the following ref of pentry. */
   pentry = (cache_entry_t *)value.pdata;
-  cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
+  cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
+                      "cache_inode_invalidate");
   HashTable_Release(ht, htoken);
 
   /* Never invalidate an entry that holds states */
@@ -145,7 +146,8 @@ cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle
   *pstatus = cache_inode_kill_entry( pentry, WT_LOCK, ht, pclient, pstatus );
 
   /* we still hold an extra ref */
-  cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+  cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
+                        "cache_inode_invalidate");
 
   return (*pstatus);
 } /* cache_inode_invalidate */

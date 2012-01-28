@@ -210,7 +210,8 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
           pentry = dirent->pentry;
 	  /* XXX we need an extra ref, we are protected by pentry_parent lock, which we
 	   * believe this call path necessarily holds */
-	  (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE);
+	  (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
+              "cache_inode_lookup XXX");
        }
 
       if(pentry == NULL)
