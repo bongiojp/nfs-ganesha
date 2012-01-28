@@ -244,12 +244,12 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
                          entry->lru.flags);
         }
 
-        if (entry && entry->lru.refcount == SENTINEL_REFCOUNT) {
+        if (entry && (entry->lru.refcount == SENTINEL_REFCOUNT)) {
+
+            P(entry->lru.mtx);
             glist_del(&entry->lru.q);
             glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
             V(lru_mtx);
-
-            P(entry->lru.mtx);
 
             cache_inode_lru_clean(entry);
 
@@ -491,7 +491,7 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                  lru_q[0].lru_pinned.size);
 
     /* cond (un)pin */
-    cache_inode_lru_pin(entry, LRU_FLAG_LOCKED);
+    cache_inode_lru_cond_pin(entry, LRU_FLAG_LOCKED);
 
     /* no LRU adjustment */
     V(entry->lru.mtx);
