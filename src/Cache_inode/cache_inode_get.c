@@ -323,7 +323,13 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
   /* Want to ASSERT pclient at this point */
   *pstatus = CACHE_INODE_SUCCESS;
 
-  /* valid the found entry, if this is not feasable, returns nothing to the client */
+  /* valid the found entry, if this is not feasible, returns nothing to the
+   * client */
+
+  /* XXXX it appears likely that if cache_inode_valid fails, the entry is
+   * still in HashTable. Who is responsible for cleaning it up in this
+   * case? (Matt) */
+
   if( plocation != NULL )
    {
      if( plocation != pentry )
@@ -333,9 +339,12 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
            cache_inode_valid(pentry, CACHE_INODE_OP_GET, pclient)) != CACHE_INODE_SUCCESS)
           {
             V_w(&pentry->lock);
+            /* we hold an extra reference (and XXX see above) */
+            (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
+                "cache_inode_get (not valid)");
             pentry = NULL;
-          }
-        V_w(&pentry->lock);
+          } else
+            V_w(&pentry->lock);
       }
    }
 

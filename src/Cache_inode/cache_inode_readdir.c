@@ -1338,6 +1338,9 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
   if (! dirent_node)
       *peod_met = END_OF_DIR;
 
+  /* XXX it appears that a cache_inode_valid was already performed in
+   * this call path, in cache_inode_get.  Why do we want to call it
+   * again now? (Matt) */
   *pstatus = cache_inode_valid(dir_pentry, CACHE_INODE_OP_GET, pclient);
 
   /* stats */

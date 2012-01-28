@@ -228,9 +228,8 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     /* victim at LRU */
     lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
 
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU, "%s: head of lru %p (qp size "
+    LogFullDebug(COMPONENT_CACHE_INODE_LRU, "head of lru %p (qp size "
                  "%"PRIu64")",
-                 __func__,
                  lru,
                  qp->size);
 
@@ -239,8 +238,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
 
         if (entry) {
             LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                         "%s: first entry %p refcount %"PRIu64" flags %d",
-                         __func__,
+                         "first entry %p refcount %"PRIu64" flags %d",
                          entry,
                          entry->lru.refcount,
                          entry->lru.flags);
@@ -276,8 +274,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     GetFromPool(entry, &pclient->pool_entry, cache_entry_t);
     if(entry == NULL) {
         LogCrit(COMPONENT_CACHE_INODE_LRU,
-                "%s: Can't allocate a new entry from cache pool",
-                __func__);
+                "can't allocate a new entry from cache pool");
         *pstatus = CACHE_INODE_MALLOC_ERROR;
         goto out;
     }
@@ -287,8 +284,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
         ReleaseToPool(entry, &pclient->pool_entry);
           LogCrit(COMPONENT_CACHE_INODE_LRU,
-                  "%s: pthread_mutex_init of lru.mtx returned %d (%s)",
-                  __func__,
+                  "pthread_mutex_init of lru.mtx returned %d (%s)",
                   errno,
                   strerror(errno));
           *pstatus = CACHE_INODE_INIT_ENTRY_FAILED;
@@ -335,8 +331,7 @@ static inline cache_inode_status_t cache_inode_lru_pin(
 
 #if 0
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s: pin entry %p refcount %d flags %d",
-                 __func__,
+                 "pin entry %p refcount %d flags %d",
                  entry,
                  entry->lru.refcount,
                  entry->lru.flags);
@@ -378,8 +373,7 @@ static inline cache_inode_status_t cache_inode_lru_unpin(
     entry->lru.flags |= LRU_FLAG_Q_LRU;
 
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s: unpin entry %p refcount %"PRIu64" flags %d",
-                 __func__,
+                 "unpin entry %p refcount %"PRIu64" flags %d",
                  entry,
                  entry->lru.refcount,
                  entry->lru.flags);
@@ -428,9 +422,8 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
     }
 
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s: %s ref entry %p refcount %"PRIu64" flags %d "
+                 "%s ref entry %p refcount %"PRIu64" flags %d "
                  "size %"PRIu64" pinned size %"PRIu64"",
-                 __func__,
                  tag,
                  entry,
                  entry->lru.refcount,
@@ -471,9 +464,8 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
         (qp->size)--;
 
         LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                     "%s: %s unref entry %p refcount %"PRIu64" flags %d "
+                     "%s unref entry %p refcount %"PRIu64" flags %d "
                      "size %"PRIu64" pinned size %"PRIu64" RECYCLE",
-                     __func__,
                      tag,
                      entry,
                      entry->lru.refcount,
@@ -489,9 +481,8 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
     }
 
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s: %s unref entry %p refcount %"PRIu64" flags %d "
+                 "%s unref entry %p refcount %"PRIu64" flags %d "
                  "size %"PRIu64" pinned size %"PRIu64"",
-                 __func__,
                  tag,
                  entry,
                  entry->lru.refcount,
@@ -545,15 +536,15 @@ void *lru_thread(void *arg)
             break;
 
         LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                     "%s: top of poll loop", __func__);
+                     "top of poll loop");
 
         /* do stuff */
 
-        lru_thread_delay_ms(1000 * 10);
+        lru_thread_delay_ms(1000 * 5 * 60);
     }
 
     LogCrit(COMPONENT_CACHE_INODE_LRU,
-            "%s: shutdown", __func__);
+            "shutdown");
 
     return (NULL);
 }
