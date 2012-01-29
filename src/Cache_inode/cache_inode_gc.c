@@ -58,7 +58,7 @@
 #include <time.h>
 #include <pthread.h>
 
-static cache_inode_gc_policy_t cache_inode_gc_policy;   /*<< the policy to be used by the garbage collector */
+cache_inode_gc_policy_t cache_inode_gc_policy;   /*<< the policy to be used by the garbage collector */
 
 #ifdef _USE_NFS4_ACL
 static void cache_inode_gc_acl(cache_entry_t * pentry);

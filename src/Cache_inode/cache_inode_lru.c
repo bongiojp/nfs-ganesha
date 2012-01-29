@@ -94,19 +94,6 @@ struct lru_q_
 #define N_LRU_Q 1
 static struct lru_q_ lru_q[N_LRU_Q];
 
-static pthread_mutex_t lru_mtx;
-static pthread_cond_t lru_cv;
-
-#define LRU_SLEEPING 0x0001
-#define LRU_SHUTDOWN 0x0002
-
-static struct lru_thread_state
-{
-    pthread_t thread_id;
-    uint32_t flags;
-} lru_thread_state;
-
-
 /* The refcount mechanism distinguishes 3 key object states:
  *
  * 1. unreferenced (unreachable)
@@ -142,6 +129,30 @@ static struct lru_thread_state
  *
  */
 
+static pthread_mutex_t lru_mtx;
+static pthread_cond_t lru_cv;
+
+#define LRU_STATE_NONE         0x00000
+#define LRU_STATE_RECLAIMING   0x00001
+
+static struct lru_state
+{
+    uint64_t entries_hiwat;
+    uint64_t entries_lowat;
+    uint32_t flags;
+} lru_state;
+
+#define LRU_SLEEPING 0x0001
+#define LRU_SHUTDOWN 0x0002
+
+static struct lru_thread_state
+{
+    pthread_t thread_id;
+    uint32_t flags;
+} lru_thread_state;
+
+extern cache_inode_gc_policy_t cache_inode_gc_policy;
+
 /*
  * Initialize subsystem
  */
@@ -149,6 +160,17 @@ void cache_inode_lru_pkginit(void)
 {
     pthread_attr_t attr_thr;
     int ix, code = 0;
+
+    /* repurpose some GC policy */
+    lru_state.flags = LRU_STATE_NONE;
+#if 0
+    /* not assigned?? */
+    lru_state.entries_hiwat = .75 * cache_inode_gc_policy.hwmark_nb_entries;
+    lru_state.entries_lowat = .5 * cache_inode_gc_policy.hwmark_nb_entries;
+#else
+    lru_state.entries_hiwat = .75 * 500;
+    lru_state.entries_lowat = .5 * 500;
+#endif
 
     pthread_mutex_init(&lru_mtx, NULL);
     pthread_cond_init(&lru_cv, NULL);
@@ -198,14 +220,33 @@ void cache_inode_lru_pkgshutdown(void)
 static inline void cache_inode_lru_clean(cache_entry_t *entry)
 {
 
+    cache_inode_status_t status;
+
     /* do not use for entry lru init */
     assert((entry->lru.refcount == SENTINEL_REFCOUNT) ||
            (entry->lru.refcount == (SENTINEL_REFCOUNT-1)));
-
+#if 0 /* still integrating */
+    /* XXXX not only wont this compile, there is a race with a
+     * thread which has just found entry, to ref it.  we need to
+     * ensure that any such thread makes sufficient progress to
+     * be diverted, or the reverse. */
+    status = cache_inode_clean_internal(entry, ht, pclient);
+#endif
     entry->lru.refcount = 0;
-    entry->lru.flags = LRU_FLAG_NONE;
-
     cache_inode_clean_entry(entry);
+}
+
+static inline void check_lru_state()
+{
+    /* LOCKED */
+    if (lru_state.flags & LRU_STATE_RECLAIMING) {
+        if (lru_q[0].lru.size < lru_state.entries_lowat)
+            lru_state.flags &= ~LRU_STATE_RECLAIMING;
+    } else {
+        if (lru_q[0].lru.size > lru_state.entries_hiwat) {
+            lru_state.flags |= LRU_STATE_RECLAIMING;
+        }
+    }
 }
 
 /*
@@ -225,43 +266,55 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
 
     P(lru_mtx);
 
-    /* victim at LRU */
-    lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
+    check_lru_state();
 
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU, "head of lru %p (qp size "
-                 "%"PRIu64")",
-                 lru,
-                 qp->size);
+    if (lru_state.flags & LRU_STATE_RECLAIMING) {
 
-    if (lru) {
-        entry = container_of(lru, cache_entry_t, lru);
+        /* victim at LRU */
+        lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
 
-        if (entry) {
-            LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                         "first entry %p refcount %"PRIu64" flags %d",
-                         entry,
-                         entry->lru.refcount,
-                         entry->lru.flags);
-        }
+        if (lru) {
+            entry = container_of(lru, cache_entry_t, lru);
 
-        if (entry && (entry->lru.refcount == SENTINEL_REFCOUNT)) {
+            if (entry)
+                LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                             "first entry %p refcount %"PRIu64" flags %d",
+                             entry,
+                             entry->lru.refcount,
+                             entry->lru.flags);
+      
+            if (entry && (entry->lru.refcount == SENTINEL_REFCOUNT)) {
 
-            P(entry->lru.mtx);
-            glist_del(&entry->lru.q);
-            glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
-            V(lru_mtx);
+                P(entry->lru.mtx);
+                glist_del(&entry->lru.q);
+                glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
+                V(lru_mtx);
 
-            cache_inode_lru_clean(entry);
+                /* XXXX.  Ok, the problem here is:  the lowest refcount
+                 * we expect to find in the lru q is 1, which implies that
+                 * the victim is reachable.  Apparently we need to remove
+                 * any such entry from HT before continuing.  It seems
+                 * we should also make a defensive check against the entry
+                 * having state, and in that unlikely event, pin it, and
+                 * retry. */
 
-            if (flags & LRU_GET_FLAG_REF)
-                ++(entry->lru.refcount);
+                LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                             "VICTIM entry %p refcount %"PRIu64" flags %d",
+                             entry,
+                             entry->lru.refcount,
+                             entry->lru.flags);
 
-            V(entry->lru.mtx);
+                cache_inode_lru_clean(entry);
 
-            *pstatus = CACHE_INODE_SUCCESS;
-            goto out;
-        } /* entry */
-    } /* lru */
+                if (flags & LRU_GET_FLAG_REF)
+                    ++(entry->lru.refcount);
+
+                V(entry->lru.mtx);
+                *pstatus = CACHE_INODE_SUCCESS;
+                goto out;
+            } /* entry */
+        } /* lru */
+    } /* reclaiming */
 
     V(lru_mtx);
 
@@ -329,13 +382,11 @@ static inline cache_inode_status_t cache_inode_lru_pin(
     entry->lru.flags &= ~LRU_FLAG_Q_LRU;
     entry->lru.flags |= LRU_FLAG_Q_PINNED;
 
-#if 0
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "pin entry %p refcount %d flags %d",
+                 "unpin entry %p refcount %"PRIu64" flags %d",
                  entry,
                  entry->lru.refcount,
                  entry->lru.flags);
-#endif
 
 unlock:
     if (! (flags & LRU_FLAG_LOCKED)) {
@@ -355,6 +406,9 @@ static inline cache_inode_status_t cache_inode_lru_unpin(
         P(lru_mtx);
         P(entry->lru.mtx);
     }
+
+    /* BUG:  entries reach here with lru.flags = 0, they appear
+     * to in fact b on the pinned q. */
 
     /* not pinned */
     if (entry->lru.flags & LRU_FLAG_Q_LRU)
