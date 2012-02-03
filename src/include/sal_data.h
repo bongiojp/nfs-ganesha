@@ -342,6 +342,7 @@ typedef enum state_blocking_t
   STATE_CANCELED
 } state_blocking_t;
 
+#ifdef _USE_BLOCKING_LOCKS
 /* The granted call back is responsible for acquiring a reference to
  * the lock entry if needed.
  *
