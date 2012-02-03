@@ -15,11 +15,11 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -116,7 +116,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
-      char strto[LEN_FH_STR], strfrom[LEN_FH_STR];
+     char strto[LEN_FH_STR], strfrom[LEN_FH_STR];
 
       switch (preq->rq_vers)
         {
@@ -499,13 +499,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
   rc = NFS_REQ_OK;
   
 out:
-  /* return references */
-  if (pentry)
-      cache_inode_put(pentry, pclient);
-
-  if (new_pentry)
-      cache_inode_put(new_pentry, pclient);
-
   if (parent_pentry)
       cache_inode_put(parent_pentry, pclient);
 

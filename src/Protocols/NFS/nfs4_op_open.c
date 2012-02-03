@@ -573,11 +573,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                       goto out;
                     }
 
-                  /* This new fh replaces the current FH */
-                  data->currentFH.nfs_fh4_len = newfh4.nfs_fh4_len;
-                  memcpy(data->currentFH.nfs_fh4_val, newfh4.nfs_fh4_val,
-                         newfh4.nfs_fh4_len);
-
                   /* XXX we must ensure that the current and saved cache
                    * entries are  non-null only when the caller holds one
                    * reference corresponding to each assignment.  Code
@@ -658,11 +653,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                   res_OPEN4.status = status4;
                                   goto out;
                                 }
-
-                              /* This new fh replaces the current FH */
-                              data->currentFH.nfs_fh4_len = newfh4.nfs_fh4_len;
-                              memcpy(data->currentFH.nfs_fh4_val, newfh4.nfs_fh4_val,
-                                     newfh4.nfs_fh4_len);
 
                               /* XXX we must ensure that the current and saved
                                * cache entries are  non-null only when the
@@ -978,18 +968,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
       res_OPEN4.status = status4;
       goto out;
     }
-
-  /* Building a new fh */
-  if(!nfs4_FSALToFhandle(&newfh4, pnewfsal_handle, data))
-    {
-      res_OPEN4.status = NFS4ERR_SERVERFAULT;
-      cause2 = " (nfs4_FSALToFhandle failed)";
-      goto out;
-    }
-
-  /* This new fh replaces the current FH */
-  data->currentFH.nfs_fh4_len = newfh4.nfs_fh4_len;
-  memcpy(data->currentFH.nfs_fh4_val, newfh4.nfs_fh4_val, newfh4.nfs_fh4_len);
 
   /* XXX we must ensure that the current and saved cache entries are
    * non-null only when the caller holds one reference corresponding

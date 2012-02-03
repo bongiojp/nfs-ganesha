@@ -884,7 +884,7 @@ cache_inode_status_t cache_inode_valid(cache_entry_t * pentry,
   /* If open/close fd cache is used for FSAL, manage it here */
   LogFullDebug(COMPONENT_CACHE_INODE_GC,
                "--------> use_cache=%u fileno=%d last_op=%u time(NULL)=%u delta=%u retention=%u",
-               pclient->use_cache, pentry->object.file.open_fd.fileno,
+               pclient->use_fd_cache, pentry->object.file.open_fd.fileno,
                (unsigned int)pentry->object.file.open_fd.last_op, (unsigned int)time(NULL),
                (unsigned int)(time(NULL) - pentry->object.file.open_fd.last_op), (unsigned int)pclient->retention);
 

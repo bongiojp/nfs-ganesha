@@ -810,6 +810,7 @@ out:
   if (pentry_dot_dot)
       cache_inode_put(pentry_dot_dot, pclient);
 
+  return rc;
 }                               /* nfs3_Readdirplus */
 
 /**

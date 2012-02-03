@@ -349,7 +349,7 @@ static bool_t LogBlockedList(const char        * reason,
 
   return FALSE;
 }
-#endif
+#endif /* _USE_BLOCKING_LOCKS */
 
 void LogLock(log_components_t     component,
              log_levels_t         debug,
@@ -2391,7 +2391,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
 
       return *pstatus;
     }
-#endif
+#endif /* _USE_BLOCKING_LOCKS */
   else
     {
       LogMajor(COMPONENT_STATE,
