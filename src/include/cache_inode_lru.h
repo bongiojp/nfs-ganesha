@@ -89,11 +89,11 @@ static inline void cache_inode_ref(cache_entry_t *entry, char *tag)
 static inline int64_t cache_inode_lru_readref(cache_entry_t *entry)
 {
     int64_t cnt;
-    
+
     P(entry->lru.mtx);
     cnt = entry->lru.refcount;
     V(entry->lru.mtx);
-    
+
     return (cnt);
 }
 

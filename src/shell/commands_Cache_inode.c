@@ -1152,13 +1152,6 @@ int fn_Cache_inode_gc(int argc, /* IN : number of args in argv */
 
   cache_inode_set_gc_policy(gcpol);
 
-  if(cache_inode_gc(ht, &context->client, &context->cache_status) != CACHE_INODE_SUCCESS)
-    {
-      log_fprintf(output, "Error executing cache_inode_gc : %J%r\n",
-                  ERR_CACHE_INODE, context->cache_status);
-      return context->cache_status;
-    }
-
   return 0;
 }                               /* fn_Cache_inode_gc */
 

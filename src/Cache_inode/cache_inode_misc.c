@@ -626,7 +626,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
   /* if entry is a REGULAR_FILE and has a related data cache entry from a previous server instance that crashed, recover it */
   /* This is done only when this is not a creation (when creating a new file, it is impossible to have it cached)           */
-  if(type == REGULAR_FILE && (! (flags * CACHE_INODE_FLAG_CREATE)))
+  if(type == REGULAR_FILE && (! (flags & CACHE_INODE_FLAG_CREATE)))
     {
       cache_content_test_cached(pentry,
                                 (cache_content_client_t *) pclient->pcontent_client,

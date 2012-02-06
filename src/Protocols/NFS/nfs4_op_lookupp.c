@@ -103,7 +103,7 @@
  * @param resp  [IN]    Pointer to nfs4_op results
  *
  * @return NFS4_OK if successfull, other values show an error.  
- * 
+ *
  */
 #define arg_LOOKUPP4 op->nfs_argop4_u.oplookupp
 #define res_LOOKUPP4 resp->nfs_resop4_u.oplookupp
@@ -208,13 +208,12 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
              (char *)(data->currentFH.nfs_fh4_val), data->currentFH.nfs_fh4_len);
       data->mounted_on_FH.nfs_fh4_len = data->currentFH.nfs_fh4_len;
 
-      /* XXXX.  Ok, someone must be responsible for:
-       * a. releasing dir_pentry, whose addr we've just overwritten in data
-       * b. releasing file_pentry, =when no subsequent operation in the compound
-       * could need it=
-       *
-       * Can the caller of this routine reliably do both?
-       */
+      /* Release dir_pentry, as it is not reachable from anywhere in
+         compound after this function returns.  Count on later
+         operations or nfs4_Compound to clean up current_entry. */
+
+      if (dir_pentry)
+        cache_inode_put(dir_pentry, data->pclient);
 
       /* Keep the pointer within the compound data */
       data->current_entry = file_pentry;
@@ -242,7 +241,7 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
 
 /**
  * nfs4_op_lookupp_Free: frees what was allocared to handle nfs4_op_lookupp.
- * 
+ *
  * Frees what was allocared to handle nfs4_op_lookupp.
  *
  * @param resp  [INOUT]    Pointer to nfs4_op results

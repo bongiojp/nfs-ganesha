@@ -282,7 +282,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
                              entry,
                              entry->lru.refcount,
                              entry->lru.flags);
-      
+
             if (entry && (entry->lru.refcount == SENTINEL_REFCOUNT)) {
 
                 P(entry->lru.mtx);
@@ -351,7 +351,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
     glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
     (qp->size)++;
     V(lru_mtx);
-        
+
     *pstatus = CACHE_INODE_SUCCESS;
 out:
     return (entry);
@@ -394,7 +394,7 @@ unlock:
         V(lru_mtx);
     }
 
-    return (CACHE_INODE_SUCCESS);    
+    return (CACHE_INODE_SUCCESS);
 }
 
 static inline cache_inode_status_t cache_inode_lru_unpin(
@@ -438,7 +438,7 @@ unlock:
         V(lru_mtx);
     }
 
-    return (CACHE_INODE_SUCCESS);    
+    return (CACHE_INODE_SUCCESS);
 }
 
 static inline void  cache_inode_lru_cond_pin(cache_entry_t *entry,
@@ -470,10 +470,6 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
     P(lru_mtx);
     glist_del(&entry->lru.q);
     glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
-
-    if (entry->lru.refcount == 3) {
-        int stop_here = 1;
-    }
 
     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
                  "%s ref entry %p refcount %"PRIu64" flags %d "
@@ -526,7 +522,7 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                      entry->lru.flags,
                      lru_q[0].lru.size,
                      lru_q[0].lru_pinned.size);
-   
+
         V(entry->lru.mtx);
         if (entry->internal_md.type == SYMBOLIC_LINK)
             cache_inode_release_symlink(entry, &pclient->pool_entry_symlink);
@@ -549,15 +545,15 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
 
     /* no LRU adjustment */
     V(entry->lru.mtx);
- 
-unlock:   
+
+unlock:
     V(lru_mtx);
 
     return (CACHE_INODE_SUCCESS);
 }
 
-#define S_NSECS 1000000000UL	/* nsecs in 1s */
-#define MS_NSECS 1000000UL	/* nsecs in 1ms */
+#define S_NSECS 1000000000UL    /* nsecs in 1s */
+#define MS_NSECS 1000000UL      /* nsecs in 1ms */
 
 static void
 lru_thread_delay_ms(unsigned long ms)
@@ -570,7 +566,7 @@ lru_thread_delay_ms(unsigned long ms)
     nsecs = (S_NSECS * now) + (MS_NSECS * ms);
     then.tv_sec = nsecs / S_NSECS;
     then.tv_nsec = nsecs % S_NSECS;
-    
+
     pthread_mutex_lock(&lru_mtx);
     lru_thread_state.flags |= LRU_SLEEPING;
     pthread_cond_timedwait(&lru_cv, &lru_mtx, &then);

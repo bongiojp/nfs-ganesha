@@ -60,18 +60,18 @@
 /**
  *
  * cache_inode_get: Gets an entry by using its fsdata as a key and caches it if needed.
- * 
+ *
  * Gets an entry by using its fsdata as a key and caches it if needed.
  *
  * If a cache entry is returned, its refcount is +1.
  *
  * @param fsdata [IN] file system data
- * @param pattr [OUT] pointer to the attributes for the result. 
+ * @param pattr [OUT] pointer to the attributes for the result.
  * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials 
+ * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
- * 
+ *
  * @return the pointer to the entry is successfull, NULL otherwise.
  *
  */
@@ -89,22 +89,24 @@ cache_entry_t *cache_inode_get( cache_inode_fsal_data_t * pfsdata,
 /**
  *
  * cache_inode_geti_located: Gets an entry by using its fsdata as a key and caches it if needed, with origin information.
- * 
- * Gets an entry by using its fsdata as a key and caches it if needed, with origin/location information.
- * The reason to this call is cross-junction management : you can go through a directory that it its own parent from a 
- * FSAL point of view. This could lead to hang (same P_w taken twice on the same entry). To deal this, a check feature is 
- * added through the plocation argument.
+ *
+ * Gets an entry by using its fsdata as a key and caches it if needed,
+ * with origin/location information.  The reason to this call is
+ * cross-junction management : you can go through a directory that it
+ * its own parent from a FSAL point of view. This could lead to hang
+ * (same P_w taken twice on the same entry). To deal this, a check
+ * feature is added through the plocation argument.
  *
  * If a cache entry is returned, its refcount is +1.
  *
  * @param fsdata [IN] file system data
  * @param plocation [IN] pentry used as "location form where the call is done". Usually a son of a parent entry
- * @param pattr [OUT] pointer to the attributes for the result. 
+ * @param pattr [OUT] pointer to the attributes for the result.
  * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials 
+ * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
- * 
+ *
  * @return the pointer to the entry is successfull, NULL otherwise.
  *
  */
@@ -146,33 +148,32 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
   key.pdata = pfsdata->fh_desc.start;
   key.len = pfsdata->fh_desc.len;
 
-  hrc = HashTable_Get(ht, &key, &value);
-  switch (hrc)
+  switch (hrc = HashTable_GetEx(ht, &key, &value, &htoken))
     {
     case HASHTABLE_SUCCESS:
       /* Entry exists in the cache and was found */
       pentry = (cache_entry_t *) value.pdata;
 
-      /* take an extra reference within ht critical section */
+      /* take an extra reference within the critical section */
       (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
           "cache_inode_get (found)");
-      
+
       HashTable_Release(ht, htoken);
 
       /* return attributes additionally */
       *pattr = pentry->attributes;
 
       if ( !pclient ) {
-	/* invalidate. Just return it to mark it stale and go on. */
-	return( pentry );
+        /* invalidate. Just return it to mark it stale and go on. */
+        return( pentry );
       }
 
       break;
 
     case HASHTABLE_ERROR_NO_SUCH_KEY:
       if ( !pclient ) {
-	/* invalidate. Just return */
-	return( NULL );
+        /* invalidate. Just return */
+        return( NULL );
       }
       /* Cache miss, allocate a new entry */
 
@@ -232,7 +233,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
                               &fsal_attributes);
             }
           else
-            { 
+            {
                fsal_status.major = ERR_FSAL_NO_ERROR ;
                fsal_status.minor = 0 ;
             }
@@ -252,7 +253,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
                            "cache_inode_get: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                            pentry, fsal_status.major, fsal_status.minor);
 
-		  /* return reference we just took */
+                  /* return reference we just took */
                   (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
                       "cache_inode_get (stale)");
 
@@ -353,7 +354,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
 
   /* Free this key */
   cache_inode_release_fsaldata_key(&key, pclient);
-  
+
   return ( pentry );
 }  /* cache_inode_get_located */
 
@@ -371,7 +372,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
  *
  * @param entry [IN] cache entry being returned
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * 
+ *
  * @return status.
  *
  */

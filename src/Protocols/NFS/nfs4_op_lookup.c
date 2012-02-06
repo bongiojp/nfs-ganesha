@@ -247,13 +247,12 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
         }
       LogHandleNFS4("NFS4 LOOKUP CURRENT FH: ", &data->currentFH);
 
-      /* XXXX.  Ok, someone must be responsible for:
-       * a. releasing dir_pentry, whose addr we've just overwritten in data
-       * b. releasing file_pentry, =when no subsequent operation in the compound
-       * could need it=
-       *
-       * Can the caller of this routine reliably do both?
-       */
+      /* Release dir_pentry, as it is not reachable from anywhere in
+         compound after this function returns.  Count on later
+         operations or nfs4_Compound to clean up current_entry. */
+
+      if (dir_pentry)
+        cache_inode_put(dir_pentry, data->pclient);
 
       /* Keep the pointer within the compound data */
       data->current_entry = file_pentry;

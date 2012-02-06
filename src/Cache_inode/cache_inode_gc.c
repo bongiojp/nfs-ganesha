@@ -72,6 +72,9 @@ static void cache_inode_gc_acl(cache_entry_t * pentry);
  * @{
  */
 
+#if 0 /* Keeping the text of this function around for details of
+         reaping. */
+
 /**
  *
  * cache_inode_gc_clean_entry: cleans a entry in the cache_inode.
@@ -100,9 +103,6 @@ static int cache_inode_gc_clean_entry(cache_entry_t * pentry,
                "(pthread_self=%p): About to remove pentry=%p, type=%d",
                (caddr_t)pthread_self(),
                pentry, pentry->internal_md.type);
-
-  /* XXXX this function is INCOMPATIBLE with new LRU */
-  abort();
 
   /* Get the FSAL handle */
   if((pfsal_handle = cache_inode_get_fsal_handle(pentry, &status)) == NULL)
@@ -205,6 +205,7 @@ static int cache_inode_gc_clean_entry(cache_entry_t * pentry,
 
   return LRU_LIST_SET_INVALID;  /* Cleaning ok */
 }
+#endif /* 0 */
 
 /**
  *
@@ -264,200 +265,6 @@ static int cache_inode_gc_invalidate_related_dirents(
 
   return LRU_LIST_SET_INVALID;
 }                               /* cache_inode_gc_invalidate_related_dirent */
-
-/**
- *
- * cache_inode_gc_suppress_file: suppress a file entry from the cache inode.
- *
- * Suppress a file entry from the cache inode.
- *
- * @param pentry [IN] pointer to the entry to be suppressed.
- *
- * @return LRU_LIST_SET_INVALID if entry is successfully suppressed, LRU_LIST_DO_NOT_SET_INVALID otherwise
- *
- * @see LRU_invalidate_by_function
- * @see LRU_gc_invalid
- *
- */
-int cache_inode_gc_suppress_file(cache_entry_t * pentry,
-                                 cache_inode_param_gc_t * pgcparam)
-{
-  P_w(&pentry->lock);
-
-  LogMidDebug(COMPONENT_CACHE_INODE_GC,
-               "Entry %p (REGULAR_FILE/SYMBOLIC_LINK) will be garbaged",
-               pentry);
-
-  /* Set the entry as invalid */
-  pentry->internal_md.valid_state = INVALID;
-
-  LogDebug(COMPONENT_CACHE_INODE_GC,
-               "****> cache_inode_gc_suppress_file on %p",
-               pentry);
-
-  /* Remove refences in the parent entries */
-  cache_inode_gc_invalidate_related_dirents(pentry, pgcparam);
-
-  /* Clean the entry */
-  if(cache_inode_gc_clean_entry(pentry, pgcparam) != LRU_LIST_SET_INVALID)
-    return LRU_LIST_DO_NOT_SET_INVALID;
-
-  /* Mutex has already been freed at destruction time */
-
-  return LRU_LIST_SET_INVALID;
-}                               /* cache_inode_gc_suppress_file */
-
-/**
- *
- * cache_inode_gc_suppress_directory: suppress a directory entry from the cache inode.
- *
- * Suppress a file entry from the cache inode.
- *
- * @param pentry [IN] pointer to the entry to be suppressed.
- *
- * @return 1 if entry is successfully suppressed, 0 otherwise
- *
- * @see LRU_invalidate_by_function
- * @see LRU_gc_invalid
- *
- */
-int cache_inode_gc_suppress_directory(cache_entry_t * pentry,
-                                      cache_inode_param_gc_t * pgcparam)
-{
-  P_w(&pentry->lock);
-  pentry->internal_md.valid_state = INVALID;
-
-  if(cache_inode_is_dir_empty(pentry) != CACHE_INODE_SUCCESS)
-    {
-      V_w(&pentry->lock);
-
-      LogDebug(COMPONENT_CACHE_INODE_GC,
-                   "Entry %p (DIRECTORY) is not empty. The entry will not be garbaged now",
-                   pentry);
-
-      return LRU_LIST_DO_NOT_SET_INVALID;       /* entry is not to be suppressed */
-    }
-
-  /* If we reached this point, the directory contains no active entry, it
-   * should be removed from the cache */
-  LogMidDebug(COMPONENT_CACHE_INODE_GC,
-               "Entry %p (DIRECTORY) will be garbaged",
-               pentry);
-
-  LogDebug(COMPONENT_CACHE_INODE_GC,
-               "****> cache_inode_gc_suppress_directory on %p",
-               pentry);
-
-  /* Remove refences in the parent entries */
-  if(cache_inode_gc_invalidate_related_dirents(pentry, pgcparam)
-     != LRU_LIST_SET_INVALID)
-    {
-      V_w(&pentry->lock);
-      return LRU_LIST_DO_NOT_SET_INVALID;
-    }
-
-  if(cache_inode_gc_clean_entry(pentry, pgcparam) != LRU_LIST_SET_INVALID)
-    {
-      V_w(&pentry->lock);
-      return LRU_LIST_DO_NOT_SET_INVALID;
-    }
-
-  /* Mutex has already been freed at destruction time */
-
-  return LRU_LIST_SET_INVALID;
-}                               /* cache_inode_gc_suppress_directory */
-
-/**
- *
- * cache_inode_gc_function: Tests is an entry in cache inode is to be set invalid (has expired).
- *
- * Tests is an entry in cache inode is to be set invalid (has expired).
- * If entry is invalidated, does the cleaning stuff on it.
- *
- * @param pentry [IN] pointer to the entry to test
- *
- * @return 1 if entry must be set invalid, 0 if not.
- *
- * @see LRU_invalidate_by_function
- * @see LRU_gc_invalid
- *
- */
-int cache_inode_gc_function(LRU_entry_t * plru_entry, void *addparam)
-{
-  time_t entry_time = 0;
-  time_t current_time = time(NULL);
-  cache_entry_t *pentry = NULL;
-  cache_inode_param_gc_t *pgcparam = (cache_inode_param_gc_t *) addparam;
-
-  time_t allocated;
-
-  /* Get the entry */
-  pentry = (cache_entry_t *) (plru_entry->buffdata.pdata);
-
-  /* Get the entry time (the larger value in read_time and mod_time ) */
-  if(pentry->internal_md.read_time > pentry->internal_md.mod_time)
-    entry_time = pentry->internal_md.read_time;
-  else
-    entry_time = pentry->internal_md.mod_time;
-
-  allocated = pentry->internal_md.alloc_time;
-
-  if(pgcparam->nb_to_be_purged != 0)
-    {
-      LogMidDebug(COMPONENT_CACHE_INODE_GC,
-                   "We still need %d entries to be garbaged",
-                   pgcparam->nb_to_be_purged);
-
-      /* Check if the entry is not a file that holds state
-       *  Files with states are not to be gc-ed  */
-      if( ( pentry->internal_md.type == REGULAR_FILE ) && 
-           cache_inode_file_holds_state( pentry ) )
-         return LRU_LIST_DO_NOT_SET_INVALID ;
-
-      /* Should we get ride of this entry ? */
-      if((pentry->internal_md.type == DIRECTORY) &&
-         (cache_inode_gc_policy.directory_expiration_delay > 0))
-        {
-          if(current_time - entry_time > cache_inode_gc_policy.directory_expiration_delay)
-            {
-              /* Entry should be tagged invalid */
-              LogMidDebug(COMPONENT_CACHE_INODE_GC,
-                       "----->>>>>>>> DIR GC : Garbage collection on dir entry %p",
-                       pentry);
-              return cache_inode_gc_suppress_directory(pentry, pgcparam);
-            }
-          else
-            LogFullDebug(COMPONENT_CACHE_INODE_GC,
-                         "No garbage on dir entry %p used:%d allocated:%d %d",
-                         pentry, (int)(current_time - entry_time),
-                         (int)(current_time - allocated),
-                         cache_inode_gc_policy.directory_expiration_delay);
-        }
-      else if((pentry->internal_md.type == REGULAR_FILE
-               || pentry->internal_md.type == SYMBOLIC_LINK)
-              && (cache_inode_gc_policy.file_expiration_delay > 0))
-        {
-          if(current_time - entry_time > cache_inode_gc_policy.file_expiration_delay)
-            {
-              /* Entry should be suppress and tagged invalid */
-              LogMidDebug(COMPONENT_CACHE_INODE_GC,
-                       "----->>>>>> REGULAR/SYMLINK GC : Garbage collection on regular/symlink entry %p",
-                       pentry);
-              return cache_inode_gc_suppress_file(pentry, pgcparam);
-            }
-          else
-            LogFullDebug(COMPONENT_CACHE_INODE_GC,
-                         "No garbage on regular/symlink entry %p used:%d allocated:%d %d",
-                         pentry, (int)(current_time - entry_time),
-                         (int)(current_time - allocated),
-                         cache_inode_gc_policy.file_expiration_delay);
-        }
-    }
-
-  /* Default return, entry is not to be set invalid */
-  return LRU_LIST_DO_NOT_SET_INVALID;
-}                               /* cache_inode_gc_function */
-
 /* @} */
 
 /**
@@ -493,112 +300,6 @@ cache_inode_gc_policy_t cache_inode_get_gc_policy(void)
 {
   return cache_inode_gc_policy;
 }                               /* cache_inode_get_gc_policy */
-
-/**
- *
- * cache_inode_gc: Perform garbbage collection on the ressources managed by a client.
- *
- * Perform garbbage collection on the ressources managed by a client.
- *
- * @param ht      [INOUT] the hashtable used to stored the cache_inode entries.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pstatus [OUT]   returned status.
- *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
- *
- * @see HashTable_GetSize
- * @see LRU_invalidate_by_function
- * @see LRU_gc_invalid
- *
- */
-cache_inode_status_t cache_inode_gc(hash_table_t * ht,
-                                    cache_inode_client_t * pclient,
-                                    cache_inode_status_t * pstatus)
-{
-  cache_inode_param_gc_t gcparam;
-  unsigned int hash_size;
-  unsigned int invalid_before_gc = 0;
-  unsigned int invalid_after_gc = 0;
-
-  /* Set the return default to CACHE_INODE_SUCCESS */
-  *pstatus = CACHE_INODE_SUCCESS;
-
-  /* Is this time to gc ? */
-  if(pclient->call_since_last_gc < cache_inode_gc_policy.nb_call_before_gc)
-    return *pstatus;
-
-  if(time(NULL) - pclient->time_of_last_gc < (int)(cache_inode_gc_policy.run_interval))
-    return *pstatus;
-
-  /* Actual GC will be made */
-  pclient->call_since_last_gc = 0;
-  pclient->time_of_last_gc = time(NULL);
-
-  LogInfo(COMPONENT_CACHE_INODE_GC, "Checking if garbage collection is needed");
-
-  /* 1st ; we get the hash table size to see if garbage is required */
-  hash_size = HashTable_GetSize(ht);
-
-  if(hash_size > cache_inode_gc_policy.hwmark_nb_entries)
-    {
-      /*
-       * Garbage collection is made in several steps
-       *    1- Set the oldest entry as invalid and garbage their contents
-       *    2- Free the invalid entry in the LRU
-       *
-       *    Behaviour: - A directory is garbaged when all its entries are
-       *                 garbaged
-       *
-       */
-
-      gcparam.ht = ht;
-      gcparam.pclient = pclient;
-      gcparam.nb_to_be_purged = hash_size - cache_inode_gc_policy.lwmark_nb_entries;    /* try to purge until lw mark is reached */
-
-      LogInfo(COMPONENT_CACHE_INODE_GC,
-              "Garbage collection started (to be purged=%u, LRU size=%u)",
-              pclient->lru_gc->nb_entry, gcparam.nb_to_be_purged);
-
-      invalid_before_gc = pclient->lru_gc->nb_invalid;
-      if(LRU_invalidate_by_function
-         (pclient->lru_gc, cache_inode_gc_function, (void *)&gcparam)
-         != LRU_LIST_SUCCESS)
-        {
-          *pstatus = CACHE_INODE_LRU_ERROR;
-          return *pstatus;
-        }
-
-      invalid_after_gc = pclient->lru_gc->nb_invalid;
-
-      /* Removes the LRU entries and put them back to the pool */
-      if(LRU_gc_invalid(pclient->lru_gc, NULL) != LRU_LIST_SUCCESS)
-        {
-          *pstatus = CACHE_INODE_LRU_ERROR;
-          return *pstatus;
-        }
-
-      LogInfo(COMPONENT_CACHE_INODE_GC,
-              "Garbage collection finished, %u entries removed",
-              invalid_after_gc - invalid_before_gc);
-
-      *pstatus = CACHE_INODE_SUCCESS;
-    }
-  else
-    {
-      /* no garbage is required, just gets ride of the invalid in tyhe LRU list */
-      /* Removes the LRU entries and put them back to the pool */
-      if(LRU_gc_invalid(pclient->lru_gc, NULL) != LRU_LIST_SUCCESS)
-        {
-          *pstatus = CACHE_INODE_LRU_ERROR;
-          return *pstatus;
-        }
-      else
-        *pstatus = CACHE_INODE_SUCCESS;
-    }
-
-  return *pstatus;
-}                               /* cache_inode_gc */
 
 int cache_inode_gc_fd_func(LRU_entry_t * plru_entry, void *addparam)
 {

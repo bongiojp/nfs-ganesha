@@ -1175,7 +1175,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
   if (pentry_newfile)
       cache_inode_put(pentry_newfile, data->pclient);
-                
+
   return res_OPEN4.status;
 }                               /* nfs41_op_open */
 

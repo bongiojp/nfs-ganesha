@@ -405,7 +405,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
 
   /* XXX we should have already ensured refcount +1 */
   if (cache_inode_lru_readref(pentry) < 1) {
-      LogCrit(COMPONENT_CACHE_INODE, 
+      LogCrit(COMPONENT_CACHE_INODE,
               "%s: refcount invariant violated (entry refcount < 1 after ref)",
               __func__);
   }

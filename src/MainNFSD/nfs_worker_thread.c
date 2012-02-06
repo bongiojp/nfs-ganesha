@@ -2190,14 +2190,6 @@ void *worker_thread(void *IndexArg)
                        "There are %d concurrent garbage collection",
                        nb_current_gc_workers);
 
-          if(cache_inode_gc(pmydata->ht,
-                            &(pmydata->cache_inode_client),
-                            &cache_status) != CACHE_INODE_SUCCESS)
-            {
-              LogCrit(COMPONENT_DISPATCH,
-                      "NFS WORKER: FAILURE: Bad cache_inode garbage collection");
-            }
-
           P(lock_nb_current_gc_workers);
           nb_current_gc_workers -= 1;
           V(lock_nb_current_gc_workers);

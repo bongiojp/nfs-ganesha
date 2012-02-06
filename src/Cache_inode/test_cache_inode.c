@@ -486,13 +486,6 @@ main(int argc, char *argv[])
                gcpol.file_expiration_delay + 2);
   sleep(gcpol.file_expiration_delay + 2);
 
-  if(cache_inode_gc(ht, &client, &cache_status) != CACHE_INODE_SUCCESS)
-    {
-      LogTest( "Error: cache_inode_gc failed");
-      exit(1);
-    }
-  LogTest( "GC performed successfully");
-
   /* Print the Hash Table */
   HashTable_Log(COMPONENT_STDOUT, ht);
 

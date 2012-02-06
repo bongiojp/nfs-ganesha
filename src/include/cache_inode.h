@@ -945,10 +945,6 @@ void cache_inode_release_dirents(cache_entry_t *pentry,
 				 cache_inode_client_t *pclient,
 				 cache_inode_avl_which_t which);
 
-cache_inode_status_t cache_inode_gc(hash_table_t * ht,
-                                    cache_inode_client_t * pclient,
-                                    cache_inode_status_t * pstatus);
-
 cache_inode_status_t cache_inode_gc_fd(cache_inode_client_t * pclient,
                                        cache_inode_status_t * pstatus);
 
@@ -969,11 +965,6 @@ void cache_inode_invalidate_related_dirent( cache_entry_t * pentry,
 
 void cache_inode_invalidate_related_dirents(  cache_entry_t        * pentry,
                                               cache_inode_client_t * pclient);
-
-int cache_inode_gc_suppress_directory(cache_entry_t * pentry,
-                                      cache_inode_param_gc_t * pgcparam);
-int cache_inode_gc_suppress_file(cache_entry_t * pentry,
-                                 cache_inode_param_gc_t * pgcparam);
 
 cache_inode_gc_policy_t cache_inode_get_gc_policy(void);
 void cache_inode_set_gc_policy(cache_inode_gc_policy_t policy);
