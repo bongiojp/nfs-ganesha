@@ -68,7 +68,6 @@
  * @param mode          [IN] mode to be used at file creation
  * @param pcreate_arg   [IN] additional argument for object creation
  * @param pattr         [OUT] attributes for the new object.
- * @param ht            [INOUT] hash table used for the cache.
  * @param pclient       [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext      [IN] FSAL credentials
  * @param pstatus       [OUT] returned status.
@@ -87,7 +86,6 @@ cache_inode_create(cache_entry_t * pentry_parent,
                    fsal_accessmode_t mode,
                    cache_inode_create_arg_t * pcreate_arg,
                    fsal_attrib_list_t * pattr,
-                   hash_table_t * ht,
                    cache_inode_client_t * pclient,
                    fsal_op_context_t * pcontext,
                    cache_inode_status_t * pstatus)
@@ -143,7 +141,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
                   FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_ADD_FILE |
                                      FSAL_ACE_PERM_ADD_SUBDIRECTORY);
     status = cache_inode_access(pentry_parent,
-                                access_mask, ht,
+                                access_mask,
                                 pclient, pcontext, &status);
     if (status != CACHE_INODE_SUCCESS)
         {
@@ -159,14 +157,13 @@ cache_inode_create(cache_entry_t * pentry_parent,
      * Check if an entry of the same name exists
      */
     pentry = cache_inode_lookup( pentry_parent,
-                                 pname, 
+                                 pname,
                                  policy,
                                  &object_attributes,
-                                 ht, 
-                                 pclient, 
-                                 pcontext, 
+                                 pclient,
+                                 pcontext,
                                  pstatus,
-				 CACHE_INODE_FLAG_EXREF);
+                                 CACHE_INODE_FLAG_EXREF);
     if (pentry != NULL)
         {
             *pstatus = CACHE_INODE_ENTRY_EXISTS;
@@ -334,7 +331,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
                              "cache_inode_create: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                              pentry_parent, fsal_status.major, fsal_status.minor);
 
-                    cache_inode_kill_entry(pentry_parent, NO_LOCK, ht,
+                    cache_inode_kill_entry(pentry_parent, NO_LOCK,
                                            pclient, &kill_status);
                     if(kill_status != CACHE_INODE_SUCCESS)
                         LogCrit(COMPONENT_CACHE_INODE,
@@ -359,13 +356,12 @@ cache_inode_create(cache_entry_t * pentry_parent,
 				     FSAL_DIGEST_SIZEOF,
 				     &fsal_data.fh_desc);
 
-            pentry = cache_inode_new_entry( &fsal_data, 
+            pentry = cache_inode_new_entry( &fsal_data,
                                             &object_attributes,
                                             type,
                                             policy,
                                             pcreate_arg, NULL,
-                                            ht, 
-                                            pclient, 
+                                            pclient,
                                             pcontext,
                                             CACHE_INODE_FLAG_CREATE | CACHE_INODE_FLAG_EXREF, /* This is a creation and not a population */
                                             pstatus);
@@ -387,10 +383,9 @@ cache_inode_create(cache_entry_t * pentry_parent,
             /* Add this entry to the directory (also takes an internal ref) */
             status = cache_inode_add_cached_dirent(pentry_parent,
                                                    pname, pentry,
-                                                   ht,
-						   &new_dir_entry,
+                                                   &new_dir_entry,
                                                    pclient,
-						   pcontext,
+                                                   pcontext,
                                                    pstatus);
             if (status != CACHE_INODE_SUCCESS)
                 {
@@ -445,7 +440,6 @@ cache_inode_create(cache_entry_t * pentry_parent,
  * @param openflags     [IN] flags to be used during file open
  * @param pcreate_arg   [IN] additional argument for object creation
  * @param pattr         [OUT] attributes for the new object.
- * @param ht            [INOUT] hash table used for the cache.
  * @param pclient       [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext      [IN] FSAL credentials
  * @param pstatus       [OUT] returned status.
@@ -465,7 +459,6 @@ cache_inode_create_open(cache_entry_t * pentry_parent,
                         cache_inode_create_arg_t * pcreate_arg,
                         fsal_openflags_t openflags,
                         fsal_attrib_list_t * pattr,
-                        hash_table_t * ht,
                         cache_inode_client_t * pclient,
                         fsal_op_context_t * pcontext,
                         cache_inode_status_t * pstatus)

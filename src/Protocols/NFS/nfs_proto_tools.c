@@ -155,7 +155,6 @@ void nfs_FhandleToStr(u_long     rq_vers,
  * @param pattr    [OUT]   FSAL attributes related to this cache entry
  * @param pcontext    [IN]    client's FSAL credentials
  * @param pclient  [IN]    client's ressources to be used for accessing the Cache Inode
- * @param ht       [INOUT] Hash Table used to address the Cache Inode 
  * @param prc      [OUT]   internal status for the request (NFS_REQ_DROP or NFS_REQ_OK)
  *
  * @return a pointer to the related pentry if successful, NULL is returned in case of a failure.
@@ -171,7 +170,7 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
                                   fsal_attrib_list_t * pattr,
                                   fsal_op_context_t * pcontext,
                                   cache_inode_client_t * pclient,
-                                  hash_table_t * ht, int *prc)
+                                  int *prc)
 {
   cache_inode_fsal_data_t fsal_data;
   cache_inode_status_t cache_status;
@@ -245,7 +244,7 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
 
   if((pentry = cache_inode_get(&fsal_data,
                                pexport->cache_inode_policy,
-                               &attr, ht, pclient, pcontext, &cache_status)) == NULL)
+                               &attr, pclient, pcontext, &cache_status)) == NULL)
     {
       switch (rq_vers)
         {

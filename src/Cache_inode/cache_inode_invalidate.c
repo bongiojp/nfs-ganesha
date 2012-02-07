@@ -79,7 +79,6 @@
  */
 cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle,
                                              fsal_attrib_list_t   * pattr,
-                                             hash_table_t         * ht,
                                              cache_inode_client_t * pclient,
                                              cache_inode_status_t * pstatus)
 {
@@ -90,7 +89,7 @@ cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle
   void *htoken;
   int rc = 0 ;
 
-  if( pstatus == NULL || pattr == NULL || pclient == NULL || ht == NULL || pfsal_handle == NULL ) 
+  if( pstatus == NULL || pattr == NULL || pclient == NULL || pfsal_handle == NULL ) 
     return CACHE_INODE_INVALID_ARGUMENT ;
 
   /* Locate the entry in the cache */
@@ -105,7 +104,7 @@ cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle
   key.len = fsal_data.fh_desc.len;
 
   /* Search the cache for an entry with the related fsal_handle */
-  if( ( rc = HashTable_GetEx(ht,
+  if( ( rc = HashTable_GetEx(fh_to_cache_entry_ht,
                              &key,
                              &value,
                              &htoken) ) == HASHTABLE_ERROR_NO_SUCH_KEY )
@@ -122,13 +121,13 @@ cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle
        return *pstatus ;
    }
 
-  /* At this point, we are sure that an entry has been found.  Also, htoken
-   * implies a reader lock on a portion of HashTable ht.  This ensures atomicity
-   * for the following ref of pentry. */
+  /* At this point, we are sure that an entry has been found.  Also,
+   * htoken implies a reader lock on a portion of HashTable ht.  This
+   * ensures atomicity for the following ref of pentry. */
   pentry = (cache_entry_t *)value.pdata;
   cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
                       "cache_inode_invalidate");
-  HashTable_Release(ht, htoken);
+  HashTable_Release(fh_to_cache_entry_ht, htoken);
 
   /* Never invalidate an entry that holds states */
   if( cache_inode_file_holds_state( pentry ) )
@@ -143,7 +142,7 @@ cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle
 
   /* pentry is lock, I call cache_inode_kill_entry with 'locked' flag set */
   P_w( &pentry->lock );
-  *pstatus = cache_inode_kill_entry( pentry, WT_LOCK, ht, pclient, pstatus );
+  *pstatus = cache_inode_kill_entry( pentry, WT_LOCK, pclient, pstatus );
 
   /* we still hold an extra ref */
   cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,

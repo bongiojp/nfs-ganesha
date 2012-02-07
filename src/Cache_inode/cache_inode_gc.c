@@ -349,7 +349,6 @@ cache_inode_status_t cache_inode_gc_fd(cache_inode_client_t * pclient,
   if(time(NULL) - pclient->time_of_last_gc_fd < pclient->retention)
     return *pstatus;
 
-  gcparam.ht = NULL;            /* not used */
   gcparam.pclient = pclient;
   gcparam.nb_to_be_purged = pclient->max_fd;
 

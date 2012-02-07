@@ -71,9 +71,6 @@ static log_t log_desc_cache = LOG_INITIALIZER;
 /** Global variable: root pentry */
 static cache_entry_t *pentry_root;
 
-/** Global (exported) variable : The cache hash table */
-hash_table_t *ht;
-
 static int cache_init = FALSE;
 
 /** Global variable : the garbagge policy to be used */
@@ -86,6 +83,7 @@ static cache_inode_policy_t cachepol = CACHE_INODE_POLICY_ATTRS_ONLY_WRITE_THROU
 /** Global (exported) variable : init parameters for clients. */
 cache_inode_client_parameter_t cache_client_param;
 cache_content_client_parameter_t datacache_client_param;
+hash_table_t *fh_to_cache_entry_ht = NULL;
 
 typedef struct cmdCacheInode_thr_info__
 {
@@ -395,7 +393,6 @@ int cache_solvepath(char *io_global_path, int size_global_path, /* global path *
       if((pentry_tmp = cache_inode_get(&fsdata,
                                        cachepol,
                                        &attrlookup,
-                                       ht,
                                        &context->client,
                                        &context->context,
                                        &context->cache_status)) == NULL)
@@ -464,7 +461,6 @@ int cache_solvepath(char *io_global_path, int size_global_path, /* global path *
                                           &name,
                                           cachepol,
                                           &attrlookup,
-                                          ht,
                                           &context->client,
                                           &context->context,
                                           &context->cache_status,
@@ -578,13 +574,14 @@ int cacheinode_init(char *filename, int flag_v, FILE * output)
   if(flag_v)
     cache_inode_print_conf_hash_parameter(output, cache_param);
 
-  if((ht = cache_inode_init(cache_param, &context->cache_status)) == NULL)
+  if((fh_to_cache_entry_ht = cache_inode_init(cache_param, &context->cache_status)) == NULL)
     {
       fprintf(output, "Error %d while init hash\n ", context->cache_status);
       return 1;
     }
   else if(flag_v)
-    fprintf(output, "\tHash Table address = %p\n", ht);
+    fprintf(output, "\tHash Table address = %p\n",
+            fh_to_cache_entry_ht);
 
   /* Get the gc policy */
   rc = cache_inode_read_conf_gc_policy(config_file, &gcpol);
@@ -771,7 +768,6 @@ if(FSAL_IS_ERROR(status = FSAL_str2path("/xfs", FSAL_MAX_PATH_LEN, &pathroot)))
 
   if((context->pentry = cache_inode_make_root(&fsdata,
                                               cachepol,
-                                              ht, 
                                               &context->client,
                                               &context->context,
                                               &context->cache_status)) == NULL)
@@ -822,7 +818,7 @@ int fn_Cache_inode_cache_init(int argc, /* IN : number of args in argv */
       "usage: init_cache [options] <ganesha_config_file>\n"
       "options :\n" "\t-h print this help\n" "\t-v verbose mode\n";
 
-  if(ht != NULL)
+  if(fh_to_cache_entry_ht != NULL)
     {
       fprintf(output, "\tCache_inode is already initialized\n");
       return 0;
@@ -958,7 +954,6 @@ int fn_Cache_inode_cd(int argc, /* IN : number of args in argv */
 
   if((context->cache_status = cache_inode_access(new_pentry,
                                                  FSAL_X_OK,
-                                                 ht,
                                                  &context->client,
                                                  &context->context,
                                                  &context->cache_status)) !=
@@ -1063,7 +1058,6 @@ int fn_Cache_inode_stat(int argc,       /* IN : number of args in argv */
   /* Get the attributes */
   if(cache_inode_getattr(pentry_stat,
                          &attrs,
-                         ht,
                          &context->client,
                          &context->context,
                          &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -1346,7 +1340,6 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
         {
           if(cache_inode_readlink(pentry_tmp,
                                   &symlink_path,
-                                  ht,
                                   &context->client,
                                   &context->context,
                                   &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -1361,7 +1354,6 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
 
       if(cache_inode_getattr(pentry_tmp,
                              &attrs,
-                             ht,
                              &context->client,
                              &context->context,
                              &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -1448,7 +1440,6 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
                              &end_cookie,
                              &eod_met,
                              dirent_array,
-                             ht,
                              &dir_pentry_unlock,
                              &context->client,
                              &context->context,
@@ -1481,7 +1472,6 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
             {
               if(cache_inode_readlink(dirent_array[i]->pentry,
                                       &symlink_path,
-                                      ht,
                                       &context->client,
                                       &context->context,
                                       &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -1498,7 +1488,6 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
             {
               if(cache_inode_getattr(dirent_array[i]->pentry,
                                      &attrs,
-                                     ht,
                                      &context->client,
                                      &context->context,
                                      &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -1517,7 +1506,6 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
               fprintf(output, "%s :\n", item_path);
               if(cache_inode_getattr(dirent_array[i]->pentry,
                                      &attrs,
-                                     ht,
                                      &context->client,
                                      &context->context,
                                      &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -1628,7 +1616,7 @@ int fn_Cache_inode_callstat(int argc,   /* IN : number of args in argv */
           "------------------------------------------------------------------------------\n");
 
   /* Statistics for the HashTable */
-  HashTable_GetStats(ht, &hstat);
+  HashTable_GetStats(fh_to_cache_entry_ht, &hstat);
   fprintf(output, "Operation            |     ok      |    err      |   notfound  \n");
   fprintf(output, "Set                  | %11u | %11u | %11u \n",
           hstat.dynamic.ok.nb_set, hstat.dynamic.err.nb_set,
@@ -1646,7 +1634,7 @@ int fn_Cache_inode_callstat(int argc,   /* IN : number of args in argv */
           hstat.dynamic.nb_entries);
   fprintf(output,
           "index_size=%d  min_rbt_num_node=%d  max_rbt_num_node=%d average_rbt_num_node=%d\n",
-          ht->parameter.index_size, hstat.computed.min_rbt_num_node,
+          fh_to_cache_entry_ht->parameter.index_size, hstat.computed.min_rbt_num_node,
           hstat.computed.max_rbt_num_node, hstat.computed.average_rbt_num_node);
   fprintf(output,
           "------------------------------------------------------------------------------\n");
@@ -1830,7 +1818,6 @@ int fn_Cache_inode_mkdir(int argc,      /* IN : number of args in argv */
                                   fsalmode,
                                   NULL,
                                   &attrmkdir,
-                                  ht,
                                   &context->client,
                                   &context->context, &context->cache_status);
 
@@ -1980,7 +1967,6 @@ int fn_Cache_inode_link(int argc,       /* IN : number of args in argv */
                       &link_name,
                       cachepol,
                       &attrlink,
-                      ht,
                       &context->client,
                       &context->context, &context->cache_status) != CACHE_INODE_SUCCESS)
     {
@@ -2135,7 +2121,6 @@ int fn_Cache_inode_ln(int argc, /* IN : number of args in argv */
                                       fsalmode,
                                       &create_arg,
                                       &attrsymlink,
-                                      ht,
                                       &context->client,
                                       &context->context, &context->cache_status)) == NULL)
     {
@@ -2324,7 +2309,6 @@ int fn_Cache_inode_create(int argc,     /* IN : number of args in argv */
                                       fsalmode,
                                       NULL,
                                       &attrcreate,
-                                      ht,
                                       &context->client,
                                       &context->context, &context->cache_status)) == NULL)
     {
@@ -2490,7 +2474,6 @@ int fn_Cache_inode_rename(int argc,     /* IN : number of args in argv */
                         &tgt_name,
                         &attrsrc,
                         &attrdest,
-                        ht,
                         &context->client,
                         &context->context, &context->cache_status) != CACHE_INODE_SUCCESS)
     {
@@ -2627,7 +2610,7 @@ int fn_Cache_inode_unlink(int argc,     /* IN : number of args in argv */
   cache_inode_remove(new_hdl,
                      &objname,
                      &attrparent,
-                     ht, &context->client, &context->context, &context->cache_status);
+                     &context->client, &context->context, &context->cache_status);
   if(context->cache_status != CACHE_INODE_SUCCESS)
     {
       log_fprintf(output, "Error executing cache_inode_remove : %J%r\n",
@@ -2817,7 +2800,6 @@ int fn_Cache_inode_setattr(int argc,    /* IN : number of args in argv */
   /* executes set attrs */
   if((cache_status = cache_inode_setattr(obj_hdl,
                                          &set_attrs,
-                                         ht,
                                          &context->client,
                                          &context->context,
                                          &context->cache_status)) != CACHE_INODE_SUCCESS)
@@ -2992,7 +2974,6 @@ int fn_Cache_inode_access(int argc,     /* IN : number of args in argv */
 
   if((context->cache_status = cache_inode_access(obj_hdl,
                                                  test_perms,
-                                                 ht,
                                                  &context->client,
                                                  &context->context,
                                                  &context->cache_status)) !=
@@ -3135,7 +3116,7 @@ int fn_Cache_inode_data_cache(int argc, /* IN : number of args in argv */
   if(flag_v)
     printf("---> data_cache using pentry_inode = %p\n", obj_hdl);
 
-  if(cache_inode_add_data_cache(obj_hdl, ht, &context->client, &context->context,
+  if(cache_inode_add_data_cache(obj_hdl, &context->client, &context->context,
                                 &context->cache_status) != CACHE_INODE_SUCCESS)
     {
       log_fprintf(output, "Error executing cache_inode_add_cache : %J%r\n",
@@ -3248,7 +3229,7 @@ int fn_Cache_inode_release_cache(int argc,      /* IN : number of args in argv *
     return rc;
 
   if(cache_inode_release_data_cache
-     (obj_hdl, ht, &context->client, &context->context,
+     (obj_hdl, &context->client, &context->context,
       &context->cache_status) != CACHE_INODE_SUCCESS)
     {
       log_fprintf(output, "Error executing cache_inode_release_cache : %J%r\n",
@@ -3347,7 +3328,7 @@ int fn_Cache_inode_recover_cache(int argc,      /* IN : number of args in argv *
                                  0,
                                  1,
                                  (cache_content_client_t *) context->client.
-                                 pcontent_client, &context->client, ht, &context->context,
+                                 pcontent_client, &context->client, &context->context,
                                  &cache_content_status) != CACHE_CONTENT_SUCCESS)
     {
       fprintf(output, "Error executing cache_content_crash_recover: %d\n",
@@ -3947,7 +3928,6 @@ int fn_Cache_inode_read(int argc,       /* IN : number of args in argv */
                           &fsal_attr,
                           (caddr_t) p_read_buff,
                           &is_eof,
-                          ht,
                           &context->client,
                           &context->context,
                           TRUE, &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -4407,7 +4387,6 @@ int fn_Cache_inode_write(int argc,      /* IN : number of args in argv */
                           &fsal_attr,
                           (caddr_t) databuff,
                           &fsal_eof,
-                          ht,
                           &context->client,
                           &context->context,
                           TRUE, &context->cache_status) != CACHE_INODE_SUCCESS)
@@ -4611,7 +4590,6 @@ int fn_Cache_inode_open_by_name(int argc,       /* IN : number of args in argv *
                                        &filename,
                                        cachepol,
                                        &file_attr,
-                                       ht,
                                        &context->client,
                                        &context->context,
                                        &context->cache_status,
@@ -4878,7 +4856,6 @@ int fn_Cache_inode_invalidate(int argc,      /* IN : number of args in argv */
 
   if( ( context->cache_status = cache_inode_invalidate( pfsal_handle,
                                                         &attr,
-                                                        ht,
                                                         &context->client,
                                                         &context->cache_status) ) != CACHE_INODE_SUCCESS )
     {

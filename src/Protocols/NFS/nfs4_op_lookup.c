@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -66,7 +66,7 @@
 
 /**
  * nfs4_op_lookup: looks up into theFSAL.
- * 
+ *
  * looks up into the FSAL. If a junction is crossed, does what is necessary.
  *
  * @param op    [IN]    pointer to nfs4_op arguments
@@ -74,7 +74,7 @@
  * @param resp  [IN]    Pointer to nfs4_op results
  *
  * @return NFS4_OK if successfull, other values show an error.  
- * 
+ *
  */
 #define arg_LOOKUP4 op->nfs_argop4_u.oplookup
 #define res_LOOKUP4 resp->nfs_resop4_u.oplookup
@@ -197,7 +197,6 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
                                        &name,
                                        data->pexport->cache_inode_policy,
                                        &attrlookup,
-                                       data->ht,
                                        data->pclient,
                                        data->pcontext, &cache_status,
                                        CACHE_INODE_FLAG_NONE)) != NULL)

@@ -47,7 +47,6 @@ extern int in_nlm_grace_period(void);
  * exclusive:    TRUE if lock is a write lock
  * alock:        nlm4_lock request structure
  * plock:        cache_lock_desc_t to fill in from alock
- * ht:           The cache inode hash table used to find cache inode entries
  * ppentry:      cache inode entry pointer to fill in
  * pcontext:     FSAL op context
  * pclient:      cache inode client
@@ -61,7 +60,6 @@ int nlm_process_parameters(struct svc_req        * preq,
                            bool_t                  exclusive,
                            nlm4_lock             * alock,
                            fsal_lock_param_t     * plock,
-                           hash_table_t          * ht,
                            cache_entry_t        ** ppentry,
                            fsal_op_context_t     * pcontext,
                            cache_inode_client_t  * pclient,

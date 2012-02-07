@@ -75,7 +75,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -89,7 +88,7 @@ int nfs_Create(nfs_arg_t * parg,
                exportlist_t * pexport,
                fsal_op_context_t * pcontext,
                cache_inode_client_t * pclient,
-               hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+               struct svc_req *preq, nfs_res_t * pres)
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Create";
 
@@ -139,7 +138,7 @@ int nfs_Create(nfs_arg_t * parg,
 
   if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_create3.where.dir))))
     {
-      rc = nfs3_Create_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+      rc = nfs3_Create_Xattr(parg, pexport, pcontext, pclient, preq, pres);
       goto out;
     }
 
@@ -159,7 +158,7 @@ int nfs_Create(nfs_arg_t * parg,
                                          &(pres->res_create3.status),
                                          NULL,
                                          &parent_attr,
-                                         pcontext, pclient, ht, &rc)) == NULL)
+                                         pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -276,7 +275,6 @@ int nfs_Create(nfs_arg_t * parg,
                                            &file_name,
                                            pexport->cache_inode_policy,
                                            &attr,
-                                           ht,
                                            pclient,
                                            pcontext,
                                            &cache_status_lookup,
@@ -302,7 +300,7 @@ int nfs_Create(nfs_arg_t * parg,
                                                  mode,
                                                  NULL,
                                                  &attr_newfile,
-                                                 ht, pclient, pcontext, &cache_status);
+                                                 pclient, pcontext, &cache_status);
 
               if(file_pentry != NULL)
                 {
@@ -358,7 +356,6 @@ int nfs_Create(nfs_arg_t * parg,
                       /* A call to cache_inode_setattr is required */
                       if(cache_inode_setattr(file_pentry,
                                              &attributes_create,
-                                             ht,
                                              pclient,
                                              pcontext,
                                              &cache_status) != CACHE_INODE_SUCCESS)
@@ -387,7 +384,6 @@ int nfs_Create(nfs_arg_t * parg,
                       /* Get the resulting attributes from the Cache Inode */
                       if(cache_inode_getattr(file_pentry,
                                              &attr_newfile,
-                                             ht,
                                              pclient,
                                              pcontext,
                                              &cache_status) != CACHE_INODE_SUCCESS)

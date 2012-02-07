@@ -66,7 +66,6 @@
  *
  * @param pentry [IN] entry to be managed.
  * @param pattr [OUT] pointer to the results
- * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
@@ -78,7 +77,6 @@
 cache_inode_status_t
 cache_inode_getattr(cache_entry_t * pentry,
                     fsal_attrib_list_t * pattr,
-                    hash_table_t * ht, /* Unused, kept for protototype's homogeneity */
                     cache_inode_client_t * pclient,
                     fsal_op_context_t * pcontext,
                     cache_inode_status_t * pstatus)
@@ -88,8 +86,7 @@ cache_inode_getattr(cache_entry_t * pentry,
     fsal_status_t fsal_status;
 
     /* sanity check */
-    if(pentry == NULL || pattr == NULL ||
-       ht == NULL || pclient == NULL || pcontext == NULL)
+    if(pentry == NULL || pattr == NULL || pclient == NULL || pcontext == NULL)
         {
             *pstatus = CACHE_INODE_INVALID_ARGUMENT;
             LogDebug(COMPONENT_CACHE_INODE,
@@ -106,7 +103,7 @@ cache_inode_getattr(cache_entry_t * pentry,
 
     /* Lock the entry */
     P_w(&pentry->lock);
-    status = cache_inode_renew_entry(pentry, pattr, ht,
+    status = cache_inode_renew_entry(pentry, pattr,
                                      pclient, pcontext, pstatus);
     if(status != CACHE_INODE_SUCCESS)
         {
@@ -163,7 +160,7 @@ cache_inode_getattr(cache_entry_t * pentry,
                                      pentry, fsal_status.major, fsal_status.minor);
 
                             /* Locked flag is set to true to show entry has a read lock */
-                            cache_inode_kill_entry( pentry, WT_LOCK, ht,
+                            cache_inode_kill_entry( pentry, WT_LOCK,
                                                     pclient, &kill_status);
                             if(kill_status != CACHE_INODE_SUCCESS)
                                 LogCrit(COMPONENT_CACHE_INODE,

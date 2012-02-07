@@ -72,7 +72,6 @@
  * @param pio_size [OUT] the size of the io that was successfully made.
  * @param pfsal_attr [OUT] the FSAL attributes after the operation.
  * @param buffer write:[IN] read:[OUT] the buffer for the data.
- * @param ht [INOUT] the hashtable used for managing the cache.
  * @param pclient [IN]  ressource allocated by the client for the nfs management.
  * @param pcontext [IN] fsal context for the operation.
  * @pstatus [OUT] returned status.
@@ -88,7 +87,6 @@ cache_inode_commit(cache_entry_t * pentry,
                    uint64_t offset,
                    fsal_size_t count,
                    fsal_attrib_list_t * pfsal_attr,
-                   hash_table_t * ht,
                    cache_inode_client_t * pclient,
                    fsal_op_context_t * pcontext,
                    uint64_t typeofcommit,
@@ -194,7 +192,7 @@ cache_inode_commit(cache_entry_t * pentry,
                                       CACHE_INODE_WRITE,
                                       &seek_descriptor, udata->length,
                                       &size_io_done, pfsal_attr,
-                                      udata->buffer, &eof, ht,
+                                      udata->buffer, &eof,
                                       pclient, pcontext, TRUE, pstatus);
             if (status != CACHE_INODE_SUCCESS)
                 return *pstatus;
@@ -224,7 +222,7 @@ cache_inode_commit(cache_entry_t * pentry,
                                     &size_io_done,
                                     pfsal_attr,
                                     (char *)(udata->buffer + offset - udata->offset),
-                                    &eof, ht, pclient,
+                                    &eof, pclient,
                                     pcontext, TRUE, pstatus);
     }
   /* Regulat exit */

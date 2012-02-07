@@ -774,14 +774,14 @@ int HashTable_GetEx(hash_table_t *ht, hash_buffer_t *buffkey,
     return HashTable_GetRef(ht, buffkey, buffval, NULL, htoken);
 }                               /* HashTable_Get */
 
-int HashTable_Release(hash_table_t *ht, void *htoken)
+void HashTable_Release(hash_table_t *ht, void *htoken)
 {
   if (htoken)
       V_r((rw_lock_t *) htoken);
 }
 
 /**
- * 
+ *
  * HashTable_Get_and_Del: Try to retrieve the value associated with a key and remove from the hash table if found.
  *
  * Try to retrieve the value associated with a key. The structure buffval will point to the object found if successfull.

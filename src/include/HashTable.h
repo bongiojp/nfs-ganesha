@@ -144,7 +144,7 @@ int HashTable_Test_And_Set(hash_table_t * ht, hash_buffer_t * buffkey,
 int HashTable_Get(hash_table_t *ht, hash_buffer_t *buffkey,
                   hash_buffer_t *buffval);
 int HashTable_GetEx(hash_table_t *ht, hash_buffer_t *buffkey, hash_buffer_t *buffval, void **token);
-int HashTable_Release(hash_table_t *ht, void *token);
+void HashTable_Release(hash_table_t *ht, void *token);
 
 int HashTable_Del(hash_table_t * ht, hash_buffer_t * buffkey,
                   hash_buffer_t * p_usedbuffkey, hash_buffer_t * p_usedbuffdata);

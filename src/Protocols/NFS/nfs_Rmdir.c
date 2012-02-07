@@ -73,7 +73,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -87,7 +86,6 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
               exportlist_t * pexport /* IN  */ ,
               fsal_op_context_t * pcontext /* IN  */ ,
               cache_inode_client_t * pclient /* IN  */ ,
-              hash_table_t * ht /* INOUT */ ,
               struct svc_req *preq /* IN  */ ,
               nfs_res_t * pres /* OUT */ )
 {
@@ -145,7 +143,7 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                                          &(pres->res_rmdir3.status),
                                          NULL,
                                          &pre_parent_attr,
-                                         pcontext, pclient, ht, &rc)) == NULL)
+                                         pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -208,7 +206,6 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                                                 &name,
                                                 pexport->cache_inode_policy,
                                                 &pentry_child_attr,
-                                                ht,
                                                 pclient,
                                                 pcontext,
                                                 &cache_status,
@@ -244,7 +241,6 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
               if(cache_inode_remove(parent_pentry,
                                     &name,
                                     &parent_attr,
-                                    ht,
                                     pclient,
                                     pcontext, &cache_status) == CACHE_INODE_SUCCESS)
                 {

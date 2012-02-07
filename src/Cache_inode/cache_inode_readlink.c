@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -55,7 +55,8 @@
 #include <pthread.h>
 #include <assert.h>
 
-cache_inode_status_t cache_inode_readlink(cache_entry_t * pentry, fsal_path_t * plink_content, hash_table_t * ht,       /* Unused, kept for protototype's homogeneity */
+cache_inode_status_t cache_inode_readlink(cache_entry_t * pentry,
+                                          fsal_path_t * plink_content,
                                           cache_inode_client_t * pclient,
                                           fsal_op_context_t * pcontext,
                                           cache_inode_status_t * pstatus)
@@ -72,7 +73,7 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t * pentry, fsal_path_t * 
 
   /* Lock the entry */
   P_w(&pentry->lock);
-  if(cache_inode_renew_entry(pentry, NULL, ht, pclient, pcontext, pstatus) !=
+  if(cache_inode_renew_entry(pentry, NULL, pclient, pcontext, pstatus) !=
      CACHE_INODE_SUCCESS)
     {
       (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READLINK])++;
@@ -127,7 +128,7 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t * pentry, fsal_path_t * 
                        "cache_inode_readlink: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                        pentry, fsal_status.major, fsal_status.minor);
 
-              if(cache_inode_kill_entry(pentry, NO_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_readlink: Could not kill entry %p, status = %u",

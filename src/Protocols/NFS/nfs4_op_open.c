@@ -205,7 +205,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                                    &attr,
                                                    data->pcontext,
                                                    data->pclient,
-                                                   data->ht, &retval)) == NULL)
+                                                   &retval)) == NULL)
         {
           res_OPEN4.status = NFS4ERR_RESOURCE;
           LogDebug(COMPONENT_STATE,
@@ -422,7 +422,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
       /* Status of parent directory before the operation */
       if(cache_inode_getattr(pentry_parent,
                              &attr_parent,
-                             data->ht,
                              data->pclient,
                              data->pcontext,
                              &cache_status) != CACHE_INODE_SUCCESS)
@@ -486,7 +485,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                              &filename,
                                              data->pexport->cache_inode_policy,
                                              &attr_newfile,
-                                             data->ht,
                                              data->pclient,
                                              data->pcontext,
                                              &cache_status,
@@ -704,7 +702,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                                   mode,
                                                   NULL,
                                                   &attr_newfile,
-                                                  data->ht,
                                                   data->pclient,
                                                   data->pcontext, &cache_status)) == NULL)
             {
@@ -729,7 +726,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
             {
               if((cache_status = cache_inode_setattr(pentry_newfile,
                                                      &sattr,
-                                                     data->ht,
                                                      data->pclient,
                                                      data->pcontext,
                                                      &cache_status)) !=
@@ -772,7 +768,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                                   &filename,
                                                   data->pexport->cache_inode_policy,
                                                   &attr_newfile,
-                                                  data->ht,
                                                   data->pclient,
                                                   data->pcontext,
                                                   &cache_status,
@@ -983,7 +978,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
   /* Status of parent directory after the operation */
   if((cache_status = cache_inode_getattr(pentry_parent,
                                          &attr_parent,
-                                         data->ht,
                                          data->pclient,
                                          data->pcontext,
                                          &cache_status)) != CACHE_INODE_SUCCESS)
@@ -1142,7 +1136,7 @@ nfs4_chk_shrdny(struct nfs_argop4 *op, compound_data_t *data,
         /* If the file is opened for write, OPEN4 while deny share write access,
          * in this case, check caller has write access to the file */
         if(args->share_deny & OPEN4_SHARE_DENY_WRITE) {
-                if(cache_inode_access(pentry, wr_acc, data->ht, data->pclient,
+                if(cache_inode_access(pentry, wr_acc, data->pclient,
                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS) {
                         return NFS4ERR_ACCESS;
                 }
@@ -1152,7 +1146,7 @@ nfs4_chk_shrdny(struct nfs_argop4 *op, compound_data_t *data,
         /* Same check on read: check for readability of a file before opening
          * it for read */
         if(args->share_access & OPEN4_SHARE_ACCESS_READ) {
-                if(cache_inode_access(pentry, rd_acc, data->ht, data->pclient,
+                if(cache_inode_access(pentry, rd_acc, data->pclient,
                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS) {
                         return NFS4ERR_ACCESS;
                 }
@@ -1160,7 +1154,7 @@ nfs4_chk_shrdny(struct nfs_argop4 *op, compound_data_t *data,
         }
 
         if(AttrProvided == TRUE) {      /* Set the attribute if provided */
-                if(cache_inode_setattr(pentry, sattr, data->ht, data->pclient,
+                if(cache_inode_setattr(pentry, sattr, data->pclient,
                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS) {
                         return nfs4_Errno(cache_status);
                 }
@@ -1174,7 +1168,7 @@ nfs4_chk_shrdny(struct nfs_argop4 *op, compound_data_t *data,
 
         /* Same check on write */
         if(args->share_access & OPEN4_SHARE_ACCESS_WRITE) {
-                if(cache_inode_access(pentry, wr_acc, data->ht, data->pclient,
+                if(cache_inode_access(pentry, wr_acc, data->pclient,
                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS) {
                           return NFS4ERR_ACCESS;
                 }

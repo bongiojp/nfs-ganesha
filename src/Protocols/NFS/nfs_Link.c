@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -75,7 +75,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -89,7 +88,7 @@ int nfs_Link(nfs_arg_t * parg,
              exportlist_t * pexport,
              fsal_op_context_t * pcontext,
              cache_inode_client_t * pclient,
-             hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+             struct svc_req *preq, nfs_res_t * pres)
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Link";
 
@@ -157,7 +156,7 @@ int nfs_Link(nfs_arg_t * parg,
                                          &(pres->res_link3.status),
                                          NULL,
                                          &parent_attr,
-                                         pcontext, pclient, ht, &rc)) == NULL)
+                                         pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -172,7 +171,7 @@ int nfs_Link(nfs_arg_t * parg,
                                          &(pres->res_link3.status),
                                          NULL,
                                          &target_attr,
-                                         pcontext, pclient, ht, &rc)) == NULL)
+                                         pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;;
@@ -251,13 +250,11 @@ int nfs_Link(nfs_arg_t * parg,
                                   &link_name,
                                   pexport->cache_inode_policy,
                                   &attr,
-                                  ht,
                                   pclient,
                                   pcontext, &cache_status) == CACHE_INODE_SUCCESS)
                 {
                   if(cache_inode_getattr(parent_pentry,
                                          &attr_parent_after,
-                                         ht,
                                          pclient,
                                          pcontext, &cache_status) == CACHE_INODE_SUCCESS)
                     {

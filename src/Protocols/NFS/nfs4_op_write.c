@@ -312,7 +312,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
     {
       if(cache_inode_access(pentry,
                             FSAL_WRITE_ACCESS,
-                            data->ht,
                             data->pclient,
                             data->pcontext,
                             &cache_status) != CACHE_INODE_SUCCESS)
@@ -388,7 +387,7 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       datapol.MaxCacheSize = data->pexport->MaxCacheSize;
 
       /* Status is set in last argument */
-      cache_inode_add_data_cache(pentry, data->ht, data->pclient, data->pcontext,
+      cache_inode_add_data_cache(pentry, data->pclient, data->pcontext,
                                  &cache_status);
 
       if((cache_status != CACHE_INODE_SUCCESS) &&
@@ -423,7 +422,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                       &attr,
                       bufferdata,
                       &eof_met,
-                      data->ht,
                       data->pclient,
                       data->pcontext, stable_flag, &cache_status) != CACHE_INODE_SUCCESS)
     {

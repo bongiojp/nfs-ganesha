@@ -68,7 +68,6 @@
  *
  * @param pentry  [IN] the input pentry (supposed to be staled).
  * @param locked  [IN] tells in the entry was previously locked and how it was locked
- * @param ht      [INOUT] the related hash table for the cache_inode cache.
  * @param pclient [INOUT] related cache_inode client.
  * @param pstatus [OUT] status for the operation.
  *
@@ -97,8 +96,7 @@ static void free_lock( cache_entry_t          * pentry,
 }
 
 cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
-                                             cache_inode_lock_how_t   lock_how,  
-                                             hash_table_t           * ht,
+                                             cache_inode_lock_how_t   lock_how,
                                              cache_inode_client_t   * pclient,
                                              cache_inode_status_t   * pstatus )
 {
@@ -123,7 +121,7 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
       ( pentry->internal_md.type == CHARACTER_FILE ) ||
       ( pentry->internal_md.type == BLOCK_FILE ) )
    {
-     free_lock( pentry, lock_how ) ; 
+     free_lock( pentry, lock_how ) ;
 
      *pstatus = CACHE_INODE_SUCCESS;
      return *pstatus;
@@ -143,7 +141,7 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
   /* We need to know how to manage how to deal with "files with states"  */
   if( pentry->internal_md.type == REGULAR_FILE )
    {
-     free_lock( pentry, lock_how ) ; 
+     free_lock( pentry, lock_how ) ;
 
      *pstatus = CACHE_INODE_SUCCESS;
      return *pstatus;
@@ -153,9 +151,9 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
   if(pstatus == NULL)
     return CACHE_INODE_INVALID_ARGUMENT;
 
-  if(pentry == NULL || pclient == NULL || ht == NULL)
+  if(pentry == NULL || pclient == NULL)
     {
-      free_lock( pentry, lock_how ) ; 
+      free_lock( pentry, lock_how ) ;
 
       *pstatus = CACHE_INODE_INVALID_ARGUMENT;
       return *pstatus;
@@ -164,7 +162,7 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
   /* Get the FSAL handle */
   if((pfsal_handle = cache_inode_get_fsal_handle(pentry, pstatus)) == NULL)
     {
-      free_lock( pentry, lock_how ) ; 
+      free_lock( pentry, lock_how ) ;
 
       LogCrit(COMPONENT_CACHE_INODE,
               "cache_inode_kill_entry: unable to retrieve pentry's specific filesystem info");
@@ -174,9 +172,7 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
   /* Invalidate the related LRU gc entry (no more required) */
   if(pentry->gc_lru_entry != NULL)
     {
-      if(LRU_invalidate(pentry->gc_lru, pentry->gc_lru_entry) != LRU_LIST_SUCCESS)
-        {
-          free_lock( pentry, lock_how ) ; 
+      free_lock( pentry, lock_how ) ;
 
           *pstatus = CACHE_INODE_LRU_ERROR;
           return *pstatus;
@@ -194,7 +190,7 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
   key.len = fsaldata.fh_desc.len;
 
   /* use the key to delete the entry */
-  if((rc = HashTable_Del(ht, &key, &old_key, &old_value)) != HASHTABLE_SUCCESS)
+  if((rc = HashTable_Del(fh_to_cache_entry_ht, &key, &old_key, &old_value)) != HASHTABLE_SUCCESS)
     {
       if( rc != HASHTABLE_ERROR_NO_SUCH_KEY) /* rc=3 => Entry was previously removed */
         LogCrit( COMPONENT_CACHE_INODE,
@@ -204,7 +200,7 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
       *pstatus = CACHE_INODE_NOT_FOUND;
       return *pstatus;
     }
-    
+
   /* return HashTable (sentinel) reference */
   (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
       "cache_inode_kill_entry");

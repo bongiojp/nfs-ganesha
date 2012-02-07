@@ -73,7 +73,6 @@
  * @param pio_size [OUT] the size of the io that was successfully made.
  * @param pfsal_attr [OUT] the FSAL attributes after the operation.
  * @param buffer write:[IN] read:[OUT] the buffer for the data.
- * @param ht [INOUT] the hashtable used for managing the cache.
  * @param pclient [IN]  ressource allocated by the client for the nfs management.
  * @param pcontext [IN] fsal context for the operation.
  * @param stable[IN] if FALSE, data will be written to unstable storage (for implementing write/commit)
@@ -93,10 +92,9 @@ cache_inode_status_t cache_inode_rdwr(cache_entry_t * pentry,
                                       fsal_attrib_list_t * pfsal_attr,
                                       caddr_t buffer,
                                       fsal_boolean_t * p_fsal_eof,
-                                      hash_table_t * ht,
                                       cache_inode_client_t * pclient,
                                       fsal_op_context_t * pcontext,
-                                      uint64_t stable, 
+                                      uint64_t stable,
 				      cache_inode_status_t * pstatus)
 {
   int statindex = 0;

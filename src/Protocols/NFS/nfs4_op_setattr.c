@@ -159,7 +159,6 @@ int nfs4_op_setattr(struct nfs_argop4 *op,
       if((cache_status = cache_inode_truncate(data->current_entry,
                                               sattr.filesize,
                                               &parent_attr,
-                                              data->ht,
                                               data->pclient,
                                               data->pcontext,
                                               &cache_status)) != CACHE_INODE_SUCCESS)
@@ -233,7 +232,6 @@ int nfs4_op_setattr(struct nfs_argop4 *op,
 
       if(cache_inode_setattr(data->current_entry,
                              &sattr,
-                             data->ht,
                              data->pclient,
                              data->pcontext, &cache_status) != CACHE_INODE_SUCCESS)
         {

@@ -274,7 +274,6 @@ int nfs_SetPostOpXAttrFile(fsal_op_context_t * pcontext,
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -286,7 +285,7 @@ int nfs3_Access_Xattr(nfs_arg_t * parg,
                       exportlist_t * pexport,
                       fsal_op_context_t * pcontext,
                       cache_inode_client_t * pclient,
-                      hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                      struct svc_req *preq, nfs_res_t * pres)
 {
   fsal_attrib_list_t attr;
   cache_inode_status_t cache_status;
@@ -305,7 +304,7 @@ int nfs3_Access_Xattr(nfs_arg_t * parg,
                                   NULL,
                                   NULL,
                                   &(pres->res_access3.status),
-                                  NULL, &attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -436,7 +435,6 @@ out:
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -448,7 +446,7 @@ int nfs3_Lookup_Xattr(nfs_arg_t * parg,
                       exportlist_t * pexport,
                       fsal_op_context_t * pcontext,
                       cache_inode_client_t * pclient,
-                      hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                      struct svc_req *preq, nfs_res_t * pres)
 {
   cache_inode_status_t cache_status;
   fsal_attrib_list_t attr, xattr_attrs;
@@ -467,7 +465,7 @@ int nfs3_Lookup_Xattr(nfs_arg_t * parg,
                                       NULL,
                                       NULL,
                                       &(pres->res_lookup3.status),
-                                      NULL, &attr, pcontext, pclient, ht, &rc)) == NULL)
+                                      NULL, &attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
         goto out;
@@ -567,7 +565,6 @@ out:
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -579,7 +576,7 @@ int nfs3_Readdir_Xattr(nfs_arg_t * parg,
                        exportlist_t * pexport,
                        fsal_op_context_t * pcontext,
                        cache_inode_client_t * pclient,
-                       hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                       struct svc_req *preq, nfs_res_t * pres)
 {
   typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN];
   typedef char fh3_buffer_item_t[NFS3_FHSIZE];
@@ -625,7 +622,7 @@ int nfs3_Readdir_Xattr(nfs_arg_t * parg,
                                       NULL,
                                       &(pres->res_readdir3.status),
                                       NULL,
-                                      &dir_attr, pcontext, pclient, ht, &rc)) == NULL)
+                                      &dir_attr, pcontext, pclient, &rc)) == NULL)
     {
       /* return NFS_REQ_DROP ; */
       goto out;
@@ -909,7 +906,6 @@ out:
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -920,7 +916,7 @@ int nfs3_Create_Xattr(nfs_arg_t * parg,
                       exportlist_t * pexport,
                       fsal_op_context_t * pcontext,
                       cache_inode_client_t * pclient,
-                      hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                      struct svc_req *preq, nfs_res_t * pres)
 {
   cache_entry_t *parent_pentry = NULL;
   fsal_attrib_list_t pre_attr;
@@ -944,7 +940,7 @@ int nfs3_Create_Xattr(nfs_arg_t * parg,
                                          &(pres->res_dirop2.status),
                                          NULL,
                                          NULL,
-                                         &pre_attr, pcontext, pclient, ht, &rc)) == NULL)
+                                         &pre_attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -1045,7 +1041,7 @@ int nfs3_Write_Xattr(nfs_arg_t * parg,
                      exportlist_t * pexport,
                      fsal_op_context_t * pcontext,
                      cache_inode_client_t * pclient,
-                     hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                     struct svc_req *preq, nfs_res_t * pres)
 {
   cache_entry_t *pentry;
   fsal_attrib_list_t attr;
@@ -1067,7 +1063,7 @@ int nfs3_Write_Xattr(nfs_arg_t * parg,
                                   NULL,
                                   NULL,
                                   &(pres->res_write3.status),
-                                  NULL, &attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -1156,7 +1152,6 @@ out:
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -1167,7 +1162,7 @@ int nfs3_Read_Xattr(nfs_arg_t * parg,
                     exportlist_t * pexport,
                     fsal_op_context_t * pcontext,
                     cache_inode_client_t * pclient,
-                    hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                    struct svc_req *preq, nfs_res_t * pres)
 {
   cache_entry_t *pentry;
   fsal_attrib_list_t attr, xattr_attrs;
@@ -1188,7 +1183,7 @@ int nfs3_Read_Xattr(nfs_arg_t * parg,
                                   NULL,
                                   NULL,
                                   &(pres->res_read3.status),
-                                  NULL, &attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -1295,7 +1290,6 @@ out:
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -1309,7 +1303,7 @@ int nfs3_Readdirplus_Xattr(nfs_arg_t * parg,
                            exportlist_t * pexport,
                            fsal_op_context_t * pcontext,
                            cache_inode_client_t * pclient,
-                           hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                           struct svc_req *preq, nfs_res_t * pres)
 {
   typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN];
   typedef char fh3_buffer_item_t[NFS3_FHSIZE];
@@ -1356,7 +1350,7 @@ int nfs3_Readdirplus_Xattr(nfs_arg_t * parg,
                                       NULL,
                                       &(pres->res_readdirplus3.status),
                                       NULL,
-                                      &dir_attr, pcontext, pclient, ht, &rc)) == NULL)
+                                      &dir_attr, pcontext, pclient, &rc)) == NULL)
     {
       /* return NFS_REQ_DROP ; */
       goto out;
@@ -1721,7 +1715,6 @@ out:
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -1732,7 +1725,7 @@ int nfs3_Getattr_Xattr(nfs_arg_t * parg,
                        exportlist_t * pexport,
                        fsal_op_context_t * pcontext,
                        cache_inode_client_t * pclient,
-                       hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                       struct svc_req *preq, nfs_res_t * pres)
 {
   fsal_attrib_list_t attr;
   cache_inode_status_t cache_status;
@@ -1748,7 +1741,7 @@ int nfs3_Getattr_Xattr(nfs_arg_t * parg,
                                   NULL,
                                   NULL,
                                   &(pres->res_getattr3.status),
-                                  NULL, &attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -1818,7 +1811,6 @@ int nfs3_Remove_Xattr(nfs_arg_t * parg /* IN  */ ,
                       exportlist_t * pexport /* IN  */ ,
                       fsal_op_context_t * pcontext /* IN  */ ,
                       cache_inode_client_t * pclient /* IN  */ ,
-                      hash_table_t * ht /* INOUT */ ,
                       struct svc_req *preq /* IN  */ ,
                       nfs_res_t * pres /* OUT */ )
 {
@@ -1836,7 +1828,7 @@ int nfs3_Remove_Xattr(nfs_arg_t * parg /* IN  */ ,
                                   NULL,
                                   NULL,
                                   &(pres->res_remove3.status),
-                                  NULL, &attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;

@@ -327,7 +327,6 @@ typedef struct nfs_fsal_up_param__
 {
   struct prealloc_pool event_pool;
   unsigned int nb_event_data_prealloc;
-  hash_table_t *ht; /* cache inode hashtable */
 } nfs_fsal_up_parameter_t;
 
 typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN];
@@ -501,7 +500,6 @@ typedef struct nfs_worker_data__
   struct prealloc_pool clientid_pool;
   cache_inode_client_t cache_inode_client;
   cache_content_client_t cache_content_client;
-  hash_table_t *ht;
   hash_table_t *ht_ip_stats;
   pthread_mutex_t request_pool_mutex;
   nfs_tcb_t wcb; /* Worker control block */
@@ -663,7 +661,7 @@ void nfs_operate_on_sigterm() ;
 void nfs_operate_on_sighup() ;
 
 void nfs_Init_svc(void);
-void nfs_Init_admin_data(hash_table_t *ht);
+void nfs_Init_admin_data(void);
 int nfs_Init_worker_data(nfs_worker_data_t * pdata);
 int nfs_Init_request_data(nfs_request_data_t * pdata);
 int nfs_Init_gc_counter(void);
@@ -690,7 +688,7 @@ int nfs_read_session_id_conf(config_file_t in_config,
                              nfs_session_id_parameter_t * pparam);
 #endif                          /* _USE_NFS4_1 */
 
-int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht);
+int nfs_export_create_root_entry(exportlist_t * pexportlist);
 
 /* Add a list of clients to the client array of either an exports entry or
  * another service that has a client array (like snmp or statistics exporter) */

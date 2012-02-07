@@ -74,7 +74,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -88,7 +87,7 @@ int nfs_Mkdir(nfs_arg_t * parg,
               exportlist_t * pexport,
               fsal_op_context_t * pcontext,
               cache_inode_client_t * pclient,
-              hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+              struct svc_req *preq, nfs_res_t * pres)
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Mkdir";
 
@@ -153,7 +152,7 @@ int nfs_Mkdir(nfs_arg_t * parg,
                                          &(pres->res_mkdir3.status),
                                          NULL,
                                          &parent_attr,
-                                         pcontext, pclient, ht, &rc)) == NULL)
+                                         pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -253,15 +252,14 @@ int nfs_Mkdir(nfs_arg_t * parg,
         {
           /*
            * Lookup file to see if it exists.  If so, use it.  Otherwise
-           * create a new one.  
+           * create a new one.
            */
           dir_pentry = cache_inode_lookup( parent_pentry,
                                            &dir_name,
                                            pexport->cache_inode_policy,
                                            &attr,
-                                           ht, 
-                                           pclient, 
-                                           pcontext, 
+                                           pclient,
+                                           pcontext,
                                            &cache_status_lookup,
                                            CACHE_INODE_FLAG_NONE);
 
@@ -279,7 +277,6 @@ int nfs_Mkdir(nfs_arg_t * parg,
                                                   mode,
                                                   &create_arg,
                                                   &attr,
-                                                  ht,
                                                   pclient,
                                                   pcontext, &cache_status)) != NULL)
                 {

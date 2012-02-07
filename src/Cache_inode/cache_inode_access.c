@@ -63,7 +63,6 @@
  *
  * @param pentry      [IN]    entry pointer for the fs object to be checked.
  * @param access_type [IN]    flags used to describe the kind of access to be checked.
- * @param ht          [INOUT] hash table used for the cache.
  * @param pclient     [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext    [IN]    FSAL context
  * @param pstatus     [OUT]   returned status.
@@ -77,7 +76,6 @@
 cache_inode_status_t
 cache_inode_access_sw(cache_entry_t * pentry,
                       fsal_accessflags_t access_type,
-                      hash_table_t * ht,
                       cache_inode_client_t * pclient,
                       fsal_op_context_t * pcontext,
                       cache_inode_status_t * pstatus, int use_mutex)
@@ -161,10 +159,10 @@ cache_inode_access_sw(cache_entry_t * pentry,
                                      pentry, fsal_status.major, fsal_status.minor);
 
                             if( use_mutex )
-                                 cache_inode_kill_entry( pentry, RD_LOCK, ht,
+                                 cache_inode_kill_entry( pentry, RD_LOCK,
                                                          pclient, &kill_status);
                             else
-                                 cache_inode_kill_entry( pentry, NO_LOCK, ht,
+                                 cache_inode_kill_entry( pentry, NO_LOCK,
                                                          pclient, &kill_status);
 
                             if(kill_status != CACHE_INODE_SUCCESS)
@@ -211,7 +209,6 @@ cache_inode_access_sw(cache_entry_t * pentry,
  *
  * @param pentry      [IN]    entry pointer for the fs object to be checked.
  * @param access_type [IN]    flags used to describe the kind of access to be checked.
- * @param ht          [INOUT] hash table used for the cache.
  * @param pclient     [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext       [IN]    FSAL credentials
  * @param pstatus     [OUT]   returned status.
@@ -223,12 +220,11 @@ cache_inode_access_sw(cache_entry_t * pentry,
 cache_inode_status_t
 cache_inode_access_no_mutex(cache_entry_t * pentry,
                             fsal_accessflags_t access_type,
-                            hash_table_t * ht,
                             cache_inode_client_t * pclient,
                             fsal_op_context_t * pcontext,
                             cache_inode_status_t * pstatus)
 {
-    return cache_inode_access_sw(pentry, access_type, ht,
+    return cache_inode_access_sw(pentry, access_type,
                                  pclient, pcontext, pstatus, FALSE);
 }
 
@@ -240,7 +236,6 @@ cache_inode_access_no_mutex(cache_entry_t * pentry,
  *
  * @param pentry      [IN]    entry pointer for the fs object to be checked.
  * @param access_type [IN]    flags used to describe the kind of access to be checked.
- * @param ht          [INOUT] hash table used for the cache.
  * @param pclient     [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext       [IN]    FSAL credentials
  * @param pstatus     [OUT]   returned status.
@@ -252,11 +247,10 @@ cache_inode_access_no_mutex(cache_entry_t * pentry,
 cache_inode_status_t
 cache_inode_access(cache_entry_t * pentry,
                    fsal_accessflags_t access_type,
-                   hash_table_t * ht,
                    cache_inode_client_t * pclient,
                    fsal_op_context_t * pcontext,
                    cache_inode_status_t * pstatus)
 {
-    return cache_inode_access_sw(pentry, access_type, ht,
+    return cache_inode_access_sw(pentry, access_type,
                                  pclient, pcontext, pstatus, TRUE);
 }

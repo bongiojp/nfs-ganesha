@@ -2029,20 +2029,20 @@ static int BuildExportEntry(config_item_t block, exportlist_t ** pp_export)
         }
 #ifdef _USE_FSAL_UP
       else if(!STRCMP(var_name, CONF_EXPORT_FSAL_UP_TYPE))
-	{
+        {
           strncpy(p_entry->fsal_up_type,var_value,sizeof(var_value));
-	}
+        }
       else if(!STRCMP(var_name, CONF_EXPORT_FSAL_UP_TIMEOUT))
         {
-	  /* Right now we are expecting seconds ... we should support
+          /* Right now we are expecting seconds ... we should support
 	   * nseconds as well! */
           p_entry->fsal_up_timeout.seconds = atoi(var_value);
           if (p_entry->fsal_up_timeout.seconds < 0
-	      || p_entry->fsal_up_timeout.nseconds < 0)
-	    {
-	      p_entry->fsal_up_timeout.seconds = 0;
-	      p_entry->fsal_up_timeout.nseconds = 0;
-	    }
+              || p_entry->fsal_up_timeout.nseconds < 0)
+            {
+              p_entry->fsal_up_timeout.seconds = 0;
+              p_entry->fsal_up_timeout.nseconds = 0;
+            }
         }
       else if(!STRCMP(var_name, CONF_EXPORT_FSAL_UP_FILTERS))
         {
@@ -2667,8 +2667,10 @@ int nfs_export_check_access(sockaddr_t *hostaddr,
         nfs_ip_stats_incr(ht_ip_stats, hostaddr, nfs_prog, mnt_prog,
                           ptr_req)) == IP_STATS_NOT_FOUND)
       {
-        if(nfs_ip_stats_add(ht_ip_stats, hostaddr, ip_stats_pool) == IP_STATS_SUCCESS)
-          rc = nfs_ip_stats_incr(ht_ip_stats, hostaddr, nfs_prog, mnt_prog, ptr_req);
+        if(nfs_ip_stats_add(ht_ip_stats, hostaddr, ip_stats_pool) ==
+           IP_STATS_SUCCESS)
+          rc = nfs_ip_stats_incr(ht_ip_stats, hostaddr, nfs_prog,
+                                 mnt_prog, ptr_req);
       }
 
 #ifdef _USE_TIRPC_IPV6
@@ -2895,12 +2897,11 @@ int nfs_export_check_access(sockaddr_t *hostaddr,
  * Create the root entries for the cached entries.
  *
  * @param pexportlist [IN]    the export list to be parsed
- * @param ht          [INOUT] the hash table to be used to the cache inode
  *
  * @return TRUE is successfull, FALSE if something wrong occured.
  *
  */
-int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht)
+int nfs_export_create_root_entry(exportlist_t * pexportlist)
 {
       exportlist_t *pcurrent = NULL;
       cache_inode_status_t cache_status;
@@ -3087,12 +3088,11 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht)
 
           if((pentry = cache_inode_make_root(&fsdata,
                                              pcurrent->cache_inode_policy,
-                                             ht,
                                              &small_client,
 #ifdef _USE_SHARED_FSAL
-                                             &context[pcurrent->fsalid], 
+                                             &context[pcurrent->fsalid],
 #else
-                                             &context, 
+                                             &context,
 #endif
                                              &cache_status)) == NULL)
             {
@@ -3123,11 +3123,13 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht)
                        pcurrent->id);
 #ifdef _USE_SHARED_FSAL
               if(cache_content_crash_recover
-                 (pcurrent->id, &recover_datacache_client, &small_client, ht, &context,
-                  &cache_content_status) != CACHE_CONTENT_SUCCESS)
+                 (pcurrent->id, &recover_datacache_client,
+                  &small_client, &context, &cache_content_status) !=
+                 CACHE_CONTENT_SUCCESS)
 #else
               if(cache_content_crash_recover
-                 (pcurrent->id, &recover_datacache_client, &small_client, ht, &context[pcurrent->fsalid],
+                 (pcurrent->id, &recover_datacache_client,
+                  &small_client, &context[pcurrent->fsalid],
                   &cache_content_status) != CACHE_CONTENT_SUCCESS)
 #endif
                 {

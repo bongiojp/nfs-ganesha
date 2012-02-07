@@ -221,7 +221,6 @@ int cache_inode_set_time_current( fsal_time_t * ptime )
  * @param type [IN] type of the entry to be created.
  * @param link_content [IN] if type == SYMBOLIC_LINK, this is the content of the link. Unused otherwise
  * @param pentry_dir_prev [IN] if type == DIR_CONTINUE, this is the previous entry in the dir_chain. Unused otherwise.
- * @param ht [INOUT] hash table used for the cache.
  * @param pclient [INOUT]ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials for the operation.
  * @param create_flag [IN] flags, eg, if the entry is newly created or not, require "extra" ref
@@ -236,7 +235,6 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
                                      cache_inode_policy_t        policy,
                                      cache_inode_create_arg_t  * pcreate_arg,
                                      cache_entry_t             * pentry_dir_prev,
-                                     hash_table_t              * ht,
                                      cache_inode_client_t      * pclient,
                                      fsal_op_context_t         * pcontext,
                                      unsigned int                flags,
@@ -275,7 +273,8 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
   memcpy((caddr_t)&file_handle, pfsdata->fh_desc.start, pfsdata->fh_desc.len);
 
   /* Check if the entry doesn't already exists */
-  if(HashTable_GetEx(ht, &key, &value, &htoken) == HASHTABLE_SUCCESS)
+  if(HashTable_GetEx(fh_to_cache_entry_ht, &key, &value, &htoken)
+     == HASHTABLE_SUCCESS)
     {
       /* Entry is already in the cache, do not add it */
       pentry = (cache_entry_t *) value.pdata;
@@ -290,8 +289,10 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
        if (flags & CACHE_INODE_FLAG_EXREF)
            (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
                                       "cache_inode_new_entry (EXREF)");
-	 
-      HashTable_Release(ht, htoken); /* XXX this is releasing alock held since HashTable_Get returned */
+
+       /* Release the subtree hash table mutex acquired in
+          HashTable_GetEx */
+       HashTable_Release(fh_to_cache_entry_ht, htoken);
 
       /* stats */
       (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
@@ -361,7 +362,6 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
                 /* XXXX fix LRU handling in kill_entry */
                 if(cache_inode_kill_entry(pentry,
                                           NO_LOCK,
-                                          ht,
                                           pclient,
                                           &kill_status) != CACHE_INODE_SUCCESS)
                     LogCrit(COMPONENT_CACHE_INODE,
@@ -571,8 +571,9 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
   key.len = pentry->fh_desc.len;
 
   if((rc =
-      HashTable_Test_And_Set(ht, &key, &value,
-                             HASHTABLE_SET_HOW_SET_NO_OVERWRITE)) != HASHTABLE_SUCCESS)
+      HashTable_Test_And_Set(fh_to_cache_entry_ht, &key, &value,
+                             HASHTABLE_SET_HOW_SET_NO_OVERWRITE))
+     != HASHTABLE_SUCCESS)
     {
       /* Put the entry back in its pool */
       if (pentry->object.symlink)
@@ -596,10 +597,14 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
         LogDebug(COMPONENT_CACHE_INODE,
                  "cache_inode_new_entry: concurrency detected during cache insertion");
 
-        /* This situation occurs when several threads try to init the same uncached entry
-         * at the same time. The first creates the entry and the others got  HASHTABLE_ERROR_KEY_ALREADY_EXISTS
-         * In this case, the already created entry (by the very first thread) is returned */
-        if( ( rc = HashTable_Get( ht, &key, &value ) ) != HASHTABLE_SUCCESS )
+        /* This situation occurs when several threads try to init the
+         * same uncached entry at the same time. The first creates the
+         * entry and the others got HASHTABLE_ERROR_KEY_ALREADY_EXISTS
+         * In this case, the already created entry (by the very first
+         * thread) is returned */
+        if( ( rc = HashTable_Get(fh_to_cache_entry_ht, &key, &value )
+        )
+            != HASHTABLE_SUCCESS )
          {
             *pstatus = CACHE_INODE_HASH_SET_ERROR ;
             (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;

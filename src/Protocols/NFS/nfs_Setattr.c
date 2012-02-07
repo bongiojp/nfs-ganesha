@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -73,7 +73,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -87,7 +86,7 @@ int nfs_Setattr(nfs_arg_t * parg,
                 exportlist_t * pexport,
                 fsal_op_context_t * pcontext,
                 cache_inode_client_t * pclient,
-                hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                struct svc_req *preq, nfs_res_t * pres)
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Setattr";
 
@@ -129,7 +128,7 @@ int nfs_Setattr(nfs_arg_t * parg,
                                   NULL,
                                   &(pres->res_attr2.status),
                                   &(pres->res_setattr3.status),
-                                  NULL, &pre_attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &pre_attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -251,7 +250,7 @@ int nfs_Setattr(nfs_arg_t * parg,
           cache_status = cache_inode_truncate(pentry,
                                               setattr.filesize,
                                               &parent_attr,
-                                              ht, pclient, pcontext, &cache_status);
+                                              pclient, pcontext, &cache_status);
           setattr.asked_attributes &= ~FSAL_ATTR_SPACEUSED;
           setattr.asked_attributes &= ~FSAL_ATTR_SIZE;
         }
@@ -268,7 +267,7 @@ int nfs_Setattr(nfs_arg_t * parg,
             {
               cache_status = cache_inode_setattr(pentry,
                                                  &setattr,
-                                                 ht, pclient, pcontext, &cache_status);
+                                                 pclient, pcontext, &cache_status);
             }
           else
             cache_status = CACHE_INODE_SUCCESS;
@@ -279,7 +278,7 @@ int nfs_Setattr(nfs_arg_t * parg,
       else
         cache_status = cache_inode_setattr(pentry,
                                            &setattr,
-                                           ht, pclient, pcontext, &cache_status);
+                                           pclient, pcontext, &cache_status);
     }
 
   if(cache_status == CACHE_INODE_SUCCESS)

@@ -269,7 +269,6 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   /* For the change_info4, get the 'change' attributes for both directories */
   if((cache_status = cache_inode_getattr(src_entry,
                                          &attr_src,
-                                         data->ht,
                                          data->pclient,
                                          data->pcontext,
                                          &cache_status)) != CACHE_INODE_SUCCESS)
@@ -292,7 +291,6 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
                                          &oldname,
                                          data->pexport->cache_inode_policy,
                                          &attr_tst_src,
-                                         data->ht,
                                          data->pclient,
                                          data->pcontext,
                                          &cache_status,
@@ -308,7 +306,6 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
                                      &newname,
                                      data->pexport->cache_inode_policy,
                                      &attr_tst_dst,
-                                     data->ht,
                                      data->pclient,
                                      data->pcontext,
                                      &cache_status,
@@ -422,7 +419,6 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
                                     &newname,
                                     &attr_src,
                                     &attr_dst,
-                                    data->ht,
                                     data->pclient,
                                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS)
                {
@@ -447,7 +443,6 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
                             &newname,
                             &attr_src,
                             &attr_dst,
-                            data->ht,
                             data->pclient,
                             data->pcontext, &cache_status) != CACHE_INODE_SUCCESS)
         {

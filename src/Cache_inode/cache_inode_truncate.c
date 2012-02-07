@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -59,18 +59,17 @@
 /**
  *
  * cache_inode_truncate_sw: truncates a regular file specified by its cache entry.
- * 
+ *
  * Truncates a regular file specified by its cache entry.
  *
  * @param pentry    [INOUT] entry pointer for the fs object to be truncated. 
  * @param length    [IN]    wanted length for the file. 
  * @param pattr     [OUT]   attrtibutes for the file after the operation. 
- * @param ht        [INOUT] hash table used for the cache. Unused in this call (kept for protototype's homogeneity). 
  * @param pclient   [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext     [IN]    FSAL credentials 
  * @param pstatus   [OUT]   returned status.
  * @param use_mutex [IN]    if TRUE, mutex management is done, not if equal to FALSE.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
@@ -78,7 +77,6 @@
 cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
                                              fsal_size_t length,
                                              fsal_attrib_list_t * pattr,
-                                             hash_table_t * ht,
                                              cache_inode_client_t * pclient,
                                              fsal_op_context_t * pcontext,
                                              cache_inode_status_t * pstatus,
@@ -169,7 +167,7 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
                        "cache_inode_truncate: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                        pentry,fsal_status.major, fsal_status.minor );
 
-              if(cache_inode_kill_entry( pentry, NO_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry( pentry, NO_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_truncate: Could not kill entry %p, status = %u",
@@ -205,15 +203,14 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
 /**
  *
  * cache_inode_truncate_no_mutex: truncates a regular file specified by its cache entry (no mutex management).
- * 
+ *
  * Truncates a regular file specified by its cache entry.
  *
- * @param pentry    [INOUT] entry pointer for the fs object to be truncated. 
- * @param length    [IN]    wanted length for the file. 
- * @param pattr     [OUT]   attrtibutes for the file after the operation. 
- * @param ht        [INOUT] hash table used for the cache. Unused in this call (kept for protototype's homogeneity). 
+ * @param pentry    [INOUT] entry pointer for the fs object to be truncated.
+ * @param length    [IN]    wanted length for the file.
+ * @param pattr     [OUT]   attrtibutes for the file after the operation.
  * @param pclient   [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext     [IN]    FSAL credentials 
+ * @param pcontext     [IN]    FSAL credentials
  * @param pstatus   [OUT]   returned status.
  * 
  * @return CACHE_INODE_SUCCESS if operation is a success \n
@@ -223,13 +220,12 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
 cache_inode_status_t cache_inode_truncate_no_mutex(cache_entry_t * pentry,
                                                    fsal_size_t length,
                                                    fsal_attrib_list_t * pattr,
-                                                   hash_table_t * ht,
                                                    cache_inode_client_t * pclient,
                                                    fsal_op_context_t * pcontext,
                                                    cache_inode_status_t * pstatus)
 {
   return cache_inode_truncate_sw(pentry,
-                                 length, pattr, ht, pclient, pcontext, pstatus, FALSE);
+                                 length, pattr, pclient, pcontext, pstatus, FALSE);
 }                               /* cache_inode_truncate_no_mutex */
 
 /**
@@ -238,12 +234,11 @@ cache_inode_status_t cache_inode_truncate_no_mutex(cache_entry_t * pentry,
  * 
  * Truncates a regular file specified by its cache entry.
  *
- * @param pentry    [INOUT] entry pointer for the fs object to be truncated. 
- * @param length    [IN]    wanted length for the file. 
- * @param pattr     [OUT]   attrtibutes for the file after the operation. 
- * @param ht        [INOUT] hash table used for the cache. Unused in this call (kept for protototype's homogeneity). 
+ * @param pentry    [INOUT] entry pointer for the fs object to be truncated.
+ * @param length    [IN]    wanted length for the file.
+ * @param pattr     [OUT]   attrtibutes for the file after the operation.
  * @param pclient   [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext     [IN]    FSAL credentials 
+ * @param pcontext     [IN]    FSAL credentials
  * @param pstatus   [OUT]   returned status.
  * 
  * @return CACHE_INODE_SUCCESS if operation is a success \n
@@ -253,11 +248,10 @@ cache_inode_status_t cache_inode_truncate_no_mutex(cache_entry_t * pentry,
 cache_inode_status_t cache_inode_truncate(cache_entry_t * pentry,
                                           fsal_size_t length,
                                           fsal_attrib_list_t * pattr,
-                                          hash_table_t * ht,
                                           cache_inode_client_t * pclient,
                                           fsal_op_context_t * pcontext,
                                           cache_inode_status_t * pstatus)
 {
   return cache_inode_truncate_sw(pentry,
-                                 length, pattr, ht, pclient, pcontext, pstatus, TRUE);
+                                 length, pattr, pclient, pcontext, pstatus, TRUE);
 }                               /* cache_inode_truncate */

@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -75,7 +75,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -89,7 +88,7 @@ int nfs_Getattr(nfs_arg_t * parg,
                 exportlist_t * pexport,
                 fsal_op_context_t * pcontext,
                 cache_inode_client_t * pclient,
-                hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                struct svc_req *preq, nfs_res_t * pres)
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Getattr";
 
@@ -116,7 +115,7 @@ int nfs_Getattr(nfs_arg_t * parg,
                                   NULL,
                                   &(pres->res_attr2.status),
                                   &(pres->res_getattr3.status),
-                                  NULL, &attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       LogFullDebug(COMPONENT_NFSPROTO,
@@ -126,7 +125,7 @@ int nfs_Getattr(nfs_arg_t * parg,
 
   if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_getattr3.object))))
     {
-      rc = nfs3_Getattr_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+      rc = nfs3_Getattr_Xattr(parg, pexport, pcontext, pclient, preq, pres);
       LogFullDebug(COMPONENT_NFSPROTO,
                    "nfs_Getattr returning %d from nfs3_Getattr_Xattr", rc);
       goto out;
@@ -138,7 +137,7 @@ int nfs_Getattr(nfs_arg_t * parg,
    */
   if(cache_inode_getattr(pentry,
                          &attr,
-                         ht, pclient, pcontext, &cache_status) == CACHE_INODE_SUCCESS)
+                         pclient, pcontext, &cache_status) == CACHE_INODE_SUCCESS)
     {
       /*
        * Client API should be keeping us from crossing junctions,

@@ -136,7 +136,7 @@ int _9p_auth( _9p_request_data_t * preq9p,
   pfid= &preq9p->pconn->fids[*afid] ;
   pfid->pexport = pexport ;
   pfid->fid = *afid ;
- 
+
 #ifdef _USE_SHARED_FSAL
   /* At this step, the export entry is known and it's required to use the right fsalid */
   FSAL_SetId( pexport->fsalid ) ;
@@ -174,11 +174,10 @@ int _9p_auth( _9p_request_data_t * preq9p,
   fsdata.cookie = 0;
 
   pfid->pentry = cache_inode_get( &fsdata,
-                                  pexport->cache_inode_policy,      
-                                  &fsalattr, 
-                                  pwkrdata->ht,
+                                  pexport->cache_inode_policy,
+                                  &fsalattr,
                                   &pwkrdata->cache_inode_client,
-                                  &pfid->fsal_op_context, 
+                                  &pfid->fsal_op_context,
                                   &cache_status ) ;
 
   if( pfid->pentry == NULL )

@@ -71,11 +71,10 @@
  * Implements the NFS PROC READ function (for V2 and V3).
  *
  * @param parg    [IN]    pointer to nfs arguments union
- * @param pexport [IN]    pointer to nfs export list 
+ * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
- * @param preq    [IN]    pointer to SVC request related to this call 
+ * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
  * @return NFS_REQ_OK if successfull \n
@@ -88,7 +87,7 @@ int nfs_Read(nfs_arg_t * parg,
              exportlist_t * pexport,
              fsal_op_context_t * pcontext,
              cache_inode_client_t * pclient,
-             hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+             struct svc_req *preq, nfs_res_t * pres)
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Read";
 
@@ -148,7 +147,7 @@ int nfs_Read(nfs_arg_t * parg,
                                   NULL,
                                   &(pres->res_read2.status),
                                   &(pres->res_read3.status),
-                                  NULL, &pre_attr, pcontext, pclient, ht, &rc)) == NULL)
+                                  NULL, &pre_attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -156,13 +155,12 @@ int nfs_Read(nfs_arg_t * parg,
 
   if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_read3.file))))
   {
-    rc = nfs3_Read_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+    rc = nfs3_Read_Xattr(parg, pexport, pcontext, pclient, preq, pres);
     goto out;
   }
 
   if(cache_inode_access(pentry,
                         FSAL_READ_ACCESS,
-                        ht,
                         pclient,
                         pcontext,
                         &cache_status) != CACHE_INODE_SUCCESS)
@@ -343,7 +341,7 @@ int nfs_Read(nfs_arg_t * parg,
          && (pentry->object.file.pentry_content == NULL))
         {
           /* Entry is not in datacache, but should be in, cache it */
-          cache_inode_add_data_cache(pentry, ht, pclient, pcontext, &cache_status);
+          cache_inode_add_data_cache(pentry, pclient, pcontext, &cache_status);
           if((cache_status != CACHE_INODE_SUCCESS) &&
              (cache_status != CACHE_INODE_CACHE_CONTENT_EXISTS))
             {
@@ -382,7 +380,6 @@ int nfs_Read(nfs_arg_t * parg,
                           &attr,
                           data,
                           &eof_met,
-                          ht,
                           pclient, pcontext, TRUE, &cache_status) == CACHE_INODE_SUCCESS)
 
         {

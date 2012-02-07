@@ -213,7 +213,6 @@ nfs4_op_desc_t *optabvers[] = { (nfs4_op_desc_t *) optab4v0 };
  *  @param pexportlist [IN]  the full export list
  *  @param pcontex     [IN]  context for the FSAL (unused but kept for nfs functions prototype homogeneity)
  *  @param pclient     [INOUT] client resource for request management
- *  @param ht          [INOUT] cache inode hash table
  *  @param preq        [IN]  RPC svc request
  *  @param pres        [OUT] generic nfs reply
  *
@@ -226,7 +225,6 @@ int nfs4_Compound(nfs_arg_t * parg /* IN     */ ,
                   exportlist_t * pexport /* IN     */ ,
                   fsal_op_context_t * pcontext /* IN     */ ,
                   cache_inode_client_t * pclient /* INOUT  */ ,
-                  hash_table_t * ht /* INOUT */ ,
                   struct svc_req *preq /* IN     */ ,
                   nfs_res_t * pres /* OUT    */ )
 {
@@ -302,7 +300,6 @@ int nfs4_Compound(nfs_arg_t * parg /* IN     */ ,
   data.pcontext = pcontext;     /* Get the fsal credentials from the worker thread */
   data.pseudofs = nfs4_GetPseudoFs();
   data.reqp = preq;
-  data.ht = ht;
   data.pclient = pclient;
 
   strcpy(data.MntPath, "/");

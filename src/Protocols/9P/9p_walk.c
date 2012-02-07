@@ -146,9 +146,8 @@ int _9p_walk( _9p_request_data_t * preq9p,
                                                        &name,
                                                        pfid->pexport->cache_inode_policy,
                                                        &fsalattr,
-                                                       pwkrdata->ht,
                                                        &pwkrdata->cache_inode_client,
-                                                       &pfid->fsal_op_context, 
+                                                       &pfid->fsal_op_context,
                                                        &cache_status,
                                                        CACHE_INODE_FLAG_NONE) ) == NULL )
             {
@@ -163,42 +162,8 @@ int _9p_walk( _9p_request_data_t * preq9p,
 
      /* Build the qid */
      pnewfid->qid.version = 0 ; /* No cache, we want the client to stay synchronous with the server */
-     switch( pfid->pentry->internal_md.type )
-      {
-        case REGULAR_FILE:
-          pnewfid->qid.path = (u64)pnewfid->pentry->object.file.attributes.fileid ;
-          pnewfid->qid.type = _9P_QTFILE ;
-	  break ;
-
-        case CHARACTER_FILE:
-        case BLOCK_FILE:
-        case SOCKET_FILE:
-        case FIFO_FILE:
-          pnewfid->qid.path = (u64)pnewfid->pentry->object.special_obj.attributes.fileid ;
-          pnewfid->qid.type = _9P_QTFILE ;
-	  break ;
-
-        case SYMBOLIC_LINK:
-          pnewfid->qid.path = (u64)pnewfid->pentry->object.symlink->attributes.fileid ;
-          pnewfid->qid.type = _9P_QTSYMLINK ;
-	  break ;
-
-        case DIRECTORY:
-        case FS_JUNCTION:
-          pnewfid->qid.path = (u64)pnewfid->pentry->object.dir.attributes.fileid ;
-          pnewfid->qid.type = _9P_QTDIR ;
-	  break ;
-
-        case UNASSIGNED:
-        case RECYCLED:
-        default:
-          LogMajor( COMPONENT_9P, "implementation error, you should not see this message !!!!!!" ) ;
-          err = EINVAL ;
-          rc = _9p_rerror( preq9p, msgtag, &err, plenout, preply ) ;
-          return rc ;
-          break ;
-      }
-
+     pnewfid->qid.path = (u64)pnewfid->pentry->attributes.fileid ;
+     pnewfid->qid.type = _9P_QTFILE ;
    }
 
   /* As much qid as requested fid */

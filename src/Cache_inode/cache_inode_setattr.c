@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -67,16 +67,16 @@
  *
  * @param pentry_parent [IN] entry for the parent directory to be managed.
  * @param pattr [INOUT] attributes for the entry that we have found. Out: attributes set.
- * @param ht [INOUT] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials 
+ * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
  */
-cache_inode_status_t cache_inode_setattr(cache_entry_t * pentry, fsal_attrib_list_t * pattr, hash_table_t * ht, /* Unused, kept for protototype's homogeneity */
+cache_inode_status_t cache_inode_setattr(cache_entry_t * pentry,
+                                         fsal_attrib_list_t * pattr,
                                          cache_inode_client_t * pclient,
                                          fsal_op_context_t * pcontext,
                                          cache_inode_status_t * pstatus)
@@ -144,7 +144,7 @@ cache_inode_status_t cache_inode_setattr(cache_entry_t * pentry, fsal_attrib_lis
                    "cache_inode_setattr: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                    pentry, fsal_status.major, fsal_status.minor);
 
-          if(cache_inode_kill_entry(pentry, NO_LOCK, ht, pclient, &kill_status) !=
+          if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
              CACHE_INODE_SUCCESS)
             LogCrit(COMPONENT_CACHE_INODE,
                     "cache_inode_setattr: Could not kill entry %p, status = %u",
@@ -178,7 +178,7 @@ cache_inode_status_t cache_inode_setattr(cache_entry_t * pentry, fsal_attrib_lis
                        "cache_inode_setattr: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                        pentry,fsal_status.major, fsal_status.minor );
 
-              if(cache_inode_kill_entry(pentry, NO_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_setattr: Could not kill entry %p, status = %u",

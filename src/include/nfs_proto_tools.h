@@ -85,7 +85,7 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
                                   fsal_attrib_list_t * pattr,
                                   fsal_op_context_t * pcontext,
                                   cache_inode_client_t * pclient,
-                                  hash_table_t * ht, int *prc);
+                                  int *prc);
 
 void nfs_SetWccData(fsal_op_context_t * pcontext,
                     exportlist_t * pexport,

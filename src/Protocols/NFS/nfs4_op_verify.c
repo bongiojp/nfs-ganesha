@@ -137,7 +137,6 @@ int nfs4_op_verify(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   /* Get the cache inode attribute */
   if((cache_status = cache_inode_getattr(data->current_entry,
                                          &file_attr,
-                                         data->ht,
                                          data->pclient,
                                          data->pcontext,
                                          &cache_status)) != CACHE_INODE_SUCCESS)

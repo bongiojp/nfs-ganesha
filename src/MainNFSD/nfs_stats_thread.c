@@ -637,6 +637,9 @@ void *stats_thread(void *addr)
       fprintf(stats_file, "\n");
 
       /* Pinting the cache inode hash stat */
+      /* This is done only on worker[0]: the hashtable is shared and worker 0 always exists */
+      HashTable_GetStats(fh_to_cache_entry_ht, &hstat);
+
       fprintf(stats_file,
               "CACHE_INODE_HASH,%s;%u,%u,%u,%u|%u,%u,%u|%u,%u,%u|%u,%u,%u|%u,%u,%u\n",
               strdate, cache_inode_stat->dynamic.nb_entries, cache_inode_stat->computed.min_rbt_num_node,

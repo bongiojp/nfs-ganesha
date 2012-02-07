@@ -10,7 +10,7 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
@@ -71,11 +71,10 @@
  * Implements the NFS PROC SYMLINK function (for V2 and V3).
  *
  * @param parg    [IN]    pointer to nfs arguments union
- * @param pexport [IN]    pointer to nfs export list 
+ * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
- * @param preq    [IN]    pointer to SVC request related to this call 
+ * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
  * @return NFS_REQ_OK if successfull \n
@@ -88,7 +87,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                exportlist_t * pexport /* IN  */ ,
                fsal_op_context_t * pcontext /* IN  */ ,
                cache_inode_client_t * pclient /* IN  */ ,
-               hash_table_t * ht /* INOUT */ ,
                struct svc_req *preq /* IN  */ ,
                nfs_res_t * pres /* OUT */ )
 {
@@ -166,7 +164,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                          &(pres->res_dirop2.status),
                                          &(pres->res_create3.status),
                                          NULL,
-                                         &pre_attr, pcontext, pclient, ht, &rc)) == NULL)
+                                         &pre_attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -181,7 +179,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              &(pres->res_create3.status),
                                              NULL,
                                              &new_parent_attr,
-                                             pcontext, pclient, ht, &rc)) == NULL)
+                                             pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -248,7 +246,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              &new_entry_name,
                                              pexport->cache_inode_policy,
                                              &tst_attr,
-                                             ht,
                                              pclient,
                                              pcontext,
                                              &cache_status,
@@ -261,7 +258,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              &entry_name,
                                              pexport->cache_inode_policy,
                                              &tst_attr,
-                                             ht,
                                              pclient,
                                              pcontext,
                                              &cache_status,
@@ -274,7 +270,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                new_parent_pentry,
                                &new_entry_name,
                                &attr, &new_attr,
-                               ht, pclient,
+                               pclient,
                                pcontext, &cache_status);
 
           if(cache_status == CACHE_INODE_SUCCESS)
@@ -363,7 +359,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                                      &entry_name,
                                                      pexport->cache_inode_policy,
                                                      &tst_attr,
-                                                     ht,
                                                      pclient,
                                                      pcontext,
                                                      &cache_status,
@@ -415,7 +410,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                       if(cache_inode_remove(new_parent_pentry,
                                             &new_entry_name,
                                             &tst_attr,
-                                            ht,
                                             pclient,
                                             pcontext,
                                             &cache_status) == CACHE_INODE_SUCCESS)
@@ -426,7 +420,6 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                                 &new_entry_name,
                                                 &attr,
                                                 &new_attr,
-                                                ht,
                                                 pclient,
                                                 pcontext,
                                                 &cache_status) == CACHE_INODE_SUCCESS)

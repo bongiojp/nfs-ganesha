@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -74,7 +74,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -88,7 +87,6 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
                exportlist_t * pexport /* IN  */ ,
                fsal_op_context_t * pcontext /* IN  */ ,
                cache_inode_client_t * pclient /* IN  */ ,
-               hash_table_t * ht /* INOUT */ ,
                struct svc_req *preq /* IN  */ ,
                nfs_res_t * pres /* OUT */ )
 {
@@ -148,14 +146,14 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
                                          &(pres->res_remove3.status),
                                          NULL,
                                          &pre_parent_attr,
-                                         pcontext, pclient, ht, &rc)) == NULL)
+                                         pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
     }
 
   if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_remove3.object.dir)))) {
-    rc = nfs3_Remove_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+    rc = nfs3_Remove_Xattr(parg, pexport, pcontext, pclient, preq, pres);
     goto out;
   }
 
@@ -216,7 +214,6 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
                                                 &name,
                                                 pexport->cache_inode_policy,
                                                 &pentry_child_attr,
-                                                ht,
                                                 pclient,
                                                 pcontext,
                                                 &cache_status,
@@ -254,7 +251,6 @@ int nfs_Remove(nfs_arg_t * parg /* IN  */ ,
               if(cache_inode_remove(parent_pentry,
                                     &name,
                                     &parent_attr,
-                                    ht,
                                     pclient,
                                     pcontext, &cache_status) == CACHE_INODE_SUCCESS)
                 {

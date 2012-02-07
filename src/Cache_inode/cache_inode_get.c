@@ -67,7 +67,6 @@
  *
  * @param fsdata [IN] file system data
  * @param pattr [OUT] pointer to the attributes for the result.
- * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
@@ -78,12 +77,11 @@
 cache_entry_t *cache_inode_get( cache_inode_fsal_data_t * pfsdata,
                                 cache_inode_policy_t policy,
                                 fsal_attrib_list_t * pattr,
-                                hash_table_t * ht,
                                 cache_inode_client_t * pclient,
                                 fsal_op_context_t * pcontext,
                                 cache_inode_status_t * pstatus )
 {
-  return cache_inode_get_located( pfsdata, NULL, policy, pattr, ht, pclient, pcontext, pstatus ) ;
+  return cache_inode_get_located( pfsdata, NULL, policy, pattr, pclient, pcontext, pstatus ) ;
 } /* cache_inode_get */
 
 /**
@@ -102,7 +100,6 @@ cache_entry_t *cache_inode_get( cache_inode_fsal_data_t * pfsdata,
  * @param fsdata [IN] file system data
  * @param plocation [IN] pentry used as "location form where the call is done". Usually a son of a parent entry
  * @param pattr [OUT] pointer to the attributes for the result.
- * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
@@ -112,10 +109,9 @@ cache_entry_t *cache_inode_get( cache_inode_fsal_data_t * pfsdata,
  */
 
 cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
-                                       cache_entry_t * plocation, 
+                                       cache_entry_t * plocation,
                                        cache_inode_policy_t policy,
                                        fsal_attrib_list_t * pattr,
-                                       hash_table_t * ht,
                                        cache_inode_client_t * pclient,
                                        fsal_op_context_t * pcontext,
                                        cache_inode_status_t * pstatus)
@@ -148,7 +144,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
   key.pdata = pfsdata->fh_desc.start;
   key.len = pfsdata->fh_desc.len;
 
-  switch (hrc = HashTable_GetEx(ht, &key, &value, &htoken))
+  switch (hrc = HashTable_GetEx(fh_to_cache_entry_ht, &key, &value, &htoken))
     {
     case HASHTABLE_SUCCESS:
       /* Entry exists in the cache and was found */
@@ -158,7 +154,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
       (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
           "cache_inode_get (found)");
 
-      HashTable_Release(ht, htoken);
+      HashTable_Release(fh_to_cache_entry_ht, htoken);
 
       /* return attributes additionally */
       *pattr = pentry->attributes;
@@ -258,7 +254,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
                       "cache_inode_get (stale)");
 
                   /* hashtable refcount will likely drop to zero now */
-                  if(cache_inode_kill_entry(pentry, NO_LOCK, ht, pclient, &kill_status) !=
+                  if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
                      CACHE_INODE_SUCCESS)
                     LogCrit(COMPONENT_CACHE_INODE,
                             "cache_inode_get: Could not kill entry %p, "
@@ -284,7 +280,6 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
                                           policy,
                                           &create_arg,
                                           NULL,    /* never used to add a new DIR_CONTINUE within this function */
-                                          ht,
                                           pclient,
                                           pcontext,
                                           CACHE_INODE_FLAG_EXREF, /* This is a population, not a creation */

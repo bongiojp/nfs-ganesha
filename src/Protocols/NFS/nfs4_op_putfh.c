@@ -206,7 +206,6 @@ int nfs4_op_putfh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                                        &attr,
                                                        data->pcontext,
                                                        data->pclient,
-                                                       data->ht,
                                                        &rc)) == NULL)
             {
               res_PUTFH4.status = NFS4ERR_BADHANDLE;

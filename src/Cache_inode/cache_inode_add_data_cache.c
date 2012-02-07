@@ -60,7 +60,6 @@
 
 cache_inode_status_t
 cache_inode_add_data_cache(cache_entry_t * pentry,
-                           hash_table_t * ht,
                            cache_inode_client_t * pclient,
                            fsal_op_context_t * pcontext,
                            cache_inode_status_t * pstatus)

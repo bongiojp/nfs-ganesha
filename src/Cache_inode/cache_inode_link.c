@@ -69,7 +69,6 @@
  * @param pentry_dir_dest [INOUT] entry pointer for the destination directory in which the link will be created.
  * @param plink_name [IN] pointer to the name of the object in the destination directory.
  * @param pattr [OUT] attributes for the linked attributes after the operation.
- * @param ht [INOUT] hash table used for the cache.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
@@ -85,7 +84,6 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                                       fsal_name_t * plink_name,
                                       cache_inode_policy_t policy,
                                       fsal_attrib_list_t * pattr,
-                                      hash_table_t * ht,
                                       cache_inode_client_t * pclient,
                                       fsal_op_context_t * pcontext,
                                       cache_inode_status_t * pstatus)
@@ -133,7 +131,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                 FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_ADD_FILE);
   if((status = cache_inode_access(pentry_dir_dest,
                                   access_mask,
-                                  ht, pclient, pcontext, &status)) != CACHE_INODE_SUCCESS)
+                                  pclient, pcontext, &status)) != CACHE_INODE_SUCCESS)
     {
       *pstatus = status;
 
@@ -149,9 +147,8 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                                           plink_name,
                                           policy,
                                           &lookup_attributes,
-                                          ht,
-                                          pclient, 
-                                          pcontext, 
+                                          pclient,
+                                          pcontext,
                                           pstatus,
                                           CACHE_INODE_FLAG_NONE) ) != NULL )
     {
@@ -259,7 +256,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                        "cache_inode_link: Stale FSAL File Handle detected for pentry = %p",
                        pentry_src);
 
-              if(cache_inode_kill_entry(pentry_src, WT_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry(pentry_src, WT_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_link: Could not kill entry %p, status = %u",
@@ -273,7 +270,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                        "cache_inode_link: Stale FSAL File Handle detected for pentry = %p",
                        pentry_dir_dest);
 
-              if(cache_inode_kill_entry(pentry_dir_dest, WT_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry(pentry_dir_dest, WT_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_link: Could not kill entry %p, status = %u",
@@ -302,8 +299,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
   if(cache_inode_add_cached_dirent(pentry_dir_dest,
                                    plink_name,
                                    pentry_src,
-                                   ht,
-				   &new_dir_entry,
+                                   &new_dir_entry,
                                    pclient,
                                    pcontext,
                                    &status) != CACHE_INODE_SUCCESS)

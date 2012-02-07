@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -59,28 +59,26 @@
 /**
  *
  * cache_inode_lookupp_sw: looks up (and caches) the parent directory for a directory. A switches tells is mutex are use.
- * 
+ *
  * Looks up (and caches) the parent directory for a directory.  If a the an entry is
  * returned, that entry's refcount is +1.  As normally, pentry must be referenced in the
  * current call path, its refcount is not changed by this routine.
  *
  * @param pentry [IN] entry whose parent is to be obtained.
- * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials 
  * @param pstatus [OUT] returned status.
  * @param use_mutex [IN] if TRUE mutex are use, not otherwise.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
  */
 cache_entry_t *cache_inode_lookupp_sw( cache_entry_t * pentry,
-                                       hash_table_t * ht,
                                        cache_inode_client_t * pclient,
                                        fsal_op_context_t * pcontext,
                                        cache_inode_status_t * pstatus,
-				       unsigned int flags)
+                                       unsigned int flags)
 {
   cache_entry_t *pentry_parent = NULL;
   fsal_status_t fsal_status;
@@ -111,7 +109,7 @@ cache_entry_t *cache_inode_lookupp_sw( cache_entry_t * pentry,
 
   /* Renew the entry (ie, its cached data and metadata, not the cache entry
    * per se--that is protected by refcount) */
-  if(cache_inode_renew_entry(pentry, NULL, ht, pclient, pcontext, pstatus) !=
+  if(cache_inode_renew_entry(pentry, NULL, pclient, pcontext, pstatus) !=
      CACHE_INODE_SUCCESS)
     {
       (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_GETATTR])++;
@@ -149,7 +147,7 @@ cache_entry_t *cache_inode_lookupp_sw( cache_entry_t * pentry,
                        "cache_inode_lookupp: Stale FSAL FH detected for pentry %p, fsal_status=(%u,%u)",
                        pentry, fsal_status.major, fsal_status.minor);
 
-              if(cache_inode_kill_entry(pentry, NO_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_remove: Could not kill entry %p, status = %u",
@@ -177,9 +175,8 @@ cache_entry_t *cache_inode_lookupp_sw( cache_entry_t * pentry,
                                                    pentry,
                                                    pentry->policy, /* same policy as son */
                                                    &object_attributes,
-                                                   ht, 
-                                                   pclient, 
-                                                   pcontext, 
+                                                   pclient,
+                                                   pcontext,
                                                    pstatus)) == NULL)
         {
           if(flags & CACHE_INODE_FLAG_LOCK)
@@ -214,23 +211,21 @@ cache_entry_t *cache_inode_lookupp_sw( cache_entry_t * pentry,
  * If a cache entry is returned, its refcount is +1.
  *
  * @param pentry [IN] entry whose parent is to be obtained.
- * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials 
+ * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
  */
 cache_entry_t *cache_inode_lookupp(cache_entry_t * pentry,
-                                   hash_table_t * ht,
                                    cache_inode_client_t * pclient,
                                    fsal_op_context_t * pcontext,
                                    cache_inode_status_t * pstatus,
-				   unsigned int flags)
+                                   unsigned int flags)
 {
-  return cache_inode_lookupp_sw(pentry, ht, pclient, pcontext, pstatus, flags | CACHE_INODE_FLAG_LOCK);
+  return cache_inode_lookupp_sw(pentry, pclient, pcontext, pstatus, flags | CACHE_INODE_FLAG_LOCK);
 }                               /* cache_inode_lookupp_sw */
 
 /**
@@ -240,21 +235,19 @@ cache_entry_t *cache_inode_lookupp(cache_entry_t * pentry,
  * Looks up (and caches) the parent directory for a directory.
  *
  * @param pentry [IN] entry whose parent is to be obtained.
- * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials 
+ * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
  */
 cache_entry_t *cache_inode_lookupp_no_mutex(cache_entry_t * pentry,
-                                            hash_table_t * ht,
                                             cache_inode_client_t * pclient,
                                             fsal_op_context_t * pcontext,
                                             cache_inode_status_t * pstatus,
-					    unsigned int flags)
+                                            unsigned int flags)
 {
-  return cache_inode_lookupp_sw(pentry, ht, pclient, pcontext, pstatus, flags &~ CACHE_INODE_FLAG_LOCK);
+  return cache_inode_lookupp_sw(pentry, pclient, pcontext, pstatus, flags &~ CACHE_INODE_FLAG_LOCK);
 }                               /* cache_inode_lookupp_no_mutex */

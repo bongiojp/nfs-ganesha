@@ -72,7 +72,6 @@
  * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -86,7 +85,7 @@ int nfs_Readdir(nfs_arg_t * parg,
                 exportlist_t * pexport,
                 fsal_op_context_t * pcontext,
                 cache_inode_client_t * pclient,
-                hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+                struct svc_req *preq, nfs_res_t * pres)
 {
   static char __attribute__ ((__unused__)) funcName[] = "nfs_Readdir";
 
@@ -146,7 +145,7 @@ int nfs_Readdir(nfs_arg_t * parg,
                                       &(pres->res_readdir2.status),
                                       &(pres->res_readdir3.status),
                                       NULL,
-                                      &dir_attr, pcontext, pclient, ht, &rc)) == NULL)
+                                      &dir_attr, pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       goto out;
@@ -154,7 +153,7 @@ int nfs_Readdir(nfs_arg_t * parg,
 
   if((preq->rq_vers == NFS_V3) && (nfs3_Is_Fh_Xattr(&(parg->arg_readdir3.dir))))
   {
-    rc = nfs3_Readdir_Xattr(parg, pexport, pcontext, pclient, ht, preq, pres);
+    rc = nfs3_Readdir_Xattr(parg, pexport, pcontext, pclient, preq, pres);
     goto out;
   }
 
@@ -335,7 +334,6 @@ int nfs_Readdir(nfs_arg_t * parg,
                          &end_cookie,
                          &eod_met,
                          dirent_array,
-                         ht,
                          &dir_pentry_unlock,
                          pclient,
                          pcontext,
@@ -483,7 +481,6 @@ int nfs_Readdir(nfs_arg_t * parg,
 
                       if((pentry_dot_dot = cache_inode_lookupp(
                               dir_pentry,
-                              ht,
                               pclient,
                               pcontext,
                               &cache_status_gethandle,
@@ -707,7 +704,6 @@ int nfs_Readdir(nfs_arg_t * parg,
 
                       if((pentry_dot_dot = cache_inode_lookupp(
                               dir_pentry,
-                              ht,
                               pclient,
                               pcontext,
                               &cache_status_gethandle,

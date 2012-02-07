@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  *  version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -72,7 +72,6 @@
  * @param pexport [IN]    pointer to nfs export list 
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param ht      [INOUT] cache inode hash table
  * @param preq    [IN]    pointer to SVC request related to this call 
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
@@ -84,7 +83,7 @@ int nfs3_Mknod(nfs_arg_t * parg,
                exportlist_t * pexport,
                fsal_op_context_t * pcontext,
                cache_inode_client_t * pclient,
-               hash_table_t * ht, struct svc_req *preq, nfs_res_t * pres)
+               struct svc_req *preq, nfs_res_t * pres)
 {
   cache_entry_t *parent_pentry = NULL;
   fsal_attrib_list_t parent_attr;
@@ -133,7 +132,7 @@ int nfs3_Mknod(nfs_arg_t * parg,
                                          &(pres->res_mknod3.status),
                                          NULL,
                                          &parent_attr,
-                                         pcontext, pclient, ht, &rc)) == NULL)
+                                         pcontext, pclient, &rc)) == NULL)
     {
       /* Stale NFS FH ? */
       return rc;
@@ -254,9 +253,8 @@ int nfs3_Mknod(nfs_arg_t * parg,
                                         &file_name,
                                         pexport->cache_inode_policy,
                                         &attr,
-                                        ht, 
-                                        pclient, 
-                                        pcontext, 
+                                        pclient,
+                                        pcontext,
                                         &cache_status_lookup,
                                         CACHE_INODE_FLAG_NONE);
 
@@ -272,12 +270,13 @@ int nfs3_Mknod(nfs_arg_t * parg,
                                                mode,
                                                &create_arg,
                                                &attr,
-                                               ht,
-                                               pclient, pcontext, &cache_status)) != NULL)
+                                               pclient,
+                                               pcontext,
+                                               &cache_status)) != NULL)
             {
 
               /*
-               * Get the FSAL handle for this entry 
+               * Get the FSAL handle for this entry
                */
               pfsal_handle = cache_inode_get_fsal_handle(node_pentry, &cache_status);
 

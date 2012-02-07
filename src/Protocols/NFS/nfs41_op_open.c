@@ -182,7 +182,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                                    &attr,
                                                    data->pcontext,
                                                    data->pclient,
-                                                   data->ht, &retval)) == NULL)
+                                                   &retval)) == NULL)
         {
           res_OPEN4.status = NFS4ERR_RESOURCE;
           LogDebug(COMPONENT_STATE,
@@ -348,7 +348,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       /* Status of parent directory before the operation */
       if(cache_inode_getattr(pentry_parent,
                              &attr_parent,
-                             data->ht,
                              data->pclient,
                              data->pcontext,
                              &cache_status) != CACHE_INODE_SUCCESS)
@@ -412,7 +411,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                              &filename,
                                              data->pexport->cache_inode_policy,
                                              &attr_newfile,
-                                             data->ht,
                                              data->pclient,
                                              data->pcontext,
                                              &cache_status,
@@ -430,7 +428,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                     {
                       if(cache_inode_access(pentry_lookup,
                                             write_access,
-                                            data->ht,
                                             data->pclient,
                                             data->pcontext,
                                             &cache_status) != CACHE_INODE_SUCCESS)
@@ -446,7 +443,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                     {
                       if(cache_inode_access(pentry_lookup,
                                             read_access,
-                                            data->ht,
                                             data->pclient,
                                             data->pcontext,
                                             &cache_status) != CACHE_INODE_SUCCESS)
@@ -461,7 +457,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                     {
                       if(cache_inode_setattr(pentry_lookup,
                                              &sattr,
-                                             data->ht,
                                              data->pclient,
                                              data->pcontext,
                                              &cache_status) != CACHE_INODE_SUCCESS)
@@ -483,7 +478,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                     {
                       if(cache_inode_access(pentry_lookup,
                                             write_access,
-                                            data->ht,
                                             data->pclient,
                                             data->pcontext,
                                             &cache_status) != CACHE_INODE_SUCCESS)
@@ -697,7 +691,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                                   mode,
                                                   &create_arg,
                                                   &attr_newfile,
-                                                  data->ht,
                                                   data->pclient,
                                                   data->pcontext, &cache_status)) == NULL)
             {
@@ -763,7 +756,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
             {
               if((cache_status = cache_inode_setattr(pentry_newfile,
                                                      &sattr,
-                                                     data->ht,
                                                      data->pclient,
                                                      data->pcontext,
                                                      &cache_status)) !=
@@ -813,7 +805,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                                       &filename,
                                                       data->pexport->cache_inode_policy,
                                                       &attr_newfile,
-                                                      data->ht,
                                                       data->pclient,
                                                       data->pcontext,
                                                       &cache_status,
@@ -852,7 +843,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
             {
               if(cache_inode_access(pentry_newfile,
                                     write_access,
-                                    data->ht,
                                     data->pclient,
                                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS)
                 {
@@ -868,7 +858,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
             {
               if(cache_inode_access(pentry_newfile,
                                     read_access,
-                                    data->ht,
                                     data->pclient,
                                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS)
                 {
@@ -884,7 +873,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
             {
               if(cache_inode_access(pentry_newfile,
                                     write_access,
-                                    data->ht,
                                     data->pclient,
                                     data->pcontext, &cache_status) != CACHE_INODE_SUCCESS)
                 {
@@ -1072,7 +1060,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   /* Status of parent directory after the operation */
   if((cache_status = cache_inode_getattr(pentry_parent,
                                          &attr_parent,
-                                         data->ht,
                                          data->pclient,
                                          data->pcontext,
                                          &cache_status)) != CACHE_INODE_SUCCESS)

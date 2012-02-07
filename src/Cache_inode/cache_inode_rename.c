@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -63,7 +63,6 @@
  * @param pentry_parent [INOUT] cache entry representing the directory to be managed.
  * @param oldname [IN] name of the entry to rename.
  * @param newname [IN] new name for the entry
- * @param ht [IN] hash table used for the cache, unused in this call.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pstatus [OUT] returned status.
  *
@@ -74,7 +73,6 @@
 cache_inode_status_t cache_inode_rename_cached_dirent(cache_entry_t * pentry_parent,
                                                       fsal_name_t * oldname,
                                                       fsal_name_t * newname,
-                                                      hash_table_t * ht,
                                                       cache_inode_client_t * pclient,
                                                       cache_inode_status_t * pstatus)
 {
@@ -114,7 +112,6 @@ cache_inode_status_t cache_inode_rename_cached_dirent(cache_entry_t * pentry_par
  * @param newname [IN] name of the object in the destination directory
  * @param pattr_src [OUT] contains the source directory attributes if not NULL
  * @param pattr_dst [OUT] contains the destination directory attributes if not NULL
- * @param ht [INOUT] hash table used for the cache.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials 
  * @param pstatus [OUT] returned status.
@@ -130,7 +127,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                                         fsal_name_t * pnewname,
                                         fsal_attrib_list_t * pattr_src,
                                         fsal_attrib_list_t * pattr_dst,
-                                        hash_table_t * ht,
                                         cache_inode_client_t * pclient,
                                         fsal_op_context_t * pcontext,
                                         cache_inode_status_t * pstatus)
@@ -193,7 +189,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                                                       poldname,
                                                       CACHE_INODE_JOKER_POLICY,
                                                       &attrlookup,
-                                                      ht,
                                                       pclient,
                                                       pcontext, pstatus)) == NULL)
     {
@@ -226,7 +221,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                                                        pnewname,
                                                        CACHE_INODE_JOKER_POLICY,
                                                        &attrlookup,
-                                                       ht,
                                                        pclient,
                                                        pcontext, pstatus)) != NULL)
     {
@@ -316,7 +310,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
 
       status = cache_inode_remove_no_mutex(pentry_dirdest,
                                            pnewname,
-                                           &attrlookup, ht, pclient, pcontext, pstatus);
+                                           &attrlookup, pclient, pcontext, pstatus);
       if(status != CACHE_INODE_SUCCESS)
         {
           pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
@@ -439,7 +433,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                        "cache_inode_rename: Stale FSAL File Handle detected for pentry = %p",
                        pentry_dirsrc);
 
-              if(cache_inode_kill_entry(pentry_dirsrc, WT_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry(pentry_dirsrc, WT_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_rename: Could not kill entry %p, status = %u",
@@ -453,7 +447,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                        "cache_inode_rename: Stale FSAL File Handle detected for pentry = %p",
                        pentry_dirdest);
 
-              if(cache_inode_kill_entry(pentry_dirdest, WT_LOCK, ht, pclient, &kill_status) !=
+              if(cache_inode_kill_entry(pentry_dirdest, WT_LOCK, pclient, &kill_status) !=
                  CACHE_INODE_SUCCESS)
                 LogCrit(COMPONENT_CACHE_INODE,
                         "cache_inode_rename: Could not kill entry %p, status = %u",
@@ -491,7 +485,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                pentry_dirsrc, poldname->name, pentry_dirdest, pnewname->name);
 
       status = cache_inode_rename_cached_dirent(pentry_dirdest,
-                                                poldname, pnewname, ht, pclient, pstatus);
+                                                poldname, pnewname, pclient, pstatus);
 
       if(status != CACHE_INODE_SUCCESS)
         {
@@ -515,9 +509,8 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       status = cache_inode_add_cached_dirent(pentry_dirdest,
                                              pnewname,
                                              pentry_lookup_src,
-                                             ht, 
-					     &new_dir_entry,
-					     pclient, pcontext, pstatus);
+                                             &new_dir_entry,
+                                             pclient, pcontext, pstatus);
       if(status != CACHE_INODE_SUCCESS)
         {
           pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
@@ -535,7 +528,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       /* Remove the old entry */
       if(cache_inode_remove_cached_dirent(pentry_dirsrc,
                                           poldname,
-                                          ht, pclient, &status) != CACHE_INODE_SUCCESS)
+                                          pclient, &status) != CACHE_INODE_SUCCESS)
         {
           pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
           *pstatus = status;
