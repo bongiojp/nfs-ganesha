@@ -216,7 +216,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       LogLock(COMPONENT_NFS_V4_LOCK, NIV_FULL_DEBUG,
               "LOCK New lock owner from open owner",
               data->current_entry,
-              data->pcontext,
               popen_owner,
               &lock_desc);
 
@@ -318,7 +317,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       LogLock(COMPONENT_NFS_V4_LOCK, NIV_FULL_DEBUG,
               "LOCK Existing lock owner",
               data->current_entry,
-              data->pcontext,
               plock_owner,
               &lock_desc);
 
@@ -396,7 +394,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
               "LOCK failed, SHARE doesn't allow access",
               data->current_entry,
-              data->pcontext,
               plock_owner,
               &lock_desc);
 
@@ -450,7 +447,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
               LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
                       "LOCK failed to create new lock owner, re-use",
                       data->current_entry,
-                      data->pcontext,
                       popen_owner,
                       &lock_desc);
               dump_all_locks("All locks (re-use of lock owner)");
@@ -474,7 +470,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
               LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
                       "LOCK failed to create new lock owner",
                       data->current_entry,
-                      data->pcontext,
                       popen_owner,
                       &lock_desc);
 
@@ -493,7 +488,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                    &candidate_data,
                    plock_owner,
                    data->pclient,
-                   data->pcontext,
                    &plock_state, &state_status) != STATE_SUCCESS)
         {
           res_LOCK4.status = NFS4ERR_RESOURCE;
@@ -501,7 +495,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
           LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
                   "LOCK failed to add new stateid",
                   data->current_entry,
-                  data->pcontext,
                   plock_owner,
                   &lock_desc);
 
@@ -532,8 +525,8 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
    * Go ahead and push lock into SAL (and FSAL).
    */
   if(state_lock(data->current_entry,
-                data->pcontext,
                 data->pexport,
+                &data->user_credentials,
                 plock_owner,
                 plock_state,
                 blocking,
@@ -606,7 +599,6 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   LogLock(COMPONENT_NFS_V4_LOCK, NIV_FULL_DEBUG,
           "LOCK applied",
           data->current_entry,
-          data->pcontext,
           plock_owner,
           &lock_desc);
 out:

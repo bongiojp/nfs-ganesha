@@ -318,7 +318,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                             FSAL_READ_ACCESS,
                             data->ht,
                             data->pclient,
-                            data->pcontext,
+                            &data->user_credentials,
                             &cache_status) != CACHE_INODE_SUCCESS)
         {
           res_READ4.status = nfs4_Errno(cache_status);
@@ -375,7 +375,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       datapol.MaxCacheSize = data->pexport->MaxCacheSize;
 
       /* Status is set in last argument */
-      cache_inode_add_data_cache(pentry, data->ht, data->pclient, data->pcontext,
+      cache_inode_add_data_cache(pentry, data->ht, data->pclient,
                                  &cache_status);
 
       if((cache_status != CACHE_INODE_SUCCESS) &&
@@ -413,7 +413,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                       &eof_met,
                       data->ht,
                       data->pclient,
-                      data->pcontext, TRUE, &cache_status) != CACHE_INODE_SUCCESS)
+                      &data->user_credentials,
+		      TRUE,
+		      &cache_status) != CACHE_INODE_SUCCESS)
     {
       res_READ4.status = nfs4_Errno(cache_status);
       return res_READ4.status;
