@@ -467,7 +467,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
           break;
         }
      if( CACHE_INODE_KEEP_CONTENT( policy ) )
-      {  
+      {
         fsal_status =
             FSAL_pathcpy(&pentry->object.symlink->content, &pcreate_arg->link_content);
         if(FSAL_IS_ERROR(fsal_status))
@@ -515,8 +515,11 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
                  pentry, policy);
 
         fsal_status = FSAL_lookupJunction( &file_handle, pcontext,
-					   &pentry->handle,
-					   NULL);
+                                           &pentry->handle,
+                                           NULL);
+        fsal_status = FSAL_lookupJunction( &pfsdata->handle, pcontext,
+                                           &pentry->handle,
+                                           NULL);
         if( FSAL_IS_ERROR( fsal_status ) )
          {
            *pstatus = cache_inode_error_convert(fsal_status);
@@ -527,7 +530,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
       fsal_attributes.asked_attributes = pclient->attrmask;
       fsal_status = FSAL_getattrs( &pentry->handle, pcontext,
-				   &fsal_attributes);
+                                   &fsal_attributes);
       if( FSAL_IS_ERROR( fsal_status ) )
          {
            *pstatus = cache_inode_error_convert(fsal_status);
@@ -613,14 +616,22 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
             return NULL ;
          }
 
+        /* conditionally take an extra reference */
+        if (flags & CACHE_INODE_FLAG_EXREF)
+             (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
+                                        "cache_inode_new_entry (EXREF)");
         pentry = (cache_entry_t *) value.pdata ;
         *pstatus = CACHE_INODE_SUCCESS ;
         return pentry ;
       }
     }
-
   /* Now that added as a new entry, init attribute. */
   pentry->attributes = fsal_attributes;
+  /* conditionally take an extra reference */
+  if (flags & CACHE_INODE_FLAG_EXREF)
+       (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
+                                  "cache_inode_new_entry (EXREF)");
+
 
 #ifdef _USE_NFS4_ACL
   LogDebug(COMPONENT_CACHE_INODE, "init_attributes: md_type=%d, acl=%p",

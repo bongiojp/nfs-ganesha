@@ -3086,6 +3086,15 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
 				   FSAL_DIGEST_SIZEOF,
 				   &fsdata.fh_desc);
 
+          /* cache_inode_make_root returns a cache_entry with
+             reference count of 2, where 1 is the sentinel value of
+             a cache entry in the hash table.  The export list in
+             this case owns the extra reference, but other users of
+             cache_inode_make_root MUST put the entry.  In the future
+             if functionality is added to dynamically add and remove
+             export entries, then the function to remove an export
+             entry MUST put the extra reference. */
+
           if((pentry = cache_inode_make_root(&fsdata,
                                              pcurrent->cache_inode_policy,
                                              &small_client,
@@ -3141,12 +3150,14 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
 #endif
         }
 
-  /* return cache entry reference */
-  if (pentry)
-      cache_inode_put(pentry, &small_client);
+  /* Note: As mentioned above, we are returning with an extra
+     reference to the root entry.  This reference is owned by the
+     export list.  If we ever have a function to remove objects from
+     the export list, it must return this extra reference. */
 
   return TRUE;
-}                               /* nfs_export_create_root_entry */
+
+} /* nfs_export_create_root_entry */
 
 /* cleans up the export content */
 int CleanUpExportContext(fsal_export_context_t * p_export_context)
