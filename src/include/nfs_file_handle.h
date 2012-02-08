@@ -139,6 +139,7 @@ static inline size_t nfs4_sizeof_handle(struct file_handle_v4 *hdl)
 
 #define LEN_FH_STR 1024
 
+
 /* File handle translation utility */
 int nfs4_FhandleToFSAL(nfs_fh4 * pfh4,
 		       struct fsal_handle_desc *fh_desc,

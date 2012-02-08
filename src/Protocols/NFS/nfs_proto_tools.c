@@ -177,8 +177,8 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
   cache_inode_policy_t policy;
   cache_entry_t *pentry = NULL;
   fsal_attrib_list_t attr;
-  exportlist_t *pexport;
-  short exportid;
+  exportlist_t *pexport = NULL;
+  short exportid = 0;
 
   /* Default behaviour */
   *prc = NFS_REQ_OK;
@@ -193,6 +193,7 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
           *pstatus4 = NFS4ERR_BADHANDLE;
           return NULL;
         }
+      exportid = nfs4_FhandleToExportId(pfh4);
       break;
 
     case NFS_V3:
@@ -202,6 +203,7 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
           *pstatus3 = NFS3ERR_BADHANDLE;
           return NULL;
         }
+      exportid = nfs3_FhandleToExportId(pfh3);
       break;
 
     case NFS_V2:
@@ -211,6 +213,7 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
           *pstatus2 = NFSERR_STALE;
           return NULL;
         }
+      exportid = nfs2_FhandleToExportId(pfh2);
       break;
     }
 
@@ -275,7 +278,7 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
  * nfs_SetPostOpAttr: Converts FSAL Attributes to NFSv3 PostOp Attributes structure.
  *
  * Converts FSAL Attributes to NFSv3 PostOp Attributes structure.
- * 
+ *
  * @param pexport    [IN]  the related export entry
  * @param pfsal_attr [IN]  FSAL attributes
  * @param pattr      [OUT] NFSv3 PostOp structure attributes.
@@ -2057,15 +2060,15 @@ int nfs4_FhandleToExId(nfs_fh4 * fh4p, unsigned short *ExIdp)
 /**
  *
  * nfs4_stringid_split: Splits a domain stamped name in two different parts.
- * 
- *  Splits a domain stamped name in two different parts.
  *
- * @param buff [IN] the input string 
+ * Splits a domain stamped name in two different parts.
+ *
+ * @param buff [IN] the input string
  * @param uidname [OUT] the extracted uid name
  * @param domainname [OUT] the extracted fomain name
  *
  * @return nothing (void function) 
- * 
+ *
  */
 void nfs4_stringid_split(char *buff, char *uidname, char *domainname)
 {
