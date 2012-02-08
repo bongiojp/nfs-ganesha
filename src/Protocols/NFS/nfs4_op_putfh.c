@@ -31,7 +31,7 @@
  * \brief   Routines used for managing the NFS4_OP_PUTFH operation.
  *
  * nfs4_op_putfh.c : Routines used for managing the NFS4_OP_PUTFH operation.
- * 
+ *
  */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -109,7 +109,7 @@ int nfs4_op_putfh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       return res_PUTFH4.status;
     }
 
-  /* Tests if teh Filehandle is expired (for volatile filehandle) */
+  /* Tests if the Filehandle is expired (for volatile filehandle) */
   if(nfs4_Is_Fh_Expired(&(arg_PUTFH4.object)))
     {
       res_PUTFH4.status = NFS4ERR_FHEXPIRED;
@@ -148,14 +148,10 @@ int nfs4_op_putfh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
   LogHandleNFS4("NFS4_OP_PUTFH CURRENT FH: ", &arg_PUTFH4.object);
 
-  /* If the filehandle is not pseudo hs file handle, get the entry
+  /* If the filehandle is not pseudo fs file handle, get the entry
    * related to it, otherwise use fake values */
   if(nfs4_Is_Fh_Pseudo(&(data->currentFH)))
     {
-        /* XXX we must ensure that the current and saved cache entries are
-         * non-null only when the caller holds one reference corresponding
-         * to each assignment.  Code overwriting a pointer to one of these
-         * special entries must first release that reference. */
         if (data->current_entry) {
             cache_inode_put(data->current_entry, data->pclient);
         }
@@ -175,7 +171,7 @@ int nfs4_op_putfh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
               return res_PUTFH4.status;
             }
 #ifdef _USE_SHARED_FSAL
-          FSAL_SetId( data->pexport->fsalid ) ;
+          FSAL_SetId(data->pexport->fsalid);
 #endif
         }
 
@@ -183,6 +179,8 @@ int nfs4_op_putfh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       /* As usual, protect existing refcounts */
       if (data->current_entry) {
           cache_inode_put(data->current_entry, data->pclient);
+          data->current_entry = NULL;
+          data->current_filetype = UNASSIGNED;
       }
       /* The export and fsalid should be updated, but DS handles
          don't support metdata operations.  Thus, we can't call into
@@ -212,6 +210,7 @@ int nfs4_op_putfh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
               return res_PUTFH4.status;
             }
           /* Extract the filetype */
+          assert(data->current_entry->lru.refcount > 1);
           data->current_filetype = cache_inode_fsal_type_convert(attr.type);
         }
     }
