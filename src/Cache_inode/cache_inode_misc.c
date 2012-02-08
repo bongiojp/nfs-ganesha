@@ -21,14 +21,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  * ---------------------------------------
- *
+ */
+
+/**
  * \File    cache_inode_misc.c
  * \author  $Author: deniel $
  * \date    $Date: 2006/01/05 15:14:51 $
  * \version $Revision: 1.63 $
  * \brief   Some routines for management of the cache_inode layer, shared by other calls.
  *
- * HashTable.c : Some routines for management of the cache_inode layer, shared by other calls.
+ * cache_inode_misc.c : Some routines for management of the cache_inode layer, shared by other calls.
  *
  *
  */
@@ -301,7 +303,6 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
     }
 
   pentry = cache_inode_lru_get(pclient, pstatus, LRU_GET_FLAG_REF);
-  assert(pentry->lru.refcount == SENTINEL_REFCOUNT);
   if(pentry == NULL)
     {
       LogCrit(COMPONENT_CACHE_INODE,
@@ -313,6 +314,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
       return NULL;
     }
+  assert(pentry->lru.refcount == SENTINEL_REFCOUNT);
 
   memset(pentry, 0, sizeof(cache_entry_t));
 
