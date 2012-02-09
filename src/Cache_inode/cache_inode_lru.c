@@ -276,13 +276,6 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
         if (lru) {
             entry = container_of(lru, cache_entry_t, lru);
 
-            if (entry)
-                LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                             "first entry %p refcount %"PRIu64" flags %d",
-                             entry,
-                             entry->lru.refcount,
-                             entry->lru.flags);
-
             if (entry && (entry->lru.refcount == SENTINEL_REFCOUNT)) {
 
                 P(entry->lru.mtx);
@@ -297,12 +290,6 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
                  * we should also make a defensive check against the entry
                  * having state, and in that unlikely event, pin it, and
                  * retry. */
-
-                LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                             "VICTIM entry %p refcount %"PRIu64" flags %d",
-                             entry,
-                             entry->lru.refcount,
-                             entry->lru.flags);
 
                 cache_inode_lru_clean(entry);
 
@@ -382,12 +369,6 @@ static inline cache_inode_status_t cache_inode_lru_pin(
     entry->lru.flags &= ~LRU_FLAG_Q_LRU;
     entry->lru.flags |= LRU_FLAG_Q_PINNED;
 
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "unpin entry %p refcount %"PRIu64" flags %d",
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags);
-
 unlock:
     if (! (flags & LRU_FLAG_LOCKED)) {
         V(entry->lru.mtx);
@@ -425,12 +406,6 @@ static inline cache_inode_status_t cache_inode_lru_unpin(
 
     entry->lru.flags &= ~LRU_FLAG_Q_PINNED;
     entry->lru.flags |= LRU_FLAG_Q_LRU;
-
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "unpin entry %p refcount %"PRIu64" flags %d",
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags);
 
 unlock:
     if (! (flags & LRU_FLAG_LOCKED)) {
@@ -471,16 +446,6 @@ cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
     glist_del(&entry->lru.q);
     glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
 
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s ref entry %p refcount %"PRIu64" flags %d "
-                 "size %"PRIu64" pinned size %"PRIu64"",
-                 tag,
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags,
-                 lru_q[0].lru.size,
-                 lru_q[0].lru_pinned.size);
-
     /* cond (un)pin */
     cache_inode_lru_cond_pin(entry, LRU_FLAG_LOCKED);
 
@@ -513,32 +478,12 @@ cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
         glist_del(&entry->lru.q);
         (qp->size)--;
 
-        LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                     "%s unref entry %p refcount %"PRIu64" flags %d "
-                     "size %"PRIu64" pinned size %"PRIu64" RECYCLE",
-                     tag,
-                     entry,
-                     entry->lru.refcount,
-                     entry->lru.flags,
-                     lru_q[0].lru.size,
-                     lru_q[0].lru_pinned.size);
-
         V(entry->lru.mtx);
         if (entry->internal_md.type == SYMBOLIC_LINK)
             cache_inode_release_symlink(entry, &pclient->pool_entry_symlink);
         ReleaseToPool(entry, &pclient->pool_entry);
         goto unlock;
     }
-
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s unref entry %p refcount %"PRIu64" flags %d "
-                 "size %"PRIu64" pinned size %"PRIu64"",
-                 tag,
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags,
-                 lru_q[0].lru.size,
-                 lru_q[0].lru_pinned.size);
 
     /* cond (un)pin */
     cache_inode_lru_cond_pin(entry, LRU_FLAG_LOCKED);
@@ -584,9 +529,6 @@ void *lru_thread(void *arg)
 
         if (lru_thread_state.flags & LRU_SHUTDOWN)
             break;
-
-        LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                     "top of poll loop");
 
         /* do stuff */
 
