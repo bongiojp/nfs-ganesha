@@ -113,7 +113,7 @@ static cache_inode_status_t cache_inode_readdir_nonamecache( cache_entry_t * pen
 
   LogDebug(COMPONENT_CACHE_INODE,
                "About to readdir in  cache_inode_readdir_nonamecache: pentry=%p "
-	       "cookie=%"PRIu64, pentry_dir, cookie ) ;
+               "cookie=%"PRIu64, pentry_dir, cookie ) ;
 
   /* Open the directory */
   dir_attributes.asked_attributes = pclient->attrmask;
@@ -966,16 +966,19 @@ cache_inode_status_t cache_inode_readdir_populate(
                                    FSAL_DIGEST_SIZEOF,
                                    &new_entry_fsdata.fh_desc);
 
-          if((pentry = cache_inode_new_entry( &new_entry_fsdata,
-                                              &array_dirent[iter].attributes,
-                                              type,
-                                              policy,
-                                              &create_arg,
-                                              NULL,
-                                              pclient,
-                                              pcontext,
-                                              CACHE_INODE_FLAG_EXREF, /* no creation flag */
-                                              pstatus)) == NULL)
+          if((pentry
+              = cache_inode_new_entry( &new_entry_fsdata,
+                                       &array_dirent[iter].attributes,
+                                       type,
+                                       policy,
+                                       &create_arg,
+                                       NULL,
+                                       pclient,
+                                       pcontext,
+                                       /* cache_inode_add_cached_dirent
+                                          takes an extra reference */
+                                       CACHE_INODE_FLAG_NONE,
+                                       pstatus)) == NULL)
             return *pstatus;
 
           cache_status
@@ -1118,7 +1121,7 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
   /* end cookie initial value is the begin cookie */
   LogDebug(COMPONENT_CACHE_INODE,
                "--> Cache_inode_readdir: setting pend_cookie to cookie=%"
-	       PRIu64,
+               PRIu64,
                cookie);
   *pend_cookie = cookie;
 
@@ -1128,7 +1131,7 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
 
   LogMidDebug(COMPONENT_CACHE_INODE,
                "--> Cache_inode_readdir: parameters are cookie=%"PRIu64
-	       "nbwanted=%u",
+               "nbwanted=%u",
                cookie, nbwanted);
 
   /* Sanity check */
@@ -1336,45 +1339,3 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
 
   return *pstatus;
 }                               /* cache_inode_readdir */
-
-/**
- *
- * cache_inode_get_cookieverf: get a cookie verifier
- *
- * Get the cookie verifier for a directory
- *
- * @param pentry   [IN]  entry for the directory to be read.
- * @param pcontext [IN]  FSAL credentials
- * @param pverf    [OUT] Verifier
- * @param pstatus  [OUT] Returned status.
- *
- * @return CACHE_INODE_SUCCESS if operation is a success
- *
- */
-cache_inode_status_t cache_inode_cookieverf(cache_entry_t * pentry,
-                                            fsal_op_context_t * pcontext,
-                                            uint64_t * pverf,
-                                            cache_inode_status_t * pstatus)
-{
-  fsal_status_t fsal_status;
-  fsal_handle_t* handle = cache_inode_get_fsal_handle(pentry,
-                                                      pstatus);
-
-  if (*pstatus != CACHE_INODE_SUCCESS)
-    {
-      return *pstatus;
-    }
-
-  fsal_status = FSAL_get_cookieverf(handle, pcontext, pverf);
-  if (FSAL_IS_ERROR(fsal_status))
-    {
-      *pstatus = cache_inode_error_convert(fsal_status);
-    }
-  else
-    {
-      *pstatus = CACHE_INODE_SUCCESS;
-    }
-
-  return *pstatus;
-}
-

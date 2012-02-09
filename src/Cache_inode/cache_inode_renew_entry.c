@@ -178,12 +178,12 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
 
   LogMidDebug(COMPONENT_CACHE_INODE,
            "cache_inode_renew_entry use getattr/mtime checking %d, is dir "
-	   "beginning %d, has bit in mask %d, has been readdir %d state %d",
+           "beginning %d, has bit in mask %d, has been readdir %d state %d",
            pclient->getattr_dir_invalidation,
            pentry->internal_md.type == DIRECTORY,
            (int) FSAL_TEST_MASK(pclient->attrmask, FSAL_ATTR_MTIME),
-	   pentry->object.dir.has_been_readdir,
-	   pentry->internal_md.valid_state);
+           pentry->object.dir.has_been_readdir,
+           pentry->internal_md.valid_state);
   /* Do we use getattr/mtime checking */
   if(pclient->getattr_dir_invalidation &&
      pentry->internal_md.type == DIRECTORY &&

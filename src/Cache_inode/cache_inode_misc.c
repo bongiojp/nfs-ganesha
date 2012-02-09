@@ -1465,52 +1465,52 @@ void cache_inode_release_symlink(cache_entry_t * pentry,
  *
  */
 void cache_inode_release_dirents( cache_entry_t           * pentry,
-				  cache_inode_client_t    * pclient,
-				  cache_inode_avl_which_t   which)
+                                  cache_inode_client_t    * pclient,
+                                  cache_inode_avl_which_t   which)
 {
     struct avltree_node     * dirent_node      = NULL ;
     struct avltree_node     * next_dirent_node = NULL ;
     struct avltree          * tree             = NULL ;
     cache_inode_dir_entry_t * dirent           = NULL ;
 
-    /* wont see this */
+    /* Won't see this */
     if( pentry->internal_md.type != DIRECTORY )
-	return;
+        return;
 
     switch( which )
     {
        case CACHE_INODE_AVL_NAMES:
-	  tree = &pentry->object.dir.avl;
-	  dirent_node = avltree_first(tree);
+         tree = &pentry->object.dir.avl;
+         dirent_node = avltree_first(tree);
 
-	  while( dirent_node )
+         while( dirent_node )
            {
-	     next_dirent_node = avltree_next(dirent_node);
+             next_dirent_node = avltree_next(dirent_node);
              dirent = avltree_container_of( dirent_node,
                                             cache_inode_dir_entry_t,
                                             node_hk);
              avltree_remove(dirent_node, tree);
-	     (void) cache_inode_lru_unref(dirent->pentry,
+             (void) cache_inode_lru_unref(dirent->pentry,
                                           pclient,
                                           LRU_FLAG_NONE,
                                           "cache_inode_release_dirents"); /* internal ref */
              ReleaseToPool(dirent, &pclient->pool_dir_entry);
-	     dirent_node = next_dirent_node;
-	   }
+             dirent_node = next_dirent_node;
+           }
 
         pentry->object.dir.nbactive = 0;
-	break;
+        break;
 
-      case CACHE_INODE_AVL_BOTH:
-	cache_inode_release_dirents(pentry, pclient, CACHE_INODE_AVL_NAMES);
-	/* tree == NULL */
-	break;
+    case CACHE_INODE_AVL_BOTH:
+      cache_inode_release_dirents(pentry, pclient, CACHE_INODE_AVL_NAMES);
+      /* tree == NULL */
+      break;
 
-      default:
-	/* tree == NULL */
-	break;
-     }
-} 
+    default:
+      /* tree == NULL */
+      break;
+    }
+}
 
 /**
  *

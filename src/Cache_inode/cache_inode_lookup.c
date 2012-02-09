@@ -78,7 +78,7 @@
  * @param pstatus       [OUT]   returned status.
  * @param use_mutex     [IN]    if TRUE, mutex management is done, not if equal
  * to FALSE.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the
  *  entry
@@ -90,7 +90,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
                                      fsal_attrib_list_t   * pattr,
                                      cache_inode_client_t * pclient,
                                      fsal_op_context_t    * pcontext,
-                                     cache_inode_status_t * pstatus, 
+                                     cache_inode_status_t * pstatus,
                                      unsigned int flags)
 {
   /* avl */
@@ -204,9 +204,9 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
       if (dirent)
        {
           pentry = dirent->pentry;
-	  /* XXX we need an extra ref, we are protected by pentry_parent lock, which we
+          /* XXX we need an extra ref, we are protected by pentry_parent lock, which we
 	   * believe this call path necessarily holds */
-	  (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
+          (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
               "cache_inode_lookup XXX");
        }
 
@@ -302,7 +302,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
                                   &object_attributes);
                }
              else
-              { 
+              {
                  fsal_status.major = ERR_FSAL_NO_ERROR ;
                  fsal_status.minor = 0 ;
               }
@@ -422,7 +422,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
  *
  * cache_inode_lookup_no_mutex: looks up for a name in a directory indicated by a cached entry (no
  * mutex management).
- * 
+ *
  * Looks up for a name in a directory indicated by a cached entry. The directory should have been
  * cached before.  This function has no mutex management and suppose that is it properly done in the
  * calling function.
@@ -433,9 +433,9 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
  * @param name          [IN]    name of the entry that we are looking for in the cache.
  * @param pattr         [OUT]   attributes for the entry that we have found.
  * @param pclient       [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext         [IN]    FSAL credentials 
+ * @param pcontext         [IN]    FSAL credentials
  * @param pstatus       [OUT]   returned status.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
