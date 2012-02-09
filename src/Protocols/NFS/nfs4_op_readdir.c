@@ -313,9 +313,6 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
                                                       &cache_status ) ) == NULL )
             {
               Mem_Free((char *)entry_nfs_array);
-              /* Return the fattr4_rdattr_error , cf RFC3530, page 192 */
-              entry_nfs_array[i].attrs.attrmask = RdAttrErrorBitmap;
-              entry_nfs_array[i].attrs.attr_vals = RdAttrErrorVals;
               res_READDIR4.status = NFS4ERR_SERVERFAULT;
               goto out;
             }
@@ -359,7 +356,7 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
           /* Update the size of the output buffer */
           entrysize = sizeof( nfs_cookie4 ) ; /* nfs_cookie4 */
           entrysize += sizeof( u_int ) ; /* pathname4::utf8strings_len */
-          entrysize +=  entry_nfs_array[i].name.utf8string_len ; 
+          entrysize +=  entry_nfs_array[i].name.utf8string_len ;
           entrysize += sizeof( u_int ) ; /* bitmap4_len */
           entrysize +=  entry_nfs_array[i].attrs.attrmask.bitmap4_len ;
           entrysize += sizeof( u_int ) ; /* attrlist4_len */
@@ -388,7 +385,7 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
                            "maxcount reached at %u entries name=%s "
                            "cookie=%llu "
                            "buffsize=%u (return early)",
-                           i+1, 
+                           i+1,
                            dirent_array[i]->name.name,
                            (unsigned long long)entry_nfs_array[i].cookie,
                            outbuffsize);
@@ -396,6 +393,7 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
                  break ;
                }
            }
+          cache_inode_put(pentry, data->pclient);
         }                       /* for i */
 
       if((i == num_entries) && (eod_met == END_OF_DIR))
@@ -439,13 +437,13 @@ out:
 }                               /* nfs4_op_readdir */
 /**
  * nfs4_op_readdir_Free: frees what was allocared to handle nfs4_op_readdir.
- * 
+ *
  * Frees what was allocared to handle nfs4_op_readdir.
  *
  * @param resp  [INOUT]    Pointer to nfs4_op results
  *
  * @return nothing (void function )
- * 
+ *
  */
 void nfs4_op_readdir_Free(READDIR4res * resp)
 {
