@@ -204,10 +204,8 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
       if (dirent)
        {
           pentry = dirent->pentry;
-          /* XXX we need an extra ref, we are protected by pentry_parent lock, which we
-	   * believe this call path necessarily holds */
           (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
-              "cache_inode_lookup XXX");
+              "cache_inode_lookup");
        }
 
       if(pentry == NULL)
@@ -397,7 +395,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
   /* Return the attributes */
   *pattr = pentry->attributes;
 
-  /* XXX we should have already ensured refcount +1 */
+  /* We should have already ensured refcount +1 */
   if (cache_inode_lru_readref(pentry) < 1) {
       LogCrit(COMPONENT_CACHE_INODE,
               "%s: refcount invariant violated (entry refcount < 1 after ref)",

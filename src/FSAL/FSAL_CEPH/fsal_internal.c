@@ -339,7 +339,6 @@ void ReleaseTokenFSCall()
 /*
    Check the access from an existing fsal_attrib_list_t or struct stat
 */
-/* XXX : ACL */
 fsal_status_t fsal_internal_testAccess(cephfsal_op_context_t* context,
                                        fsal_accessflags_t access_type,
                                        struct stat * st,
@@ -474,8 +473,6 @@ fsal_status_t fsal_internal_testAccess(cephfsal_op_context_t* context,
 
   if(mode & FSAL_MODE_XOTH)
     missing_access &= ~FSAL_X_OK;
-
-  /* XXX ACLs. */
 
   if(missing_access == 0)
     ReturnCode(ERR_FSAL_NO_ERROR, 0);

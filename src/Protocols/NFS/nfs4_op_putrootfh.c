@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -137,10 +137,6 @@ int nfs4_op_putrootfh(struct nfs_argop4 *op,
       return res_PUTROOTFH4.status;
     }
 
-  /* XXX we must ensure that the current and saved cache entries are
-   * non-null only when the caller holds one reference corresponding
-   * to each assignment.  Code overwriting a pointer to one of these
-   * special entries must first release that reference. */
   if (data->current_entry) {
       cache_inode_put(data->current_entry, data->pclient);
   }

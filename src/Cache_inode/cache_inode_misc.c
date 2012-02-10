@@ -1540,8 +1540,8 @@ inline unsigned int cache_inode_file_holds_state( cache_entry_t * pentry )
       found_state = TRUE ;
     }
   V(pentry->object.file.lock_list_mutex);
-  
-  if( found_state == TRUE ) 
+
+  if( found_state == TRUE )
     return found_state ;
 
   if(!glist_empty(&pentry->object.file.state_list))
@@ -1563,8 +1563,6 @@ void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry)
 
   if(pentry == NULL)
     return;
-
-  /* XXX infelicitous casts  */
 
   switch (pentry->internal_md.type)
     {

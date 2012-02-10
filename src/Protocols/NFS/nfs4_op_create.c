@@ -533,10 +533,6 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
 
   /* Keep the vnode entry for the file in the compound data */
 
-  /* XXX we must ensure that the current and saved cache entries are
-   * non-null only when the caller holds one reference corresponding
-   * to each assignment.  Code overwriting a pointer to one of these
-   * special entries must first release that reference. */
   if (data->current_entry) {
       cache_inode_put(data->current_entry, data->pclient);
   }
@@ -551,13 +547,13 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
 
 /**
  * nfs4_op_create_Free: frees what was allocared to handle nfs4_op_create.
- * 
+ *
  * Frees what was allocared to handle nfs4_op_create.
  *
  * @param resp  [INOUT]    Pointer to nfs4_op results
  *
  * @return nothing (void function )
- * 
+ *
  */
 void nfs4_op_create_Free(CREATE4res * resp)
 {
