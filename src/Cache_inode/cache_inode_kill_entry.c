@@ -109,6 +109,8 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
   int rc;
   fsal_status_t fsal_status;
 
+  /* XXX - Audit this function and probably refactor. */
+
   memset( (char *)&fsaldata, 0, sizeof( fsaldata ) ) ;
 
   LogInfo(COMPONENT_CACHE_INODE,
@@ -251,7 +253,7 @@ cache_inode_status_t cache_inode_kill_entry( cache_entry_t          * pentry,
   /* If entry is a DIRECTORY, invalidate dirents */
   if(pentry->internal_md.type == DIRECTORY)
     {
-	cache_inode_invalidate_related_dirents(pentry, pclient);
+        cache_inode_invalidate_related_dirents(pentry, pclient);
     }
 
   // free_lock( pentry, lock_how ) ; /* Really needed ? The pentry is unaccessible now and will be destroyed */

@@ -322,9 +322,11 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
   /* valid the found entry, if this is not feasible, returns nothing to the
    * client */
 
-  /* XXXX it appears likely that if cache_inode_valid fails, the entry is
+  /* it appears likely that if cache_inode_valid fails, the entry is
    * still in HashTable. Who is responsible for cleaning it up in this
    * case? (Matt) */
+
+  /* This will resolve itself when we get rid of cache_inode_valid */
 
   if( plocation != NULL )
    {

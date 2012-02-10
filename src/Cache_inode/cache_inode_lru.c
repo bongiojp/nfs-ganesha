@@ -217,21 +217,18 @@ void cache_inode_lru_pkgshutdown(void)
     V(lru_mtx);
 }
 
-static inline void cache_inode_lru_clean(cache_entry_t *entry)
+static inline void cache_inode_lru_clean(cache_entry_t *entry,
+                                         cache_inode_client_t *client)
 {
-
     cache_inode_status_t status;
 
     /* do not use for entry lru init */
     assert((entry->lru.refcount == SENTINEL_REFCOUNT) ||
            (entry->lru.refcount == (SENTINEL_REFCOUNT-1)));
-#if 0 /* still integrating */
-    /* XXXX not only wont this compile, there is a race with a
-     * thread which has just found entry, to ref it.  we need to
-     * ensure that any such thread makes sufficient progress to
-     * be diverted, or the reverse. */
-    status = cache_inode_clean_internal(entry, ht, pclient);
-#endif
+    /* XXXX There is a race with a thread which has just found entry,
+     * to ref it.  we need to ensure that any such thread makes
+     * sufficient progress to be diverted, or the reverse. */
+    status = cache_inode_clean_internal(entry, client);
     entry->lru.refcount = 0;
     cache_inode_clean_entry(entry);
 }
@@ -304,7 +301,7 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
                              entry->lru.refcount,
                              entry->lru.flags);
 
-                cache_inode_lru_clean(entry);
+                cache_inode_lru_clean(entry, pclient);
 
                 if (flags & LRU_GET_FLAG_REF)
                     ++(entry->lru.refcount);
