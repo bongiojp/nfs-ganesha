@@ -76,23 +76,35 @@
 /* Cahe inode entry weakref table */
 /* static hash_table_t weakref_; */
 
-struct lru_q_pair
+struct lru_q_base
 {
     struct glist_head q; /* LRU is at HEAD, MRU at tail */
     uint64_t size;
 };
 
+/*
+ * Cache-line padding macro from MCAS
+ */
+#define CACHE_LINE_SIZE 64 /* XXX arch-specific define */
+#define CACHE_PAD(_n) char __pad ## _n [CACHE_LINE_SIZE]
+#define ALIGNED_ALLOC(_s)                                       \
+    ((void *)(((unsigned long)malloc((_s)+CACHE_LINE_SIZE*2) +  \
+        CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE-1)))
+
 struct lru_q_
 {
-    struct lru_q_pair lru;
-    struct lru_q_pair lru_pinned; /* uncollectable, due to state */
+    struct lru_q_base lru;
+    struct lru_q_base lru_pinned; /* uncollectable, due to state */
+    CACHE_PAD(0);
 };
 
 /* Initially, we implement a single-level cache.  The algorithm here
  * generalizes to multi-level caching algorithm MQ [Zhou].
  */
-#define N_LRU_Q 1
-static struct lru_q_ lru_q[N_LRU_Q];
+
+#define N_LRU_Q_LANES 7
+static struct lru_q_ LRU_1[N_LRU_Q_LANES];
+static struct lru_q_ LRU_2[N_LRU_Q_LANES];
 
 /* The refcount mechanism distinguishes 3 key object states:
  *
