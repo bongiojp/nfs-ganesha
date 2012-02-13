@@ -98,8 +98,13 @@ struct lru_q_
     CACHE_PAD(0);
 };
 
-/* Initially, we implement a single-level cache.  The algorithm here
- * generalizes to multi-level caching algorithm MQ [Zhou].
+/* 
+ * A  multi-level LRU algorithm inspired by MQ [Zhou].  Transition from L1 to
+ * L2 implies various recurrence checks (open files, etc) have been performed,
+ * so ensures they are performed only once.  A correspondence to the "scan
+ * resistance" property of 2Q and MQ is accomplished by recycling/clean loads
+ * are onto the LRU of L1.  Async processing onto L2 constrains oscillation,
+ * in this algorithm.
  */
 
 #define N_LRU_Q_LANES 7
