@@ -28,7 +28,7 @@
  * \author  $Author: deniel $
  * \date    $Date: 2006/01/24 11:43:15 $
  * \version $Revision: 1.95 $
- * \brief   Management of the cached inode layer. 
+ * \brief   Management of the cached inode layer.
  *
  * cache_inode.h : Management of the cached inode layer
  *
@@ -148,8 +148,11 @@ typedef enum cache_inode_expire_type__
         {
     struct glist_head q;
     pthread_mutex_t mtx;
-    int64_t refcount; /* negative refcount is easy to spot */
+    int64_t refcount; /* Negative refcount is easy to spot. */
     uint32_t flags;
+    uint32_t lane; /* I'm not sanguine about this, but we need to
+                      have an entry know which lane it's in so we can
+                      get the right lock. */
 } cache_inode_lru_t;
 
 typedef struct cache_inode_stat__
@@ -188,24 +191,24 @@ typedef struct cache_inode_parameter__
 
 typedef struct cache_inode_client_parameter__
 {
-  LRU_parameter_t lru_param;                           /**< LRU list handle (used for gc)                    */
-  fsal_attrib_mask_t attrmask;                         /**< FSAL attributes to be used in FSAL               */
-  unsigned int nb_prealloc_entry;                      /**< number of preallocated pentries                  */
-  unsigned int nb_pre_parent;                          /**< number of preallocated parent link               */
-  unsigned int nb_pre_state_v4;                        /**< number of preallocated State_v4                  */
-  unsigned int nb_pre_lock;                            /**< number of preallocated file lock                 */
-  cache_inode_expire_type_t expire_type_attr;          /**< Cache inode expiration type for attributes       */
-  cache_inode_expire_type_t expire_type_link;          /**< Cache inode expiration type for symbolic links   */
-  cache_inode_expire_type_t expire_type_dirent;        /**< Cache inode expiration type for directory entries*/
-  time_t grace_period_attr;                            /**< Cached attributes grace period                   */
-  time_t grace_period_link;                            /**< Cached link grace period                         */
-  time_t grace_period_dirent;                          /**< Cached dirent grace period                       */
-  unsigned int getattr_dir_invalidation;               /**< Use getattr as cookie for directory invalidation */
-  unsigned int use_test_access;                        /**< Is FSAL_test_access to be used ?                 */
-  unsigned int max_fd;                                 /**< Max fd open per client                           */
-  time_t retention;                                    /**< Fd retention duration                            */
-  unsigned int use_fd_cache;                           /** Do we cache fd or not ?                           */
-  unsigned int use_fsal_hash ;                         /** Do we rely on FSAL to hash handle or not ?        */
+  LRU_parameter_t lru_param;                           /*< LRU list handle (used for gc)                    */
+  fsal_attrib_mask_t attrmask;                         /*< FSAL attributes to be used in FSAL               */
+  unsigned int nb_prealloc_entry;                      /*< number of preallocated pentries                  */
+  unsigned int nb_pre_parent;                          /*< number of preallocated parent link               */
+  unsigned int nb_pre_state_v4;                        /*< number of preallocated State_v4                  */
+  unsigned int nb_pre_lock;                            /*< number of preallocated file lock                 */
+  cache_inode_expire_type_t expire_type_attr;          /*< Cache inode expiration type for attributes       */
+  cache_inode_expire_type_t expire_type_link;          /*< Cache inode expiration type for symbolic links   */
+  cache_inode_expire_type_t expire_type_dirent;        /*< Cache inode expiration type for directory entries*/
+  time_t grace_period_attr;                            /*< Cached attributes grace period                   */
+  time_t grace_period_link;                            /*< Cached link grace period                         */
+  time_t grace_period_dirent;                          /*< Cached dirent grace period                       */
+  unsigned int getattr_dir_invalidation;               /*< Use getattr as cookie for directory invalidation */
+  unsigned int use_test_access;                        /*< Is FSAL_test_access to be used ?                 */
+  unsigned int max_fd;                                 /*< Max fd open per client                           */
+  time_t retention;                                    /*< Fd retention duration                            */
+  unsigned int use_fd_cache;                           /*< Do we cache fd or not ?                          */
+  unsigned int use_fsal_hash;                          /*< Do we rely on FSAL to hash handle or not?        */
 } cache_inode_client_parameter_t;
 
 typedef struct cache_inode_opened_file__
@@ -214,7 +217,7 @@ typedef struct cache_inode_opened_file__
   mfsl_file_t mfsl_fd ;
 #else
   fsal_file_t fd;
-#endif 
+#endif
   unsigned int fileno;
   fsal_openflags_t openflags;
   time_t last_op;
@@ -385,43 +388,45 @@ typedef struct cache_inode_fsal_data__
 
 struct cache_inode_client_t
 {
-  LRU_list_t *lru_gc;                                              /**< Pointer to the worker's LRU used for Garbagge collection */
-  struct prealloc_pool pool_entry;                                 /**< Worker's preallocad cache entries pool                   */
-  struct prealloc_pool pool_entry_symlink;                         /**< Symlink data for cache entries of type symlink           */
-  struct prealloc_pool pool_dir_entry;                             /**< Worker's preallocated cache dir entry pool            */
-  struct prealloc_pool pool_parent;                                /**< Pool of pointers to the parent entries                   */
-  struct prealloc_pool pool_key;                                   /**< Pool for building hash's keys                            */
-  struct prealloc_pool pool_state_v4;                              /**< Pool for NFSv4 files's states                            */
-  struct prealloc_pool pool_state_owner;                           /**< Pool for NFSv4 files's open owner                        */
-  struct prealloc_pool pool_nfs4_owner_name;                       /**< Pool for NFSv4 files's open_owner                        */
+  LRU_list_t *lru_gc;                                  /*< Pointer to the worker's LRU used for Garbagge collection */
+  struct prealloc_pool pool_entry;                     /*< Worker's preallocad cache entries pool                   */
+  struct prealloc_pool pool_entry_symlink;             /*< Symlink data for cache entries of type symlink           */
+  struct prealloc_pool pool_dir_entry;                 /*< Worker's preallocated cache dir entry pool            */
+  struct prealloc_pool pool_parent;                    /*< Pool of pointers to the parent entries                   */
+  struct prealloc_pool pool_key;                       /*< Pool for building hash's keys                            */
+  struct prealloc_pool pool_state_v4;                  /*< Pool for NFSv4 files's states                            */
+  struct prealloc_pool pool_state_owner;               /*< Pool for NFSv4 files's open owner                        */
+  struct prealloc_pool pool_nfs4_owner_name;           /*< Pool for NFSv4 files's open_owner                        */
 #ifdef _USE_NFS4_1
-  struct prealloc_pool pool_session;                               /**< Pool for NFSv4.1 session                                 */
+  struct prealloc_pool pool_session;                   /*< Pool for NFSv4.1 session                                 */
 #endif                          /* _USE_NFS4_1 */
-  unsigned int nb_prealloc;                                        /**< Size of the preallocated pool                            */
-  unsigned int nb_pre_parent;                                      /**< Number of preallocated parent list entries               */
-  unsigned int nb_pre_state_v4;                                    /**< Number of preallocated NFSv4 File States                 */
-  fsal_attrib_mask_t attrmask;                                     /**< Mask of the supported attributes for the underlying FSAL */
-  cache_inode_stat_t stat;                                         /**< Cache inode statistics for this client                   */
-  cache_inode_expire_type_t expire_type_attr;                      /**< Cache inode expiration type for attributes               */
-  cache_inode_expire_type_t expire_type_link;                      /**< Cache inode expiration type for symbolic links           */
-  cache_inode_expire_type_t expire_type_dirent;                    /**< Cache inode expiration type for directory entries        */
-  time_t grace_period_attr;                                        /**< Cached attributes grace period                           */
-  time_t grace_period_link;                                        /**< Cached link grace period                                 */
-  time_t grace_period_dirent;                                      /**< Cached directory entries grace period                    */
-  unsigned int use_test_access;                                    /**< Is FSAL_test_access to be used instead of FSAL_access    */
-  unsigned int getattr_dir_invalidation;                           /**< Use getattr as cookie for directory invalidation         */
-  unsigned int call_since_last_gc;                                 /**< Number of call to cache_inode since the last gc run      */
-  time_t time_of_last_gc;                                          /**< Epoch time for the last gc run for this thread           */
-  time_t time_of_last_gc_fd;                                       /**< Epoch time for the last file descriptor gc               */
-  caddr_t pcontent_client;                                         /**< Pointer to cache content client                          */
-  void *pworker;                                                   /**< Pointer to the information on the worker I belong to     */
-  unsigned int max_fd;                                             /**< Max fd open per client                                   */
-  time_t retention;                                                /**< Fd retention duration                                    */
-  unsigned int use_fd_cache;                                       /** Do we cache fd or not ?                                   */
-  int fd_gc_needed;                                                /**< Should we perform fd gc ?                                */
+  unsigned int nb_prealloc;                            /*< Size of the preallocated pool                            */
+  unsigned int nb_pre_parent;                          /*< Number of preallocated parent list entries               */
+  unsigned int nb_pre_state_v4;                        /*< Number of preallocated NFSv4 File States                 */
+  fsal_attrib_mask_t attrmask;                         /*< Mask of the supported attributes for the underlying FSAL */
+  cache_inode_stat_t stat;                             /*< Cache inode statistics for this client                   */
+  cache_inode_expire_type_t expire_type_attr;          /*< Cache inode expiration type for attributes               */
+  cache_inode_expire_type_t expire_type_link;          /*< Cache inode expiration type for symbolic links           */
+  cache_inode_expire_type_t expire_type_dirent;        /*< Cache inode expiration type for directory entries        */
+  time_t grace_period_attr;                            /*< Cached attributes grace period                           */
+  time_t grace_period_link;                            /*< Cached link grace period                                 */
+  time_t grace_period_dirent;                          /*< Cached directory entries grace period                    */
+  unsigned int use_test_access;                        /*< Is FSAL_test_access to be used instead of FSAL_access    */
+  unsigned int getattr_dir_invalidation;               /*< Use getattr as cookie for directory invalidation         */
+  unsigned int call_since_last_gc;                     /*< Number of call to cache_inode since the last gc run      */
+  time_t time_of_last_gc;                              /*< Epoch time for the last gc run for this thread           */
+  time_t time_of_last_gc_fd;                           /*< Epoch time for the last file descriptor gc               */
+  caddr_t pcontent_client;                             /*< Pointer to cache content client                          */
+  void *pworker;                                       /*< Pointer to the information on the worker I belong to     */
+  unsigned int max_fd;                                 /*< Max fd open per client                                   */
+  time_t retention;                                    /*< Fd retention duration                                    */
+  unsigned int use_fd_cache;                           /*< Do we cache fd or not ?                                   */
+  int fd_gc_needed;                                    /*< Should we perform fd gc ?                                */
 #ifdef _USE_MFSL
-  mfsl_context_t mfsl_context;                                     /**< Context to be used for MFSL module                       */
+  mfsl_context_t mfsl_context;                         /*< Context to be used for MFSL module                       */
 #endif
+  uint64_t thread_id;                                  /*< Integral identifier for the current thread       */
+  uint32_t lru_lane;                                   /*< Lane in logical LRU queue on which we operate    */
 };
 
 typedef struct cache_inode_gc_policy__

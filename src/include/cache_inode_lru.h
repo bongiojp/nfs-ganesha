@@ -1,7 +1,7 @@
 /*
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
- * Copyright (C) 2010, The Linux Box Corporation
+ * Copyright (C) 2012, The Linux Box Corporation
  * Contributor : Matt Benjamin <matt@linuxbox.com>
  *
  * Some portions Copyright CEA/DAM/DIF  (2008)
@@ -67,15 +67,65 @@
  */
 
 #define LRU_FLAG_NONE          0x0000
-#define LRU_GET_FLAG_REF       0x0001
-#define LRU_FLAG_Q_LRU         0x0002
-#define LRU_FLAG_Q_PINNED      0x0004
-#define LRU_FLAG_LOCKED        0x0008
 
-#define SENTINEL_REFCOUNT    1
+/* Flags set on LRU entries */
+
+/* Set on pinned (state-bearing) entries. Do we need both of these? */
+#define LRU_ENTRY_PINNED      0x0001
+/* Set on LRU entries in the L2 (scanned and colder) queue. */
+#define LRU_ENTRY_L2          0x0002
+
+/* Flags for functions in the LRU package */
+
+/* Take a reference on the created entry */
+#define LRU_REQ_FLAG_REF       0x0004
+/* The caller holds mutex on source (queue from which entry is
+   removed) */
+#define LRU_HAVE_LOCKED_SRC    0x0008
+/* The caller holds mutex on destination (queue to which entry is
+   added) */
+#define LRU_HAVE_LOCKED_DST    0x0010
+/* The caller holds mutex on entry */
+#define LRU_HAVE_LOCKED_ENTRY  0x0020
+/* The caller is fetching an initial reference */
+#define LRU_REQ_INITIAL        0x0040
+
+/* The minimum reference count for a cache entry not being recycled. */
+
+#define LRU_SENTINEL_REFCOUNT    1
+
+/* The number of lanes comprising a logical queue.  This must be
+   prime. */
+
+#define LRU_N_Q_LANES 7
+
+/* LRU_WORK_PER_WAKE * LRU_N_Q_LANES is the number of entries that
+   the worker thread will process and move from L1 to L2. */
+
+#define LRU_WORK_PER_WAKE 10
+
+#define LRU_NO_LANE ~0L
 
 extern void cache_inode_lru_pkginit(void);
 extern void cache_inode_lru_pkgshutdown(void);
+
+/* Return an integral id associated with the thread.  Currently we
+   just return the index, since it is known to be integral and unique
+   within ganesha.  We could return worker_thrid[index] if we wanted. */
+
+static inline uint64_t cache_inode_lru_thread_id(int index)
+{
+    return (uint64_t) index;
+}
+
+/* For a given thread, this function returns a lane within the
+   logical LRU queue upon which this thread should operate. */
+
+static inline uint32_t cache_inode_lru_thread_lane(int index)
+{
+    return (uint32_t) (cache_inode_lru_thread_id(index) %
+                       LRU_N_Q_LANES);
+}
 
 /* convenience function to increase entry refcount, permissible
  * IFF the caller has an initial reference */
@@ -97,15 +147,15 @@ static inline int64_t cache_inode_lru_readref(cache_entry_t *entry)
     return (cnt);
 }
 
-extern cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
+extern cache_entry_t *cache_inode_lru_get(cache_inode_client_t *pclient,
                                            cache_inode_status_t *pstatus,
                                            uint32_t flags);
-extern cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
-                                                uint32_t flags, char *tag);
+extern cache_inode_status_t cache_inode_lru_ref(cache_entry_t *entry,
+                                                cache_inode_client_t *pclient,
+                                                uint32_t flags);
 extern cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
                                                   cache_inode_client_t *pclient,
-                                                  uint32_t flags, char *tag);
-extern void *lru_thread(void *arg);
-extern void wakeup_lru_thread();
+                                                  uint32_t flags);
+extern void lru_wake_thread();
 
 #endif /* _CACHE_INODE_LRU_H */

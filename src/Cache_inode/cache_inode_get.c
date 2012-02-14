@@ -151,8 +151,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
       pentry = (cache_entry_t *) value.pdata;
 
       /* take an extra reference within the critical section */
-      (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
-          "cache_inode_get (found)");
+      cache_inode_lru_ref(pentry, pclient, 0);
 
       HashTable_Release(fh_to_cache_entry_ht, htoken);
 
@@ -250,8 +249,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
                            pentry, fsal_status.major, fsal_status.minor);
 
                   /* return reference we just took */
-                  (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
-                      "cache_inode_get (stale)");
+                  cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
 
                   /* hashtable refcount will likely drop to zero now */
                   if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
@@ -338,8 +336,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
           {
             V_w(&pentry->lock);
             /* we hold an extra reference (and XXX see above) */
-            (void) cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
-                "cache_inode_get (not valid)");
+            cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
             pentry = NULL;
           } else
             V_w(&pentry->lock);
@@ -376,6 +373,5 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
 cache_inode_status_t cache_inode_put(cache_entry_t *entry,
                                      cache_inode_client_t *pclient)
 {
-    return (cache_inode_lru_unref(entry, pclient, LRU_FLAG_NONE,
-                                  "cache_inode_put"));
+  return (cache_inode_lru_unref(entry, pclient, LRU_FLAG_NONE));
 }

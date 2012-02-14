@@ -289,8 +289,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
        /* conditionally take an extra reference */
        if (flags & CACHE_INODE_FLAG_EXREF)
-           (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
-                                      "cache_inode_new_entry (EXREF)");
+            (void) cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
 
        /* Release the subtree hash table mutex acquired in
           HashTable_GetEx */
@@ -302,7 +301,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
       return pentry;
     }
 
-  pentry = cache_inode_lru_get(pclient, pstatus, LRU_GET_FLAG_REF);
+  pentry = cache_inode_lru_get(pclient, pstatus, LRU_REQ_FLAG_REF);
   if(pentry == NULL)
     {
       LogCrit(COMPONENT_CACHE_INODE,
@@ -314,15 +313,15 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
       return NULL;
     }
-  assert(pentry->lru.refcount == SENTINEL_REFCOUNT);
+  assert(pentry->lru.refcount == LRU_SENTINEL_REFCOUNT);
 
   memset(pentry, 0, sizeof(cache_entry_t));
 
   if(rw_lock_init(&(pentry->lock)) != 0)
     {
       /* recycle */
-        cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
-                              "cache_inode_new_entry (lock init fail)");
+      cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+
       LogCrit(COMPONENT_CACHE_INODE,
               "cache_inode_new_entry: rw_lock_init returned %d (%s)",
               errno, strerror(errno));
@@ -344,8 +343,8 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
        if(FSAL_IS_ERROR(fsal_status))
          {
-             cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE,
-                                   "cache_inode_new_entry (failed attrs)");
+           cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+
            LogCrit(COMPONENT_CACHE_INODE,
                    "cache_inode_new_entry: FSAL_getattrs failed for pentry "
                    "= %p",
@@ -618,8 +617,8 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
         /* conditionally take an extra reference */
         if (flags & CACHE_INODE_FLAG_EXREF)
-             (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
-                                        "cache_inode_new_entry (EXREF)");
+          cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
+
         pentry = (cache_entry_t *) value.pdata ;
         *pstatus = CACHE_INODE_SUCCESS ;
         return pentry ;
@@ -629,8 +628,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
   pentry->attributes = fsal_attributes;
   /* conditionally take an extra reference */
   if (flags & CACHE_INODE_FLAG_EXREF)
-       (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
-                                  "cache_inode_new_entry (EXREF)");
+    cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
 
 
 #ifdef _USE_NFS4_ACL
@@ -1490,10 +1488,9 @@ void cache_inode_release_dirents( cache_entry_t           * pentry,
                                             cache_inode_dir_entry_t,
                                             node_hk);
              avltree_remove(dirent_node, tree);
-             (void) cache_inode_lru_unref(dirent->pentry,
-                                          pclient,
-                                          LRU_FLAG_NONE,
-                                          "cache_inode_release_dirents"); /* internal ref */
+             cache_inode_lru_unref(dirent->pentry,
+                                   pclient,
+                                   LRU_FLAG_NONE); /* internal ref */
              ReleaseToPool(dirent, &pclient->pool_dir_entry);
              dirent_node = next_dirent_node;
            }

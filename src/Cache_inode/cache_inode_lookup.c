@@ -203,9 +203,8 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
       dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
       if (dirent)
        {
-          pentry = dirent->pentry;
-          (void) cache_inode_lru_ref(pentry, LRU_FLAG_NONE,
-              "cache_inode_lookup");
+         pentry = dirent->pentry;
+         cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
        }
 
       if(pentry == NULL)

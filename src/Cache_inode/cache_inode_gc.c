@@ -208,66 +208,6 @@ static int cache_inode_gc_clean_entry(cache_entry_t * pentry,
 #endif /* 0 */
 
 /**
- *
- * cache_inode_gc_invalidate_related_dirents: invalidate directory entries
- * related through hard links.
- *
- * Removes directory entry associations.  Dirent is not reclaimed (but
- * may be by the caller).  Cache entry is locked.
- *
- * @param pentry [INOUT] entry to be managed
- * @param pgcparam [IN] additional parameter used for cleaning.
- *
- * @return  LRU_LIST_SET_INVALID if ok,  LRU_LIST_DO_NOT_SET_INVALID otherwise
- *
- */
-static int cache_inode_gc_invalidate_related_dirents(
-    cache_entry_t * pentry,
-    cache_inode_param_gc_t * pgcparam)
-{
-  cache_inode_parent_entry_t *parent_iter = NULL;
-
-  /* Set the cache status as INVALID in the directory entries */
-  for(parent_iter = pentry->parent_list; parent_iter != NULL;
-      parent_iter = parent_iter->next_parent)
-    {
-      if(parent_iter->parent == NULL)
-        {
-          LogDebug(COMPONENT_CACHE_INODE_GC,
-                   "cache_inode_gc_invalidate_related_dirent: pentry %p "
-		   "has no parent, no dirent to be removed...",
-                   pentry);
-          continue;
-        }
-
-      /* If I reached this point, then parent_iter->parent is not null
-       * and is a valid cache_inode pentry */
-      P_w(&parent_iter->parent->lock);
-
-      /* Check for type of the parent */
-      if(parent_iter->parent->internal_md.type != DIRECTORY)
-        {
-          V_w(&parent_iter->parent->lock);
-          /* Major parent incoherency: parent is not a directory */
-          LogDebug(COMPONENT_CACHE_INODE_GC,
-                   "cache_inode_gc_invalidate_related_dirent: major "
-		   "inconcistency. Found an entry whose parent is not "
-		   "a directory");
-          return LRU_LIST_DO_NOT_SET_INVALID;
-        }
-
-      /* Invalidate related */
-      cache_inode_invalidate_related_dirent(
-	  parent_iter->parent, pgcparam->pclient);
-
-      V_w(&parent_iter->parent->lock);
-    }
-
-  return LRU_LIST_SET_INVALID;
-}                               /* cache_inode_gc_invalidate_related_dirent */
-/* @} */
-
-/**
  * @defgroup Cache_inode_gc_interface Cache Inode GC interface.
  *
  * These functions are used to run and configure the Cache inode GC

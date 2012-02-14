@@ -49,6 +49,7 @@
 #include "stuff_alloc.h"
 #include "fsal.h"
 #include "cache_inode.h"
+#include "cache_inode_lru.h"
 #include "cache_inode_avl.h"
 
 #include <unistd.h>
@@ -573,7 +574,7 @@ cache_inode_status_t cache_inode_add_cached_dirent(
   pentry_parent->object.dir.nbactive++;
   new_dir_entry->pentry = pentry_added;
 
-  cache_inode_lru_ref(pentry_added);
+  cache_inode_lru_ref(pentry_added, pclient, 0);
 
   /* link with the parent entry (insert as first entry) */
   next_parent_entry->parent = pentry_parent;

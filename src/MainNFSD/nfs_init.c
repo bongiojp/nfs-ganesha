@@ -1842,6 +1842,11 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
   /* Set the cache content GC policy */
   cache_content_set_gc_policy(nfs_param.cache_layers_param.dcgcpol);
 
+  /* Cache Inode LRU (call this here, rather than as part of
+     cache_inode_init() so the GC policy has been set */
+  cache_inode_lru_pkginit();
+
+
   /* If only 'basic' init for having FSAL anc Cache Inode is required, stop init now */
   if(p_start_info->flush_datacache_mode)
     {

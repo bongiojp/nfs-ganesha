@@ -73,12 +73,15 @@
  *
  */
 
+static void *lru_thread(void *arg);
+
 /* Cahe inode entry weakref table */
 /* static hash_table_t weakref_; */
 
 struct lru_q_base
 {
     struct glist_head q; /* LRU is at HEAD, MRU at tail */
+    pthread_mutex_t mtx;
     uint64_t size;
 };
 
@@ -98,18 +101,17 @@ struct lru_q_
     CACHE_PAD(0);
 };
 
-/* 
- * A  multi-level LRU algorithm inspired by MQ [Zhou].  Transition from L1 to
- * L2 implies various recurrence checks (open files, etc) have been performed,
- * so ensures they are performed only once.  A correspondence to the "scan
- * resistance" property of 2Q and MQ is accomplished by recycling/clean loads
- * are onto the LRU of L1.  Async processing onto L2 constrains oscillation,
- * in this algorithm.
+/*
+ * A multi-level LRU algorithm inspired by MQ [Zhou].  Transition from
+ * L1 to L2 implies various checks (open files, etc) have been
+ * performed, so ensures they are performed only once.  A
+ * correspondence to the "scan resistance" property of 2Q and MQ is
+ * accomplished by recycling/clean loads onto the LRU of L1.  Async
+ * processing onto L2 constrains oscillation in this algorithm.
  */
 
-#define N_LRU_Q_LANES 7
-static struct lru_q_ LRU_1[N_LRU_Q_LANES];
-static struct lru_q_ LRU_2[N_LRU_Q_LANES];
+static struct lru_q_ LRU_1[LRU_N_Q_LANES];
+static struct lru_q_ LRU_2[LRU_N_Q_LANES];
 
 /* The refcount mechanism distinguishes 3 key object states:
  *
@@ -133,8 +135,6 @@ static struct lru_q_ LRU_2[N_LRU_Q_LANES];
 /* functions:
  * cache_inode_lru_pkginit
  * cache_inode_lru_pkgshutdown
- * cache_inode_ref -- increase refcount
- * cache_inode_unref -- decrement refcount, cond recycle
  * cache_inode_lru_get -- get initial reference, aka, EvictBlock()
  * cache_inode_lru_ref -- increment refcount and adjust LRU
  * cache_inode_lru_unref -- decrement refcount, cond recycle
@@ -157,6 +157,7 @@ static struct lru_state
     uint64_t entries_hiwat;
     uint64_t entries_lowat;
     uint32_t flags;
+    uint64_t last_count;
 } lru_state;
 
 #define LRU_SLEEPING 0x0001
@@ -170,50 +171,184 @@ static struct lru_thread_state
 
 extern cache_inode_gc_policy_t cache_inode_gc_policy;
 
+static inline void
+lru_init_queue(struct lru_q_base *q)
+{
+    init_glist(&q->q);
+    pthread_mutex_init(&q->mtx, NULL);
+    q->size = 0;
+}
+
+/* Given a lane and a set of flags, return a pointer to the
+   appropriate queue. */
+
+static inline struct lru_q_base *
+lru_select_queue(uint32_t flags, uint32_t lane)
+{
+     if (flags & LRU_ENTRY_PINNED) {
+        if (flags & LRU_ENTRY_L2) {
+            return &LRU_1[lane].lru_pinned;
+        } else {
+            return &LRU_2[lane].lru_pinned;
+        }
+    } else {
+        if (flags & LRU_ENTRY_L2) {
+            return &LRU_2[lane].lru;
+        } else {
+            return &LRU_1[lane].lru_pinned;
+        }
+    }
+}
+
+/* Insert the entry in the queue specified by the flags and lane. */
+
+static inline void
+lru_insert_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
+{
+    /* Destination LRU */
+    struct lru_q_base *d = NULL;
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_lock(&lru->mtx);
+    }
+    d = lru_select_queue(flags, lane);
+    if (!(flags & LRU_HAVE_LOCKED_DST)) {
+        pthread_mutex_lock(&d->mtx);
+    }
+    glist_add_tail(&d->q, &lru->q);
+    ++(d->size);
+    if (!(flags & LRU_HAVE_LOCKED_DST)) {
+        pthread_mutex_unlock(&d->mtx);
+    }
+    lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+    lru->flags |= (LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+    lru->lane = lane;
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_unlock(&lru->mtx);
+    }
+}
+
+/* Remove the entry from its queue. */
+
+static inline void
+lru_remove_entry(cache_inode_lru_t *lru,
+                 uint32_t flags,
+                 uint32_t lane __attribute__((unused)))
+{
+    /* Source LRU */
+    struct lru_q_base *s = NULL;
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_lock(&lru->mtx);
+    }
+    s = lru_select_queue(lru->flags, lru->lane);
+    if (!(flags & LRU_HAVE_LOCKED_SRC)) {
+        pthread_mutex_lock(&s->mtx);
+    }
+
+    glist_del(&lru->q);
+    --(s->size);
+    if (!(flags & LRU_HAVE_LOCKED_SRC)) {
+        pthread_mutex_unlock(&s->mtx);
+    }
+    lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+    lru->lane = LRU_NO_LANE;
+
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_unlock(&lru->mtx);
+    }
+}
+
+/* Move an entry from one queue to another.  The destination queue is
+   specified in the flags argument. */
+
+static inline void
+lru_move_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
+{
+    /* Source LRU */
+    struct lru_q_base *s = NULL;
+    /* Destination LRU */
+    struct lru_q_base *d = NULL;
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_lock(&lru->mtx);
+    }
+    assert(lru->lane != LRU_NO_LANE);
+    s = lru_select_queue(lru->flags, lru->lane);
+    if (!(flags & LRU_HAVE_LOCKED_SRC)) {
+        pthread_mutex_lock(&s->mtx);
+    }
+    d = lru_select_queue(flags, lane);
+    if ((s != d) && !(flags & LRU_HAVE_LOCKED_DST)) {
+        pthread_mutex_lock(&d->mtx);
+    }
+    glist_del(&lru->q);
+    --(s->size);
+    if (!(flags & LRU_HAVE_LOCKED_SRC)) {
+        pthread_mutex_unlock(&s->mtx);
+    }
+    /* When moving from L2 to L1, add to the LRU, otherwise add to
+       the MRU.  (In general we don't want to promote things except
+       on initial reference, but promoting things on move makes
+       more sense than demoting them.) */
+    if ((lru->flags & LRU_ENTRY_L2) &&
+        !(flags & LRU_ENTRY_L2)) {
+        glist_add_tail(&lru->q, &d->q);
+    } else {
+        glist_add_tail(&d->q, &lru->q);
+    }
+    ++(d->size);
+    if ((s != d) && !(flags & LRU_HAVE_LOCKED_DST)) {
+        pthread_mutex_unlock(&d->mtx);
+    }
+    lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+    lru->flags |= (LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+    lru->lane = lane;
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_unlock(&lru->mtx);
+    }
+}
+
 /*
  * Initialize subsystem
  */
 void cache_inode_lru_pkginit(void)
 {
     pthread_attr_t attr_thr;
-    int ix, code = 0;
+    int ix = 0, code = 0;
 
     /* repurpose some GC policy */
     lru_state.flags = LRU_STATE_NONE;
-#if 0
-    /* not assigned?? */
-    lru_state.entries_hiwat = .75 * cache_inode_gc_policy.hwmark_nb_entries;
-    lru_state.entries_lowat = .5 * cache_inode_gc_policy.hwmark_nb_entries;
-#else
-    lru_state.entries_hiwat = .75 * 500;
-    lru_state.entries_lowat = .5 * 500;
-#endif
+
+    /* Set high and low watermarks */
+    lru_state.entries_hiwat
+        = (75 * cache_inode_gc_policy.hwmark_nb_entries) / 100;
+    lru_state.entries_lowat
+        = (50 * cache_inode_gc_policy.hwmark_nb_entries) / 100;
+    lru_state.last_count = 0;
 
     pthread_mutex_init(&lru_mtx, NULL);
     pthread_cond_init(&lru_cv, NULL);
 
-    for (ix = 0; ix < N_LRU_Q; ++ix) {
-
-        /* init queues at each level */
-        init_glist(&lru_q[ix].lru.q);
-        lru_q[ix].lru.size = 0;
-
-        init_glist(&lru_q[ix].lru_pinned.q);
-        lru_q[ix].lru_pinned.size = 0;
-
+    for (ix = 0; ix < LRU_N_Q_LANES; ++ix) {
+        /* L1, unpinned */
+        lru_init_queue(&LRU_1[ix].lru);
+        /* L1, pinned */
+        lru_init_queue(&LRU_1[ix].lru_pinned);
+        /* L2, unpinned */
+        lru_init_queue(&LRU_2[ix].lru);
+        /* L2, pinned */
+        lru_init_queue(&LRU_2[ix].lru_pinned);
     }
 
-  if(pthread_attr_init(&attr_thr) != 0)
-      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't init pthread's attributes");
+    if(pthread_attr_init(&attr_thr) != 0)
+        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't init pthread's attributes");
 
-  if(pthread_attr_setscope(&attr_thr, PTHREAD_SCOPE_SYSTEM) != 0)
-      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's scope");
+    if(pthread_attr_setscope(&attr_thr, PTHREAD_SCOPE_SYSTEM) != 0)
+        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's scope");
 
-  if(pthread_attr_setdetachstate(&attr_thr, PTHREAD_CREATE_JOINABLE) != 0)
-      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's join state");
+    if(pthread_attr_setdetachstate(&attr_thr, PTHREAD_CREATE_JOINABLE) != 0)
+        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's join state");
 
-  if(pthread_attr_setstacksize(&attr_thr, THREAD_STACK_SIZE) != 0)
-      LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's stack size");
+    if(pthread_attr_setstacksize(&attr_thr, THREAD_STACK_SIZE) != 0)
+        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's stack size");
 
     /* spawn LRU background thread */
     code = pthread_create(&lru_thread_state.thread_id, &attr_thr, lru_thread,
@@ -227,40 +362,38 @@ void cache_inode_lru_pkginit(void)
 
 void cache_inode_lru_pkgshutdown(void)
 {
-    /* post and wait for shutdown of LRU background thread */
-    P(lru_mtx);
+    /* Post and wait for shutdown of LRU background thread */
+    pthread_mutex_lock(&lru_mtx);
     lru_thread_state.flags |= LRU_SHUTDOWN;
-    wakeup_lru_thread(LRU_FLAG_NONE);
-    V(lru_mtx);
+    lru_wake_thread(LRU_FLAG_NONE);
+    pthread_mutex_unlock(&lru_mtx);
 }
 
 static inline void cache_inode_lru_clean(cache_entry_t *entry,
                                          cache_inode_client_t *client)
 {
-    cache_inode_status_t status;
-
-    /* do not use for entry lru init */
-    assert((entry->lru.refcount == SENTINEL_REFCOUNT) ||
-           (entry->lru.refcount == (SENTINEL_REFCOUNT-1)));
-    /* XXXX There is a race with a thread which has just found entry,
-     * to ref it.  we need to ensure that any such thread makes
-     * sufficient progress to be diverted, or the reverse. */
-    status = cache_inode_clean_internal(entry, client);
+    /* Clean an LRU entry re-use.  */
+    assert((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) ||
+           (entry->lru.refcount == (LRU_SENTINEL_REFCOUNT - 1)));
+    cache_inode_clean_internal(entry, client);
     entry->lru.refcount = 0;
     cache_inode_clean_entry(entry);
 }
 
-static inline void check_lru_state()
+/* If the queue specified in q is non-empty return its least recently
+   used entry.  Nota Bene: This function locks q, retaining the lock
+   if an entry is found and unlocking it otherwise. */
+
+static inline cache_inode_lru_t *
+try_reap_entry(struct lru_q_base *q)
 {
-    /* LOCKED */
-    if (lru_state.flags & LRU_STATE_RECLAIMING) {
-        if (lru_q[0].lru.size < lru_state.entries_lowat)
-            lru_state.flags &= ~LRU_STATE_RECLAIMING;
-    } else {
-        if (lru_q[0].lru.size > lru_state.entries_hiwat) {
-            lru_state.flags |= LRU_STATE_RECLAIMING;
-        }
+    pthread_mutex_lock(&q->mtx);
+    if (!glist_empty(&q->q)) {
+        return glist_first_entry(&q->q, cache_inode_lru_t, q);
     }
+
+    pthread_mutex_unlock(&q->mtx);
+    return NULL;
 }
 
 /*
@@ -269,24 +402,36 @@ static inline void check_lru_state()
  * repurpose a resident entry in the LRU system, if the system is
  * above low-water mark, from pool otherwise.
  */
-cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
-                                    cache_inode_status_t *pstatus,
-                                    uint32_t flags)
+cache_entry_t *cache_inode_lru_get(cache_inode_client_t *pclient,
+                                   cache_inode_status_t *pstatus,
+                                   uint32_t flags)
 {
-    cache_inode_lru_t *lru;
+    /* The lane from which we harvest (or into which we store) the
+       new entry.  Usually the lane assigned to this thread. */
+    uint32_t lane = 0;
+    /* For bouncing around the lanes as we search */
+    uint32_t multiplier = 0;
+    /* The LRU entry */
+    cache_inode_lru_t *lru = NULL;
+    /* The Cache entry being created */
     cache_entry_t *entry = NULL;
 
-    struct lru_q_pair *qp = &lru_q[0].lru;
-
-    P(lru_mtx);
-
-    check_lru_state();
-
+    /* If we are in reclaim state, try to find an entry to recycle. */
     if (lru_state.flags & LRU_STATE_RECLAIMING) {
+        /* Search through all lanes (both levels) for an entry. */
+        do {
+            lane = ((pclient->thread_id * ++multiplier) %
+                    LRU_N_Q_LANES);
 
-        /* victim at LRU */
-        lru = glist_first_entry(&qp->q, cache_inode_lru_t, q);
+            if ((lru = try_reap_entry(&LRU_2[lane].lru))) {
+                break;
+            }
+            if ((lru = try_reap_entry(&LRU_1[lane].lru))) {
+                break;
+            }
+        } while (lane != 0);
 
+        /* If we found an entry, use it */
         if (lru) {
             entry = container_of(lru, cache_entry_t, lru);
 
@@ -297,20 +442,34 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
                              entry->lru.refcount,
                              entry->lru.flags);
 
-            if (entry && (entry->lru.refcount == SENTINEL_REFCOUNT)) {
+            /* Take the mutex here, before checking state and
+               refcount. */
+            pthread_mutex_lock(&entry->lru.mtx);
 
-                P(entry->lru.mtx);
-                glist_del(&entry->lru.q);
-                glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
-                V(lru_mtx);
+            /* if we can recycle this entry, do so. */
+            if ((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) &&
+                !cache_inode_file_holds_state(entry)) {
+                /* If this entry is in L2, move to the LRU of L1.
+                   Otherwise leave it where it is.  Since this is
+                   effectively a new file, being in L1 already
+                   shouldn't count. */
 
-                /* XXXX.  Ok, the problem here is:  the lowest refcount
-                 * we expect to find in the lru q is 1, which implies that
-                 * the victim is reachable.  Apparently we need to remove
-                 * any such entry from HT before continuing.  It seems
-                 * we should also make a defensive check against the entry
-                 * having state, and in that unlikely event, pin it, and
-                 * retry. */
+                if (entry->lru.flags & LRU_ENTRY_L2) {
+                    lru_move_entry(&entry->lru,
+                                   LRU_HAVE_LOCKED_ENTRY |
+                                   LRU_HAVE_LOCKED_SRC,
+                                   pclient->lru_lane);
+                    pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
+                } else {
+                    pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
+                }
+
+                /* Since we locked the entry before checking state
+                   and refcount, nothing should have been able to put
+                   state on it.  However, someone might be waiting on
+                   it now.  Maybe the best way to deal with that is
+                   to require someone to check the handle after
+                   acquiring the mutex. */
 
                 LogFullDebug(COMPONENT_CACHE_INODE_LRU,
                              "VICTIM entry %p refcount %"PRIu64" flags %d",
@@ -320,248 +479,178 @@ cache_entry_t * cache_inode_lru_get(cache_inode_client_t *pclient,
 
                 cache_inode_lru_clean(entry, pclient);
 
-                if (flags & LRU_GET_FLAG_REF)
+                if (flags & LRU_REQ_FLAG_REF)
                     ++(entry->lru.refcount);
 
-                V(entry->lru.mtx);
                 *pstatus = CACHE_INODE_SUCCESS;
                 goto out;
-            } /* entry */
-        } /* lru */
-    } /* reclaiming */
-
-    V(lru_mtx);
-
-    /* if reclaim failed, we may:
-     * a. if ! lru_q highwat, get from pool
-     * b. if lru_q highwat, we either get from the pool anyway with a warning,
-     * or fail the allocation
-     */
-
-    GetFromPool(entry, &pclient->pool_entry, cache_entry_t);
-    if(entry == NULL) {
-        LogCrit(COMPONENT_CACHE_INODE_LRU,
-                "can't allocate a new entry from cache pool");
-        *pstatus = CACHE_INODE_MALLOC_ERROR;
-        goto out;
+            } else {
+                pthread_mutex_unlock(&entry->lru.mtx);
+                if (entry->lru.flags & LRU_ENTRY_L2) {
+                    pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
+                } else {
+                    pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
+                }
+                lru = NULL;
+            }
+        }
     }
 
-    entry->lru.flags = LRU_FLAG_Q_LRU; /* queue partition */
-    entry->lru.refcount = 0;
-    if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
-        ReleaseToPool(entry, &pclient->pool_entry);
-          LogCrit(COMPONENT_CACHE_INODE_LRU,
-                  "pthread_mutex_init of lru.mtx returned %d (%s)",
-                  errno,
-                  strerror(errno));
-          *pstatus = CACHE_INODE_INIT_ENTRY_FAILED;
-          goto out;
+    if (!lru) {
+        lane = pclient->lru_lane;
+        GetFromPool(entry, &pclient->pool_entry, cache_entry_t);
+        if(entry == NULL) {
+            LogCrit(COMPONENT_CACHE_INODE_LRU,
+                    "can't allocate a new entry from cache pool");
+            *pstatus = CACHE_INODE_MALLOC_ERROR;
+            goto out;
+        }
+        entry->lru.flags = 0;
+        entry->lru.refcount = 0;
+        if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
+            ReleaseToPool(entry, &pclient->pool_entry);
+            LogCrit(COMPONENT_CACHE_INODE_LRU,
+                    "pthread_mutex_init of lru.mtx returned %d (%s)",
+                    errno,
+                    strerror(errno));
+            *pstatus = CACHE_INODE_INIT_ENTRY_FAILED;
+            goto out;
+        }
+
+        if (flags & LRU_REQ_FLAG_REF)
+            ++(entry->lru.refcount);
+
+        lru_insert_entry(&entry->lru, LRU_HAVE_LOCKED_ENTRY, lane);
     }
-
-    if (flags & LRU_GET_FLAG_REF)
-        ++(entry->lru.refcount);
-
-    P(lru_mtx);
-    glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
-    (qp->size)++;
-    V(lru_mtx);
 
     *pstatus = CACHE_INODE_SUCCESS;
 out:
     return (entry);
 }
 
-static inline cache_inode_status_t cache_inode_lru_pin(
-    cache_entry_t * entry,
-    uint32_t flags)
+static inline cache_inode_status_t
+cache_inode_lru_pin(cache_entry_t * entry,
+                    uint32_t flags,
+                    uint32_t lane)
 {
-    if (! (flags & LRU_FLAG_LOCKED)) {
-        P(lru_mtx);
-        P(entry->lru.mtx);
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_lock(&entry->lru.mtx);
     }
 
-    /* already pinned */
-    if (entry->lru.flags & LRU_FLAG_Q_PINNED)
+    /* Already pinned? */
+    if (entry->lru.flags & LRU_ENTRY_PINNED)
         goto unlock;
 
-    assert(entry->lru.flags & LRU_FLAG_Q_LRU);
+    /* We make no effort to keep things in L2 when pinning them,
+       because almost anything that you could do to pin something
+       would invalidate the L2 guarantee of having been checked. */
 
-    glist_del(&entry->lru.q);
-    (lru_q[0].lru.size)--;
-
-    /* also adjusts, seems harmless */
-    glist_add_tail(&lru_q[0].lru_pinned.q, &entry->lru.q); /* MRU */
-    (lru_q[0].lru_pinned.size)++;
-
-    entry->lru.flags &= ~LRU_FLAG_Q_LRU;
-    entry->lru.flags |= LRU_FLAG_Q_PINNED;
-
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "unpin entry %p refcount %"PRIu64" flags %d",
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags);
+    lru_move_entry(&entry->lru, flags | LRU_ENTRY_PINNED |
+                   LRU_HAVE_LOCKED_ENTRY, lane);
 
 unlock:
-    if (! (flags & LRU_FLAG_LOCKED)) {
-        V(entry->lru.mtx);
-        V(lru_mtx);
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_unlock(&entry->lru.mtx);
     }
 
     return (CACHE_INODE_SUCCESS);
 }
 
-static inline cache_inode_status_t cache_inode_lru_unpin(
-    cache_entry_t * entry,
-    uint32_t flags)
+static inline cache_inode_status_t
+cache_inode_lru_unpin(cache_entry_t *entry,
+                      uint32_t flags,
+                      uint32_t lane)
 {
-
-    if (! (flags & LRU_FLAG_LOCKED)) {
-        P(lru_mtx);
-        P(entry->lru.mtx);
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_lock(&entry->lru.mtx);
     }
 
-    /* BUG:  entries reach here with lru.flags = 0, they appear
-     * to in fact b on the pinned q. */
-
-    /* not pinned */
-    if (entry->lru.flags & LRU_FLAG_Q_LRU)
+    /* Already pinned? */
+    if (!(entry->lru.flags & LRU_ENTRY_PINNED))
         goto unlock;
 
-    assert(entry->lru.flags & LRU_FLAG_Q_PINNED);
-
-    glist_del(&entry->lru.q);
-    (lru_q[0].lru_pinned.size)--;
-
-    /* also adjusts, seems harmless */
-    glist_add_tail(&lru_q[0].lru.q, &entry->lru.q); /* MRU */
-    (lru_q[0].lru.size)++;
-
-    entry->lru.flags &= ~LRU_FLAG_Q_PINNED;
-    entry->lru.flags |= LRU_FLAG_Q_LRU;
-
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "unpin entry %p refcount %"PRIu64" flags %d",
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags);
+    lru_move_entry(&entry->lru, (flags & ~LRU_ENTRY_PINNED) |
+                   LRU_HAVE_LOCKED_ENTRY, lane);
 
 unlock:
-    if (! (flags & LRU_FLAG_LOCKED)) {
-        V(entry->lru.mtx);
-        V(lru_mtx);
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_unlock(&entry->lru.mtx);
     }
 
     return (CACHE_INODE_SUCCESS);
 }
 
-static inline void  cache_inode_lru_cond_pin(cache_entry_t *entry,
-                                             uint32_t flags)
+cache_inode_status_t
+cache_inode_lru_ref(cache_entry_t *entry,
+                    cache_inode_client_t *client,
+                    uint32_t flags)
 {
-    if (cache_inode_file_holds_state(entry))
-        cache_inode_lru_pin(entry, flags);
-    else
-        cache_inode_lru_unpin(entry, flags);
-}
+    /* These shouldn't ever be set */
+    flags &= ~(LRU_ENTRY_PINNED | LRU_ENTRY_L2);
 
-cache_inode_status_t cache_inode_lru_ref(cache_entry_t * entry,
-                                         uint32_t flags,
-                                         char *tag)
-{
-    struct lru_q_pair *qp;
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_lock(&entry->lru.mtx);
+    }
 
-    P(entry->lru.mtx);
-
-    /* queue partition */
-    if (entry->lru.flags & LRU_FLAG_Q_LRU)
-        qp = &lru_q[0].lru;
-    else
-        qp = &lru_q[0].lru_pinned;
+    if (cache_inode_file_holds_state(entry)) {
+        flags |= LRU_ENTRY_PINNED;
+    }
 
     ++(entry->lru.refcount);
 
-    /* adjust LRU */
-    P(lru_mtx);
-    glist_del(&entry->lru.q);
-    glist_add_tail(&qp->q, &entry->lru.q); /* MRU */
+    if (flags & LRU_REQ_INITIAL) {
+        lru_move_entry(&entry->lru, flags | LRU_HAVE_LOCKED_ENTRY,
+                       client->lru_lane);
+    }
 
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s ref entry %p refcount %"PRIu64" flags %d "
-                 "size %"PRIu64" pinned size %"PRIu64"",
-                 tag,
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags,
-                 lru_q[0].lru.size,
-                 lru_q[0].lru_pinned.size);
-
-    /* cond (un)pin */
-    cache_inode_lru_cond_pin(entry, LRU_FLAG_LOCKED);
-
-    V(lru_mtx);
-    V(entry->lru.mtx);
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+       pthread_mutex_unlock(&entry->lru.mtx);
+    }
 
     return (CACHE_INODE_SUCCESS);
 }
 
-cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
-                                           cache_inode_client_t *pclient,
-                                           uint32_t flags,
-                                           char *tag)
+cache_inode_status_t
+cache_inode_lru_unref(cache_entry_t *entry,
+                      cache_inode_client_t *pclient,
+                      uint32_t flags)
 {
-    struct lru_q_pair *qp;
-
-    P(lru_mtx);
-    P(entry->lru.mtx);
-
-    /* queue partition */
-    if (entry->lru.flags & LRU_FLAG_Q_LRU)
-        qp = &lru_q[0].lru;
-    else
-        qp = &lru_q[0].lru_pinned;
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_lock(&entry->lru.mtx);
+    }
 
     assert(entry->lru.refcount >= 1);
 
     if (--(entry->lru.refcount) == 0) {
         /* entry is UNREACHABLE -- the call path is recycling entry */
-        glist_del(&entry->lru.q);
-        (qp->size)--;
+        lru_remove_entry(&entry->lru, flags, pclient->lru_lane);
 
-        LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                     "%s unref entry %p refcount %"PRIu64" flags %d "
-                     "size %"PRIu64" pinned size %"PRIu64" RECYCLE",
-                     tag,
-                     entry,
-                     entry->lru.refcount,
-                     entry->lru.flags,
-                     lru_q[0].lru.size,
-                     lru_q[0].lru_pinned.size);
-
-        V(entry->lru.mtx);
+        pthread_mutex_unlock(&entry->lru.mtx);
         if (entry->internal_md.type == SYMBOLIC_LINK)
             cache_inode_release_symlink(entry, &pclient->pool_entry_symlink);
         ReleaseToPool(entry, &pclient->pool_entry);
         goto unlock;
     }
 
-    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                 "%s unref entry %p refcount %"PRIu64" flags %d "
-                 "size %"PRIu64" pinned size %"PRIu64"",
-                 tag,
-                 entry,
-                 entry->lru.refcount,
-                 entry->lru.flags,
-                 lru_q[0].lru.size,
-                 lru_q[0].lru_pinned.size);
-
-    /* cond (un)pin */
-    cache_inode_lru_cond_pin(entry, LRU_FLAG_LOCKED);
-
-    /* no LRU adjustment */
-    V(entry->lru.mtx);
+    /* Is this actually needed?  We should be set if we have the SAL
+       call cache_inode_lru_pin and cache_inode_lru_unpin */
+    if (cache_inode_file_holds_state(entry) &&
+        !(entry->lru.flags & LRU_ENTRY_PINNED)) {
+        cache_inode_lru_pin(entry,
+                            flags | LRU_HAVE_LOCKED_ENTRY,
+                            pclient->lru_lane);
+    } else if (!cache_inode_file_holds_state(entry) &&
+               (entry->lru.flags & LRU_ENTRY_PINNED)) {
+        cache_inode_lru_unpin(entry,
+                              flags | LRU_HAVE_LOCKED_ENTRY,
+                              pclient->lru_lane);
+    }
 
 unlock:
-    V(lru_mtx);
+
+    if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
+        pthread_mutex_unlock(&entry->lru.mtx);
+    }
 
     return (CACHE_INODE_SUCCESS);
 }
@@ -590,8 +679,13 @@ lru_thread_delay_ms(unsigned long ms)
 
 /* Async thread to perform long-term reorganization, compaction,
  * other operations that cannot be performed in constant time. */
-void *lru_thread(void *arg)
+static void *lru_thread(void *arg)
 {
+    /* Index */
+    size_t i = 0;
+    /* Temporary holder for flags */
+    uint32_t tmpflags = lru_state.flags;
+
     SetNameFunction("lru_thread");
 
     while (1) {
@@ -602,7 +696,43 @@ void *lru_thread(void *arg)
         LogFullDebug(COMPONENT_CACHE_INODE_LRU,
                      "top of poll loop");
 
-        /* do stuff */
+        pthread_mutex_lock(&lru_mtx);
+        lru_state.last_count = 0;
+
+        for(i = 0; i < LRU_N_Q_LANES; ++i) {
+            pthread_mutex_lock(&LRU_1[i].lru.mtx);
+            lru_state.last_count += LRU_1[i].lru.size;
+            pthread_mutex_unlock(&LRU_1[i].lru.mtx);
+
+            pthread_mutex_lock(&LRU_1[i].lru_pinned.mtx);
+            lru_state.last_count += LRU_1[i].lru_pinned.size;
+            pthread_mutex_unlock(&LRU_1[i].lru_pinned.mtx);
+
+            pthread_mutex_lock(&LRU_2[i].lru.mtx);
+            lru_state.last_count += LRU_2[i].lru.size;
+            pthread_mutex_unlock(&LRU_2[i].lru.mtx);
+
+            pthread_mutex_lock(&LRU_2[i].lru_pinned.mtx);
+            lru_state.last_count += LRU_2[i].lru_pinned.size;
+            pthread_mutex_unlock(&LRU_2[i].lru_pinned.mtx);
+        }
+
+        if (tmpflags & LRU_STATE_RECLAIMING) {
+            if (lru_state.last_count < lru_state.entries_lowat)
+                tmpflags &= ~LRU_STATE_RECLAIMING;
+        } else {
+            if (lru_state.last_count > lru_state.entries_hiwat) {
+                tmpflags |= LRU_STATE_RECLAIMING;
+            }
+        }
+
+        /* I think it should be safe to read this unprotected, since
+           the libc manual says almost all platforms have atomic
+           integer load/store. */
+
+        lru_state.flags = tmpflags;
+
+        pthread_mutex_unlock(&lru_mtx);
 
         lru_thread_delay_ms(1000 * 5 * 60);
     }
@@ -613,14 +743,8 @@ void *lru_thread(void *arg)
     return (NULL);
 }
 
-void wakeup_lru_thread(uint32_t flags) {
-
-    if (! (flags & LRU_FLAG_LOCKED))
-        P(lru_mtx);
-
+void lru_wake_thread(uint32_t flags)
+{
     if (lru_thread_state.flags & LRU_SLEEPING)
         pthread_cond_signal(&lru_cv);
-
-    if (! (flags & LRU_FLAG_LOCKED))
-        V(lru_mtx);
 }

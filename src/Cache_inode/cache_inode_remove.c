@@ -134,8 +134,7 @@ cache_inode_status_t cache_inode_clean_internal(cache_entry_t * to_remove_entry,
   if(rc != HASHTABLE_ERROR_NO_SUCH_KEY)
     {
       /* return Hashtable (sentinel) reference */
-        (void) cache_inode_lru_unref(to_remove_entry, pclient, LRU_FLAG_NONE,
-            "cache_inode_remove");
+      cache_inode_lru_unref(to_remove_entry, pclient, LRU_FLAG_NONE);
 
       /* Sanity check: old_value.pdata is expected to be equal to pentry,
        * and is released later in this function */

@@ -48,6 +48,7 @@
 #include "HashTable.h"
 #include "fsal.h"
 #include "cache_inode.h"
+#include "cache_inode_lru.h"
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -158,7 +159,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
 
       /* We hold an initial reference on pentry_lookup which is unreachable to
        * caller, so release it. */
-      (void) cache_inode_lru_unref(pentry_lookup);
+      cache_inode_lru_unref(pentry_lookup, pclient, 0);
 
       return *pstatus;
     }
