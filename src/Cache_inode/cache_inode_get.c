@@ -86,7 +86,7 @@ cache_entry_t *cache_inode_get( cache_inode_fsal_data_t * pfsdata,
 
 /**
  *
- * cache_inode_geti_located: Gets an entry by using its fsdata as a key and caches it if needed, with origin information.
+ * cache_inode_get_located: Gets an entry by using its fsdata as a key and caches it if needed, with origin information.
  *
  * Gets an entry by using its fsdata as a key and caches it if needed,
  * with origin/location information.  The reason to this call is
@@ -151,7 +151,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
       pentry = (cache_entry_t *) value.pdata;
 
       /* take an extra reference within the critical section */
-      cache_inode_lru_ref(pentry, pclient, 0);
+      cache_inode_lru_ref(pentry, pclient, LRU_REQ_INITIAL);
 
       HashTable_Release(fh_to_cache_entry_ht, htoken);
 

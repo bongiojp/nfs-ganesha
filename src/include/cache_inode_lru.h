@@ -89,6 +89,8 @@
 #define LRU_HAVE_LOCKED_ENTRY  0x0020
 /* The caller is fetching an initial reference */
 #define LRU_REQ_INITIAL        0x0040
+/* The caller is scanning the entry (READDIR) */
+#define LRU_REQ_SCAN           0x0080
 
 /* The minimum reference count for a cache entry not being recycled. */
 

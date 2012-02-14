@@ -574,7 +574,7 @@ cache_inode_status_t cache_inode_add_cached_dirent(
   pentry_parent->object.dir.nbactive++;
   new_dir_entry->pentry = pentry_added;
 
-  cache_inode_lru_ref(pentry_added, pclient, 0);
+  cache_inode_lru_ref(pentry_added, pclient, LRU_REQ_SCAN);
 
   /* link with the parent entry (insert as first entry) */
   next_parent_entry->parent = pentry_parent;

@@ -204,7 +204,7 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
       if (dirent)
        {
          pentry = dirent->pentry;
-         cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
+         cache_inode_lru_ref(pentry, pclient, LRU_REQ_SCAN);
        }
 
       if(pentry == NULL)

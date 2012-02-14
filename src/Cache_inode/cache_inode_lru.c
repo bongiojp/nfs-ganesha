@@ -588,6 +588,11 @@ cache_inode_lru_ref(cache_entry_t *entry,
     /* These shouldn't ever be set */
     flags &= ~(LRU_ENTRY_PINNED | LRU_ENTRY_L2);
 
+    /* Initial and Scan are mutually exclusive. */
+
+    assert(!((flags & LRU_REQ_INITIAL) &&
+             (flags & LRU_REQ_SCAN)));
+
     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
         pthread_mutex_lock(&entry->lru.mtx);
     }
@@ -598,7 +603,13 @@ cache_inode_lru_ref(cache_entry_t *entry,
 
     ++(entry->lru.refcount);
 
-    if (flags & LRU_REQ_INITIAL) {
+    /* Move an entry forward if this is an initial reference.  In the
+       case of a scan, move to the MRU of L2.  (lru_move_entry from
+       L2 to L2 will promote to the MRU.) */
+
+    if ((flags & LRU_REQ_INITIAL) ||
+        ((flags & LRU_REQ_SCAN) &&
+         (entry->lru.flags & LRU_ENTRY_L2))) {
         lru_move_entry(&entry->lru, flags | LRU_HAVE_LOCKED_ENTRY,
                        client->lru_lane);
     }
