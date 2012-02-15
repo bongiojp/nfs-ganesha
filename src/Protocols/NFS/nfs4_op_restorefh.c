@@ -158,8 +158,8 @@ int nfs4_op_restorefh(struct nfs_argop4 *op,
 
   if (data->current_entry) {
        cache_inode_lru_ref(data->current_entry,
-                           LRU_FLAG_NONE,
-                           "nfs4_op_restorefh");
+                           data->pclient,
+                           LRU_FLAG_NONE);
   }
 
  out:

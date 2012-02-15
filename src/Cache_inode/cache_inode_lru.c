@@ -214,7 +214,7 @@ lru_insert_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
     if (!(flags & LRU_HAVE_LOCKED_DST)) {
         pthread_mutex_lock(&d->mtx);
     }
-    glist_add_tail(&d->q, &lru->q);
+    glist_add(&d->q, &lru->q);
     ++(d->size);
     if (!(flags & LRU_HAVE_LOCKED_DST)) {
         pthread_mutex_unlock(&d->mtx);
@@ -290,9 +290,9 @@ lru_move_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
        more sense than demoting them.) */
     if ((lru->flags & LRU_ENTRY_L2) &&
         !(flags & LRU_ENTRY_L2)) {
-        glist_add_tail(&lru->q, &d->q);
+         glist_add_tail(&d->q, &lru->q);
     } else {
-        glist_add_tail(&d->q, &lru->q);
+        glist_add(&d->q, &lru->q);
     }
     ++(d->size);
     if ((s != d) && !(flags & LRU_HAVE_LOCKED_DST)) {
@@ -387,12 +387,13 @@ static inline void cache_inode_lru_clean(cache_entry_t *entry,
 static inline cache_inode_lru_t *
 try_reap_entry(struct lru_q_base *q)
 {
-    pthread_mutex_lock(&q->mtx);
-    if (!glist_empty(&q->q)) {
-        return glist_first_entry(&q->q, cache_inode_lru_t, q);
-    }
+    cache_inode_lru_t *lru = NULL;
 
-    pthread_mutex_unlock(&q->mtx);
+    pthread_mutex_lock(&q->mtx);
+    lru = glist_first_entry(&q->q, cache_inode_lru_t, q);
+    if (!lru) {
+        pthread_mutex_unlock(&q->mtx);
+    }
     return NULL;
 }
 

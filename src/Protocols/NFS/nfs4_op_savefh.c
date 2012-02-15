@@ -144,7 +144,7 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
 
   if (data->saved_entry) {
       cache_inode_put(data->saved_entry, data->pclient);
-      data->saved_entry == NULL;
+      data->saved_entry = NULL;
   }
 
   data->saved_entry = data->current_entry;
@@ -156,8 +156,8 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
 
   if (data->saved_entry) {
        cache_inode_lru_ref(data->saved_entry,
-                           LRU_FLAG_NONE,
-                           "nfs4_op_savefh");
+                           data->pclient,
+                           LRU_FLAG_NONE);
   }
 
  out:
