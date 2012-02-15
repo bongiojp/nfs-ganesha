@@ -1871,7 +1871,6 @@ void *worker_thread(void *IndexArg)
   struct svc_req *preq;
   unsigned long worker_index;
   int rc = 0;
-  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   unsigned int gc_allowed = FALSE;
   char thr_name[32];
 

@@ -263,9 +263,9 @@ int nfs_Write(nfs_arg_t * parg,
                 case ACCESSTYPE_RO:
                   pres->res_attr2.status = NFSERR_ROFS;
                   break ;
- 
+
                 default:
-		  assert(0); // if we get here than the value is an invalid enum - corruption
+                  assert(0); // if we get here than the value is an invalid enum - corruption
                   break ;
              }
            break ;
@@ -281,9 +281,9 @@ int nfs_Write(nfs_arg_t * parg,
                 case ACCESSTYPE_RO:
                   pres->res_write3.status = NFS3ERR_ROFS;
                   break ;
- 
+
                 default:
-		  assert(0); // if we get here than the value is an invalid enum - corruption
+                  assert(0); // if we get here than the value is an invalid enum - corruption
                   break ;
              }
           break;

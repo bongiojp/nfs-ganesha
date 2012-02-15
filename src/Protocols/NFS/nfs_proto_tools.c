@@ -174,7 +174,6 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
 {
   cache_inode_fsal_data_t fsal_data;
   cache_inode_status_t cache_status;
-  cache_inode_policy_t policy;
   cache_entry_t *pentry = NULL;
   fsal_attrib_list_t attr;
   exportlist_t *pexport = NULL;

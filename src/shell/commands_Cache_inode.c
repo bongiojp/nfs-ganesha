@@ -1091,7 +1091,7 @@ int fn_Cache_inode_gc(int argc, /* IN : number of args in argv */
   int flag_h = 0;
   int err_flag = 0;
 
-  cmdCacheInode_thr_info_t *context;
+  cmdCacheInode_thr_info_t *context __attribute__((unused));
 
   /* is the fs initialized ? */
   if(!cache_init)
