@@ -187,15 +187,15 @@ lru_select_queue(uint32_t flags, uint32_t lane)
 {
      if (flags & LRU_ENTRY_PINNED) {
         if (flags & LRU_ENTRY_L2) {
-            return &LRU_1[lane].lru_pinned;
-        } else {
             return &LRU_2[lane].lru_pinned;
+        } else {
+            return &LRU_1[lane].lru_pinned;
         }
     } else {
         if (flags & LRU_ENTRY_L2) {
             return &LRU_2[lane].lru;
         } else {
-            return &LRU_1[lane].lru_pinned;
+            return &LRU_1[lane].lru;
         }
     }
 }
@@ -220,7 +220,7 @@ lru_insert_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
         pthread_mutex_unlock(&d->mtx);
     }
     lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
-    lru->flags |= (LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+    lru->flags |= (flags & (LRU_ENTRY_L2 | LRU_ENTRY_PINNED));
     lru->lane = lane;
     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
         pthread_mutex_unlock(&lru->mtx);
