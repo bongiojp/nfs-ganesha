@@ -1,6 +1,4 @@
 /*
- * vim:expandtab:shiftwidth=8:tabstop=8:
- *
  * Copyright CEA/DAM/DIF  (2008)
  * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
  *                Thomas LEIBOVICI  thomas.leibovici@cea.fr
@@ -837,58 +835,6 @@ cache_inode_status_t cache_inode_error_convert(fsal_status_t fsal_status)
 
 /**
  *
- * cache_inode_set_attributes: sets the attributes cached in the entry.
- *
- * Sets the attributes cached in the entry.
- *
- * @param pentry [OUT] the entry to deal with.
- * @param pattr [IN] the attributes to be set for this entry.
- *
- * @return nothing (void function).
- *
- */
-/* FIXME: this also breaks on acls with UNASSIGNED|RECYCLED
- * if they occur, shouldn't we assert or ?? rather than leave bits hanging silently?
- */
-void cache_inode_set_attributes(cache_entry_t * pentry, fsal_attrib_list_t * pattr)
-{
-#ifdef _USE_NFS4_ACL
-  fsal_acl_t *p_oldacl = pentry->attributes.acl;
-  fsal_acl_t *p_newacl = pattr->acl;
-#endif                          /* _USE_NFS4_ACL */
-
-  pentry->attributes = *pattr;
-
-#ifdef _USE_NFS4_ACL
-  /* If acl has been changed, release old acl and increase the reference
-   * counter of new acl. */
-  if(p_oldacl != p_newacl)
-    {
-      fsal_acl_status_t status;
-      LogFullDebug(COMPONENT_CACHE_INODE, "acl has been changed: old acl=%p, new acl=%p",
-               p_oldacl, p_newacl);
-
-      /* Release old acl. */
-      if(p_oldacl)
-        {
-          LogFullDebug(COMPONENT_CACHE_INODE, "md_type = %d, release old acl = %p",
-                   pentry->internal_md.type, p_oldacl);
-
-          nfs4_acl_release_entry(p_oldacl, &status);
-
-          if(status != NFS_V4_ACL_SUCCESS)
-            LogEvent(COMPONENT_CACHE_INODE, "Failed to release old acl, status=%d", status);
-        }
-
-      /* Bump up reference counter of new acl. */
-      if(p_newacl)
-        nfs4_acl_entry_inc_ref(p_newacl);
-    }
-#endif                          /* _USE_NFS4_ACL */
-}                               /* cache_inode_set_attributes */
-
-/**
- *
  * cache_inode_fsal_type_convert: converts an FSAL type to the cache_inode type to be used.
  *
  * Converts an FSAL type to the cache_inode type to be used.
@@ -1537,3 +1483,118 @@ void cache_inode_set_gc_policy(cache_inode_gc_policy_t policy)
 {
   cache_inode_gc_policy = policy;
 }                               /* cache_inode_set_gc_policy */
+
+/**
+ * \brief Conditionally refresh attributes
+ *
+ * This function tests whether we should still trust the current
+ * attributes and, if not, refresh them.
+ */
+
+cache_inode_status_t
+cache_inode_check_trust(cache_entry_t *entry,
+                        fsal_op_context_t *context,
+                        cache_inode_client_t *client)
+{
+     time_t current_time = 0;
+     cache_inode_status_t pstatus = CACHE_INODE_SUCCESS;
+     time_t attr_time = entry->internal_md.attr_time;
+     time_t change_time = entry->internal_md.change_time;
+     cache_inode_file_type_t type = entry->internal_md.type;
+     time_t oldmtime = 0;
+
+     if ((type == FS_JUNCTION) ||
+         (type == UNASSIGNED) ||
+         (type == RECYCLED)) {
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "cache_inode_check_attrs called on file %p of bad type %d",
+                  entry, entry->internal_md.type);
+
+          status = CACHE_INODE_BAD_TYPE;
+          goto out;
+        }
+
+     pthread_rwlock_rdlock(&entry->interior_md.attr_lock);
+     current_time = time(NULL);
+
+     oldmtime = entry->attributes.mtime.seconds;
+
+     /* Do we need a refresh? */
+     if (((client->expire_type_attr == CACHE_INODE_EXPIRE_NEVER) ||
+          (attr_time - entry_time < client->grace_period_attr)) &&
+         (entry->internal_md.flags & CACHE_INODE_TRUST_ATTRS) &&
+         !((client->getattr_dir_invalidation) && (type == DIRECTORY))) {
+          goto unlock;
+     }
+
+     pthread_rwlock_unlock(&entry->interior_md.attr_lock);
+
+     /* Update the atributes */
+     pthread_rwlock_wrlock(&entry->interior_md.attr_lock);
+     current_time = time(NULL);
+
+     /* Make sure no one else has first */
+     if (((client->expire_type_attr == CACHE_INODE_EXPIRE_NEVER) ||
+          (attr_time - entry_time < client->grace_period_attr)) &&
+         (entry->internal_md.flags & CACHE_INODE_TRUST_ATTRS)
+         !((client->getattr_dir_invalidation) && (type == DIRECTORY))) {
+          goto unlock;
+     }
+
+     if ((status = cache_inode_refresh_attrs(entry, context, client))
+         != CACHE_INODE_SUCCESS) {
+          goto unlock;
+     }
+
+     attr_time = entry->internal_md.attr_time;
+     change_time = entry->internal_md.change_time;
+     type = entry->internal_md.type;
+
+     if ((entry->internal_md.type == SYMBOLIC_LINK &&
+          pclient->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
+          ((current_time - entry_time >= pclient->grace_period_link))) ||
+         !(entry->internal_md.flag & CACHE_INODE_TRUST_CONTENT)) {
+          fsal_path_t link_content;
+
+          assert(pentry->object.symlink);
+
+          /* Should symlink content have its own lock? */
+          fsal_status = FSAL_readlink(entry->handle,
+                                      context,
+                                      &link_content,
+                                      NULL);
+          if (FSAL_IS_ERROR) {
+               goto unlock;
+          }
+
+          FSAL_pathcpy(&pentry->object.symlink->content,
+                       &link_content);
+     }
+
+     /* XXX Acquire the content lock and release the attribute lock
+        here. */
+
+     if ((type == DIRECTORY) &&
+         (oldmtime < entry->attributes.mtime.seconds)) {
+
+          entry->internal_md &= ~(CACHE_INODE_TRUST_CONTENT |
+                                  CACHE_INODE_DIR_POPULATED);
+
+          if (cache_inode_invalidate_all_cached_dirent(entry, client,
+                                                       &status)
+              != CACHE_INODE_SUCCESS) {
+               LogCrit(COMPONENT_CACHE_INODE,
+                       "cache_inode_invalidate_all_cached_dirent "
+                       "returned %d (%s)", status,
+                       cache_inode_err_str(status));
+               return *pstatus;
+          }
+     }
+
+unlock:
+
+     pthread_rwlock_unlock(entry->internal_md.attr_lock);
+
+out:
+     return status;
+}

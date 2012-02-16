@@ -256,39 +256,31 @@ typedef enum cache_inode_io_direction__
   CACHE_INODE_WRITE = 2
 } cache_inode_io_direction_t;
 
-typedef enum cache_inode_flag__
-{ CACHE_INODE_YES = 1,
-  CACHE_INODE_NO = 2,
-  CACHE_INODE_RENEW_NEEDED = 3
-} cache_inode_flag_t;
-
-typedef enum cache_inode_dirent_op__
-{ CACHE_INODE_DIRENT_OP_LOOKUP = 1,
-  CACHE_INODE_DIRENT_OP_REMOVE = 2,
-  CACHE_INODE_DIRENT_OP_RENAME = 3
-} cache_inode_dirent_op_t;
-
 typedef enum cache_inode_avl_which__
 { CACHE_INODE_AVL_NAMES = 1,
   CACHE_INODE_AVL_COOKIES = 2,
   CACHE_INODE_AVL_BOTH = 3
 } cache_inode_avl_which_t;
 
-const uint32_t CACHE_INODE_TRUST_ATTRS   = 0x00000001; /*< Trust stored
-                                                           attributes */
-const uint32_t CACHE_INODE_TRUST_CONTENT = 0x00000002; /*< Trust inode content
-                                                           (directory entries, for now) */
+/* Values for metadata flags */
+
+/* Trust stored attributes */
+const uint32_t CACHE_INODE_TRUST_ATTRS = 0x00000001;
+/* Trust inode content (for the moment, directory and symlink) */
+const uint32_t CACHE_INODE_TRUST_CONTENT = 0x00000002;
+/* The directory has been populated (negative lookups are meaningful) */
+const uint32_t CACHE_INODE_DIR_POPULATED = 0x00000004;
 
 typedef struct cache_inode_internal_md__
 {
-  rw_lock_t attr_lock; /*< Reader-writer lock for attributes */
+  pthread_rwlock_t attr_lock; /*< Reader-writer lock for attributes */
   cache_inode_file_type_t type; /*< The type of the entry */
   uint32_t flags; /*< Flags concerning this entry */
   time_t change_time; /*< The time of the last operation ganesha
                           knows about.  We can ue this for
                           change_info4 but it is NON-ATOMIC. Don't
                           use it for anything else (servicing
-                          getattr, etc.) */ 
+                          getattr, etc.) */
   time_t attr_time; /*< Time at which we last refreshed attributes. */
 } cache_inode_internal_md_t;
 
@@ -350,7 +342,6 @@ struct cache_entry_t
     struct cache_inode_dir__
     {
       unsigned int nbactive;                    /**< Number of known active children                         */
-      cache_inode_flag_t has_been_readdir;      /**< True if a full readdir was performed on the directory   */
       char *referral;                           /**< NULL is not a referral, is not this a 'referral string' */
       struct avltree avl;                       /**< Children */
       unsigned int collisions;                  /**< For future heuristics. Expect 0. */
@@ -847,17 +838,6 @@ cache_inode_status_t cache_inode_readdir( cache_entry_t * pentry,
                                           fsal_op_context_t *pcontext,
                                           cache_inode_status_t *pstatus);
 
-cache_inode_status_t cache_inode_cookieverf(cache_entry_t * pentry,
-                                            fsal_op_context_t * pcontext,
-                                            uint64_t * pverf,
-                                            cache_inode_status_t * pstatus);
-
-cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
-                                             fsal_attrib_list_t * pattr,
-                                             cache_inode_client_t * pclient,
-                                             fsal_op_context_t * pcontext,
-                                             cache_inode_status_t * pstatus);
-
 cache_inode_status_t cache_inode_add_cached_dirent(cache_entry_t * pdir,
                                                    fsal_name_t * pname,
                                                    cache_entry_t * pentry_added,
@@ -866,9 +846,9 @@ cache_inode_status_t cache_inode_add_cached_dirent(cache_entry_t * pdir,
                                                    fsal_op_context_t * pcontext,
                                                    cache_inode_status_t * pstatus);
 
-void cache_inode_release_dirent(  cache_inode_dir_entry_t **dirent_array,
-                                  unsigned int howmuch,
-                                  cache_inode_client_t *pclient ) ;
+void cache_inode_release_dirent(cache_inode_dir_entry_t **dirent_array,
+                                unsigned int howmuch,
+                                cache_inode_client_t *pclient);
 
 cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
                                      cache_inode_policy_t policy,
@@ -882,8 +862,6 @@ cache_inode_status_t cache_inode_invalidate_all_cached_dirent(cache_entry_t *
                                                               pclient,
                                                               cache_inode_status_t *
                                                               pstatus);
-
-void cache_inode_set_attributes(cache_entry_t * pentry, fsal_attrib_list_t * pattr);
 
 cache_inode_file_type_t cache_inode_fsal_type_convert(fsal_nodetype_t type);
 
@@ -970,10 +948,70 @@ unsigned long cache_inode_fsal_hash_func(hash_parameter_t * p_hparam,
 unsigned long cache_inode_fsal_rbt_func(hash_parameter_t * p_hparam,
                                         hash_buffer_t * buffclef);
 unsigned int cache_inode_fsal_rbt_both( hash_parameter_t * p_hparam,
-				        hash_buffer_t    * buffclef, 
-				        uint32_t * phashval, uint32_t * prbtval ) ;
+                                        hash_buffer_t    * buffclef,
+                                        uint32_t * phashval, uint32_t * prbtval ) ;
 int display_key(hash_buffer_t * pbuff, char *str);
 int display_not_implemented(hash_buffer_t * pbuff, char *str);
 int display_value(hash_buffer_t * pbuff, char *str);
+
+/* Refresh the attriutes on an entry.  The attribute lock MUST be
+   held for writes. */
+
+static inline cache_inode_status_t
+cache_inode_refresh_attrs(cache_entry_t *entry,
+                          fsal_op_context_t *context,
+                          cache_inode_client_t *client)
+{
+     fsal_status_t fsal_status = {0, 0};
+     cache_inode_status_t cache_status = 0;
+#ifdef _USE_NFS4_ACL
+     fsal_acl_status_t acl_status = 0;
+
+     nfs4_acl_release_entry(entry->attributes, &status);
+     if (status != NFS_V4_ACL_SUCCESS) {
+          LogEvent(COMPONENT_CACHE_INODE,
+                   "Failed to release old acl, status=%d",
+                   status);
+     }
+     entry->attributes.acl = NULL;
+#endif /* _USE_NFS4_ACL */
+     memset(&entry->attributes, 0, sizeof(fsal_attrib_list_t));
+     entry->attributes.asked_attributes = client->attrmask;
+     /* I assume this function will go away in the Lieb
+        Rearchitecture. */
+     fsal_status = FSAL_getattrs_descriptor(cache_inode_fd(pentry),
+                                            &entry->handle,
+                                            context,
+                                            &entry->attributes);
+     if (FSAL_IS_ERROR(fsal_status) &&
+         (fsal_status.major == ERR_FSAL_NOT_OPENED)) {
+          fsal_status = FSAL_getattrs(&entry->handle,
+                                      context,
+                                      &entry->attributes);
+     }
+     if (FSAL_IS_ERROR(fsal_status)) {
+          status = cache_inode_error_convert(fsal_status);
+          goto out;
+     }
+
+     /* XXX Come back and impelment handling for ERR_FSAL_STALE once
+        we decide how to kill inodes. */
+
+     /* Update the internal metadata */
+
+     /* Set the refresh time for the cache entry */
+     entry->internal_md.attr_time = time(NULL);
+     /* TODO: This should really be changed to use sub-second time
+        resolution when it's available. */
+     entry->internal_md.change_time = entry->attributes.chgtime.seconds;
+     /* Almost certainly not necessary */
+     entry->internal_md.type =
+          cache_inode_fsal_type_convert(entry->attributes.type);
+     cache_status = CACHE_INODE_SUCCESS;
+
+out:
+
+     return cache_status;
+}
 
 #endif                          /*  _CACHE_INODE_H */

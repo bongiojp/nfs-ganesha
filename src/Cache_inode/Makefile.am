@@ -20,7 +20,6 @@ libcache_inode_la_SOURCES = cache_inode_access.c             \
                             cache_inode_truncate.c           \
                             cache_inode_get.c                \
                             cache_inode_setattr.c            \
-                            cache_inode_renew_entry.c        \
                             cache_inode_invalidate.c         \
                             cache_inode_misc.c               \
                             cache_inode_create.c             \
