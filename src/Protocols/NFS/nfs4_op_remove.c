@@ -133,9 +133,8 @@ int nfs4_op_remove(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
 
   /* We have to keep track of the 'change' file attribute for reply structure */
   memset(&(res_REMOVE4.REMOVE4res_u.resok4.cinfo.before), 0, sizeof(changeid4));
-  /* XXX
   res_REMOVE4.REMOVE4res_u.resok4.cinfo.before =
-  (changeid4) parent_entry->internal_md.mod_time; */
+       cache_inode_get_changeid4(parent_entry);
 
   /* The operation delete object named arg_REMOVE4.target in directory pointed bt cuurentFH */
   /* Make sur the currentFH is pointed a directory */
@@ -189,14 +188,10 @@ int nfs4_op_remove(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
       return res_REMOVE4.status;
     }
 
-  /* We have to keep track of the 'change' file attribute for reply structure */
-  memset(&(res_REMOVE4.REMOVE4res_u.resok4.cinfo.before), 0, sizeof(changeid4));
-  /* XXX
   res_REMOVE4.REMOVE4res_u.resok4.cinfo.after =
-  (changeid4) parent_entry->internal_md.mod_time; */
+       parent_entry->internal_md.mod_time;
 
-  /* Operation was not atomic .... */
-  res_REMOVE4.REMOVE4res_u.resok4.cinfo.atomic = TRUE;
+  res_REMOVE4.REMOVE4res_u.resok4.cinfo.atomic = FALSE;
 
   /* If you reach this point, everything was ok */
 

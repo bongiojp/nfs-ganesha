@@ -237,10 +237,9 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
       res_CREATE4.status = nfs4_Errno(cache_status);
       return res_CREATE4.status;
     }
-  /* Change info for client cache coherency, pentry internal_md is used for that */
-  memset(&(res_CREATE4.CREATE4res_u.resok4.cinfo.before), 0, sizeof(changeid4));
-  /* XXX res_CREATE4.CREATE4res_u.resok4.cinfo.before =
-     (changeid4) pentry_parent->internal_md.mod_time; */
+
+  res_CREATE4.CREATE4res_u.resok4.cinfo.before
+       = cache_inode_get_changeid4(pentry_parent);
 
   /* Convert the incoming fattr4 to a vattr structure, if such arguments are supplied */
   if(arg_CREATE4.createattrs.attrmask.bitmap4_len != 0)
@@ -517,11 +516,11 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
       return res_CREATE4.status;
     }
   memset(&(res_CREATE4.CREATE4res_u.resok4.cinfo.after), 0, sizeof(changeid4));
-  /* XXX res_CREATE4.CREATE4res_u.resok4.cinfo.after =
-     (changeid4) pentry_parent->internal_md.mod_time; */
+  res_CREATE4.CREATE4res_u.resok4.cinfo.after
+       = cache_inode_get_changeid4(pentry_parent);
 
   /* Operation is supposed to be atomic .... */
-  res_CREATE4.CREATE4res_u.resok4.cinfo.atomic = TRUE;
+  res_CREATE4.CREATE4res_u.resok4.cinfo.atomic = FALSE;
 
   LogFullDebug(COMPONENT_NFS_V4,
                "CREATE CINFO before = %"PRIu64"  after = %"PRIu64"  atomic = %d",

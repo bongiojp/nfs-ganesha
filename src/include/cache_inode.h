@@ -85,10 +85,7 @@ typedef struct cache_inode_client_t cache_inode_client_t;
 #define CACHE_INODE_UNSTABLE_BUFFERSIZE 100*1024*1024
 #define DIR_ENTRY_NAMLEN 1024
 
-#define CACHE_INODE_TIME( __pentry ) (__pentry->internal_md.read_time > __pentry->internal_md.mod_time)?__pentry->internal_md.read_time:__pentry->internal_md.mod_time
-
-#define CACHE_INODE_KEEP_CONTENT( __policy ) ((__policy==CACHE_INODE_JOKER_POLICY)||(__policy==CACHE_INODE_POLICY_FULL_WRITE_THROUGH)||(__policy==CACHE_INODE_POLICY_FULL_WRITE_BACK ) )?1:0 
-              
+#define CACHE_INODE_KEEP_CONTENT( __policy ) ((__policy==CACHE_INODE_POLICY_FULL_WRITE_THROUGH)||(__policy==CACHE_INODE_POLICY_FULL_WRITE_BACK ) )?1:0 
 
 #define CONF_LABEL_CACHE_INODE_GCPOL  "CacheInode_GC_Policy"
 #define CONF_LABEL_CACHE_INODE_CLIENT "CacheInode_Client"
@@ -277,12 +274,31 @@ typedef enum cache_inode_avl_which__
   CACHE_INODE_AVL_BOTH = 3
 } cache_inode_avl_which_t;
 
+const uint32_t CACHE_INODE_TRUST_ATTRS   = 0x00000001; /*< Trust stored
+                                                           attributes */
+const uint32_t CACHE_INODE_TRUST_CONTENT = 0x00000002; /*< Trust inode content
+                                                           (directory entries, for now) */
+
 typedef struct cache_inode_internal_md__
 {
-  rw_lock_t lock;                                          /**< md reader-writer lock                                */
-  cache_inode_file_type_t type;                            /**< The type of the entry                                */
-  time_t refresh_time;                                     /**< Epoch time of the last update operation on the entry */
+  rw_lock_t attr_lock; /*< Reader-writer lock for attributes */
+  cache_inode_file_type_t type; /*< The type of the entry */
+  uint32_t flags; /*< Flags concerning this entry */
+  time_t change_time; /*< The time of the last operation ganesha
+                          knows about.  We can ue this for
+                          change_info4 but it is NON-ATOMIC. Don't
+                          use it for anything else (servicing
+                          getattr, etc.) */ 
+  time_t attr_time; /*< Time at which we last refreshed attributes. */
 } cache_inode_internal_md_t;
+
+/* This function should ONLY be used for populating change_info4
+   structures. */
+
+static inline cache_inode_get_changeid4(cache_entry_t *entry)
+{
+  return (changeid4) entry->internal_md.change_time;
+}
 
 struct cache_inode_symlink__
 {

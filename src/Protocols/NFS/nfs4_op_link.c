@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -226,9 +226,8 @@ int nfs4_op_link(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       res_LINK4.status = nfs4_Errno(cache_status);
       return res_LINK4.status;
     }
-  memset(&(res_LINK4.LINK4res_u.resok4.cinfo.before), 0, sizeof(changeid4));
-  /* res_LINK4.LINK4res_u.resok4.cinfo.before = (changeid4)
-     dir_pentry->internal_md.mod_time; */
+  res_LINK4.LINK4res_u.resok4.cinfo.before
+       = cache_inode_get_changeid4(dir_pentry);
 
   /* Convert savedFH into a vnode */
   file_pentry = data->saved_entry;
@@ -246,10 +245,9 @@ int nfs4_op_link(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       return res_LINK4.status;
     }
 
-  memset(&(res_LINK4.LINK4res_u.resok4.cinfo.after), 0, sizeof(changeid4));
-  /* res_LINK4.LINK4res_u.resok4.cinfo.after = (changeid4)
-     dir_pentry->internal_md.mod_time; */
-  res_LINK4.LINK4res_u.resok4.cinfo.atomic = TRUE;
+  res_LINK4.LINK4res_u.resok4.cinfo.after
+       = cache_inode_get_changeid4(dir_pentry);
+  res_LINK4.LINK4res_u.resok4.cinfo.atomic = FALSE;
 
   res_LINK4.status = NFS4_OK;
   return NFS4_OK;
