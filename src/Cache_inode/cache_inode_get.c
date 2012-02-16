@@ -324,25 +324,6 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
    * still in HashTable. Who is responsible for cleaning it up in this
    * case? (Matt) */
 
-  /* This will resolve itself when we get rid of cache_inode_valid */
-
-  if( plocation != NULL )
-   {
-     if( plocation != pentry )
-      {
-        P_w(&pentry->lock);
-        if((*pstatus =
-           cache_inode_valid(pentry, CACHE_INODE_OP_GET, pclient)) != CACHE_INODE_SUCCESS)
-          {
-            V_w(&pentry->lock);
-            /* we hold an extra reference (and XXX see above) */
-            cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
-            pentry = NULL;
-          } else
-            V_w(&pentry->lock);
-      }
-   }
-
   /* stats */
   pclient->stat.func_stats.nb_success[CACHE_INODE_GET] += 1;
 

@@ -180,10 +180,6 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
         }
     }
 
-
-  /* Validate the entry */
-  *pstatus = cache_inode_valid(pentry, CACHE_INODE_OP_SET, pclient);
-
   /* Regular exit */
   if(use_mutex)
     V_w(&pentry->lock);

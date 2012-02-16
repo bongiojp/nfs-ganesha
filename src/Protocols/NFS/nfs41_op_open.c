@@ -358,8 +358,9 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
         }
 
       memset(&(res_OPEN4.OPEN4res_u.resok4.cinfo.before), 0, sizeof(changeid4));
+      /* XXX
       res_OPEN4.OPEN4res_u.resok4.cinfo.before =
-          (changeid4) pentry_parent->internal_md.mod_time;
+      (changeid4) pentry_parent->internal_md.mod_time; */
 
       /* CLient may have provided fattr4 to set attributes at creation time */
       if(arg_OPEN4.openhow.openflag4_u.how.mode == GUARDED4 ||
@@ -553,9 +554,10 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
                   memset(&(res_OPEN4.OPEN4res_u.resok4.cinfo.after), 0,
                          sizeof(changeid4));
+                  /* XXX
                   res_OPEN4.OPEN4res_u.resok4.cinfo.after =
                       (changeid4) pentry_parent->internal_md.mod_time;
-                  res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = TRUE;
+                      res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = TRUE; */
 
                   /* No delegation */
                   res_OPEN4.OPEN4res_u.resok4.delegation.delegation_type =
@@ -619,9 +621,11 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                               /* A former open EXCLUSIVE with same owner and verifier was found, resend it */
                               memset(&(res_OPEN4.OPEN4res_u.resok4.cinfo.after), 0,
                                      sizeof(changeid4));
+                              /* XXX
                               res_OPEN4.OPEN4res_u.resok4.cinfo.after =
                                   (changeid4) pentry_parent->internal_md.mod_time;
-                              res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = TRUE;
+                              res_OPEN4.OPEN4res_u.resok4.cinfo.atomic
+                              = TRUE; */
 
                               /* No delegation */
                               res_OPEN4.OPEN4res_u.resok4.delegation.delegation_type =
@@ -1092,8 +1096,9 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 3;
     }
 
+  /* XXX
   res_OPEN4.OPEN4res_u.resok4.cinfo.after =
-      (changeid4) pentry_parent->internal_md.mod_time;
+  (changeid4) pentry_parent->internal_md.mod_time; */
   res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = TRUE;
 
   /* No delegation */

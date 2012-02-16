@@ -369,11 +369,11 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   /* Client cache coherency information */
   memset(&(res_RENAME4.RENAME4res_u.resok4.source_cinfo.before), 0, sizeof(changeid4));
   memset(&(res_RENAME4.RENAME4res_u.resok4.source_cinfo.after), 0, sizeof(changeid4));
-
+/* XXX
   res_RENAME4.RENAME4res_u.resok4.source_cinfo.before =
       (changeid4) src_entry->internal_md.mod_time;
   res_RENAME4.RENAME4res_u.resok4.target_cinfo.before =
-      (changeid4) dst_entry->internal_md.mod_time;
+  (changeid4) dst_entry->internal_md.mod_time; */
 
   if(cache_status == CACHE_INODE_SUCCESS)
     {
@@ -397,10 +397,11 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
       if(!FSAL_handlecmp(handlenew, handleold, &fsal_status))
         {
           /* For the change_info4, get the 'change' attributes for both directories */
+             /*
           res_RENAME4.RENAME4res_u.resok4.source_cinfo.before =
               (changeid4) src_entry->internal_md.mod_time;
           res_RENAME4.RENAME4res_u.resok4.target_cinfo.before =
-              (changeid4) dst_entry->internal_md.mod_time;
+          (changeid4) dst_entry->internal_md.mod_time; */
           res_RENAME4.RENAME4res_u.resok4.target_cinfo.atomic = TRUE;
           res_RENAME4.RENAME4res_u.resok4.source_cinfo.atomic = TRUE;
 
@@ -453,10 +454,11 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
 
   /* If you reach this point, then everything was alright */
   /* For the change_info4, get the 'change' attributes for both directories */
+  /* XXX
   res_RENAME4.RENAME4res_u.resok4.source_cinfo.before =
       (changeid4) src_entry->internal_md.mod_time;
   res_RENAME4.RENAME4res_u.resok4.target_cinfo.before =
-      (changeid4) dst_entry->internal_md.mod_time;
+  (changeid4) dst_entry->internal_md.mod_time; */
   res_RENAME4.RENAME4res_u.resok4.target_cinfo.atomic = TRUE;
   res_RENAME4.RENAME4res_u.resok4.source_cinfo.atomic = TRUE;
   res_RENAME4.status = nfs4_Errno(cache_status);

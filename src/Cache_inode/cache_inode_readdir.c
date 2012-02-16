@@ -323,10 +323,9 @@ cache_entry_t *cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
 {
   cache_entry_t *pentry = NULL;
   cache_inode_dir_entry_t dirent_key[1], *dirent, *dirent2;
-  cache_inode_entry_valid_state_t vstate;
 
-  /* Directory mutation generally invalidates outstanding 
-   * readdirs, hence any cached cookies, so in these cases we 
+  /* Directory mutation generally invalidates outstanding
+   * readdirs, hence any cached cookies, so in these cases we
    * clear the cookie avl */
 
   /* Set the return default to CACHE_INODE_SUCCESS */
@@ -352,18 +351,7 @@ cache_entry_t *cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
       return NULL;
   }
 
-  /* check state of cached dirent */
-  vstate = dirent->pentry->internal_md.valid_state;
-  if (vstate == VALID || vstate == STALE) {
-
-      if (vstate == STALE)
-          LogDebug(COMPONENT_CACHE_INODE,
-                   "DIRECTORY: found STALE cache entry");
-
-      /* Entry was found */
-        pentry = dirent->pentry;
-        *pstatus = CACHE_INODE_SUCCESS;
-  }
+  /* XXX CHeck for trustworthy cached information */
 
   /* Did we find something */
   if(pentry != NULL)
@@ -1320,8 +1308,6 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
 
   if (! dirent_node)
       *peod_met = END_OF_DIR;
-
-  *pstatus = cache_inode_valid(dir_pentry, CACHE_INODE_OP_GET, pclient);
 
   /* stats */
   if(*pstatus != CACHE_INODE_SUCCESS) {

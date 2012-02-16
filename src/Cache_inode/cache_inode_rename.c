@@ -269,7 +269,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
 
           /* Return SUCCESS */
           pclient->stat.func_stats.nb_success[CACHE_INODE_RENAME] += 1;
-          *pstatus = cache_inode_valid(pentry_dirdest, CACHE_INODE_OP_SET, pclient);
 
           V_w(&pentry_dirsrc->lock);
           if(pentry_dirsrc != pentry_dirdest)
@@ -543,21 +542,9 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         }
     }
 
-  /* Validate the entries */
-  *pstatus = cache_inode_valid(pentry_dirsrc, CACHE_INODE_OP_SET, pclient);
-
   /* stat */
   if(*pstatus != CACHE_INODE_SUCCESS)
     pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_RENAME] += 1;
-  else
-    {
-      *pstatus = cache_inode_valid(pentry_dirdest, CACHE_INODE_OP_SET, pclient);
-
-      if(*pstatus != CACHE_INODE_SUCCESS)
-        pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_RENAME] += 1;
-      else
-        pclient->stat.func_stats.nb_success[CACHE_INODE_RENAME] += 1;
-    }
 
   /* unlock entries */
 

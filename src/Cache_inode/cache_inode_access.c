@@ -82,7 +82,7 @@ cache_inode_access_sw(cache_entry_t * pentry,
 {
     fsal_attrib_list_t attr;
     fsal_status_t fsal_status;
-    cache_inode_status_t cache_status;
+    cache_inode_status_t cache_status = 0;
     fsal_accessflags_t used_access_type;
     fsal_handle_t *pfsal_handle = NULL;
 
@@ -186,10 +186,6 @@ cache_inode_access_sw(cache_entry_t * pentry,
 
             return *pstatus;
         }
-    /* stats and validation */
-    cache_status = cache_inode_valid(pentry,
-                                     CACHE_INODE_OP_GET,
-                                     pclient);
     if(cache_status != CACHE_INODE_SUCCESS)
         inc_func_err_retryable(pclient, CACHE_INODE_ACCESS);
     else

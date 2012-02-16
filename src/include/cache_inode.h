@@ -249,12 +249,6 @@ typedef enum cache_inode_endofdir__
   UNASSIGNED_EOD = 3
 } cache_inode_endofdir_t;
 
-typedef enum cache_inode_entry_valid_state__
-{ VALID = 1,
-  INVALID = 2,
-  STALE = 3
-} cache_inode_entry_valid_state_t;
-
 typedef enum cache_inode_op__
 { CACHE_INODE_OP_GET = 1,
   CACHE_INODE_OP_SET = 2
@@ -287,11 +281,7 @@ typedef struct cache_inode_internal_md__
 {
   rw_lock_t lock;                                          /**< md reader-writer lock                                */
   cache_inode_file_type_t type;                            /**< The type of the entry                                */
-  cache_inode_entry_valid_state_t valid_state;             /**< Is this entry valid or invalid ?                     */
-  time_t read_time;                                        /**< Epoch time of the last read operation on the entry   */
-  time_t mod_time;                                         /**< Epoch time of the last change operation on the entry */
   time_t refresh_time;                                     /**< Epoch time of the last update operation on the entry */
-  time_t alloc_time;                                       /**< Epoch time of the allocation for this entry          */
 } cache_inode_internal_md_t;
 
 struct cache_inode_symlink__
@@ -414,8 +404,6 @@ struct cache_inode_client_t
   unsigned int use_test_access;                        /*< Is FSAL_test_access to be used instead of FSAL_access    */
   unsigned int getattr_dir_invalidation;               /*< Use getattr as cookie for directory invalidation         */
   unsigned int call_since_last_gc;                     /*< Number of call to cache_inode since the last gc run      */
-  time_t time_of_last_gc;                              /*< Epoch time for the last gc run for this thread           */
-  time_t time_of_last_gc_fd;                           /*< Epoch time for the last file descriptor gc               */
   caddr_t pcontent_client;                             /*< Pointer to cache content client                          */
   void *pworker;                                       /*< Pointer to the information on the worker I belong to     */
   unsigned int max_fd;                                 /*< Max fd open per client                                   */
@@ -655,7 +643,7 @@ cache_entry_t *cache_inode_lookup( cache_entry_t * pentry_parent,
                                    cache_inode_client_t * pclient,
                                    fsal_op_context_t * pcontext,
                                    cache_inode_status_t * pstatus,
-				   unsigned int flags);
+                                   unsigned int flags);
 
 cache_entry_t *cache_inode_valid_lookup(cache_entry_t * pentry_parent,
                                         fsal_name_t * pname,
@@ -871,10 +859,6 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
                                      cache_inode_client_t * pclient,
                                      fsal_op_context_t * pcontext,
                                      cache_inode_status_t * pstatus);
-
-cache_inode_status_t cache_inode_valid(cache_entry_t * pentry,
-                                       cache_inode_op_t op,
-                                       cache_inode_client_t * pclient);
 
 cache_inode_status_t cache_inode_invalidate_all_cached_dirent(cache_entry_t *
                                                               pentry_parent,

@@ -401,8 +401,6 @@ cache_entry_t *cache_inode_lookup_sw(cache_entry_t        * pentry_parent,
               __func__);
   }
 
-  *pstatus = cache_inode_valid(pentry_parent, CACHE_INODE_OP_GET, pclient);
-
   if(flags & CACHE_INODE_FLAG_LOCK)
     V_r(&pentry_parent->lock);
 

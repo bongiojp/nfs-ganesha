@@ -494,59 +494,6 @@ cache_content_status_t cache_content_prepare_directories(exportlist_t * pexportl
 
 /**
  *
- * cache_content_valid: validates an entry to update its garbagge status.
- *
- * Validates an error to update its garbagge status.
- * Entry is supposed to be locked when this function is called !!
- *
- * @param pentry [INOUT] entry to be validated.
- * @param op [IN] can be set to CACHE_INODE_OP_GET or CACHE_INODE_OP_SET to show the type of operation done.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- *
- * @return CACHE_INODE_SUCCESS if successful \n
- * @return CACHE_INODE_LRU_ERROR if an errorr occured in LRU management.
- *
- */
-cache_content_status_t cache_content_valid(cache_content_entry_t * pentry,
-                                           cache_content_op_t op,
-                                           cache_content_client_t * pclient)
-{
-  /* /!\ NOTE THIS CAREFULLY: entry is supposed to be locked when this function is called !! */
-
-#ifndef _NO_BUDDY_SYSTEM
-  buddy_stats_t __attribute__ ((__unused__)) bstats;
-#endif
-
-  if(pentry == NULL)
-    return CACHE_CONTENT_INVALID_ARGUMENT;
-
-  /* Update internal md */
-  pentry->internal_md.valid_state = VALID;
-
-  switch (op)
-    {
-    case CACHE_CONTENT_OP_GET:
-      pentry->internal_md.read_time = time(NULL);
-      break;
-
-    case CACHE_CONTENT_OP_SET:
-      pentry->internal_md.mod_time = time(NULL);
-      pentry->internal_md.refresh_time = pentry->internal_md.mod_time;
-      pentry->local_fs_entry.sync_state = FLUSH_NEEDED;
-      break;
-
-    case CACHE_CONTENT_OP_FLUSH:
-      pentry->internal_md.mod_time = time(NULL);
-      pentry->internal_md.refresh_time = pentry->internal_md.mod_time;
-      pentry->local_fs_entry.sync_state = SYNC_OK;
-      break;
-    }
-
-  return CACHE_CONTENT_SUCCESS;
-}                               /* cache_content_valid */
-
-/**
- *
  * cache_content_check_threshold: check datacache filesystem's threshold.
  *
  * @param datacache_path [IN] the datacache filesystem's path.

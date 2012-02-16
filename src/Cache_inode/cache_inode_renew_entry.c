@@ -57,12 +57,6 @@
 #include <pthread.h>
 #include <assert.h>
 
-/* Function to test if numlinks == 0 and to clean up that inode entry
- * if there is no state or locks on that inode. */
-static cache_inode_status_t isNumlinksZero(cache_entry_t *pentry,
-                                           cache_inode_client_t *pclient,
-                                           fsal_attrib_list_t *object_attributes);
-
 /**
  *
  * cache_inode_renew_entry: Renews the attributes for an entry.
@@ -92,7 +86,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
   fsal_path_t link_content;
   time_t current_time = time(NULL);
   time_t entry_time = pentry->internal_md.refresh_time;
-  cache_inode_status_t  lstatus;
 
   /* If we do nothing (no expiration) then everything is all right */
   *pstatus = CACHE_INODE_SUCCESS;
@@ -176,14 +169,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
       return *pstatus;
     }
 
-  LogMidDebug(COMPONENT_CACHE_INODE,
-           "cache_inode_renew_entry use getattr/mtime checking %d, is dir "
-           "beginning %d, has bit in mask %d, has been readdir %d state %d",
-           pclient->getattr_dir_invalidation,
-           pentry->internal_md.type == DIRECTORY,
-           (int) FSAL_TEST_MASK(pclient->attrmask, FSAL_ATTR_MTIME),
-           pentry->object.dir.has_been_readdir,
-           pentry->internal_md.valid_state);
   /* Do we use getattr/mtime checking */
   if(pclient->getattr_dir_invalidation &&
      pentry->internal_md.type == DIRECTORY &&
@@ -229,19 +214,7 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
           return *pstatus;
         }
 
-      /* A directory could be removed by something other than Ganesha. */
-      lstatus = isNumlinksZero(pentry, pclient, &object_attributes);
-      if (lstatus != CACHE_INODE_SUCCESS)
-        {
-          if (lstatus != CACHE_INODE_KILLED)
-            *pstatus = CACHE_INODE_FSAL_ESTALE;
-          else
-            *pstatus = lstatus;
-
-          return *pstatus;
-        }
-
-      LogFullDebug(COMPONENT_CACHE_INODE,
+      LogDebug(COMPONENT_CACHE_INODE,
                "cache_inode_renew_entry: Entry=%p, type=%d, Cached Time=%d, FSAL Time=%d",
                pentry, pentry->internal_md.type,
                pentry->attributes.mtime.seconds,
@@ -286,9 +259,7 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
   /* Check for dir content expiration and/or staleness */
   if(pentry->internal_md.type == DIRECTORY &&     
      pentry->object.dir.has_been_readdir == CACHE_INODE_YES &&
-     ((pclient->expire_type_dirent != CACHE_INODE_EXPIRE_NEVER &&
-       (current_time - entry_time) >= pclient->grace_period_dirent)
-      || (pentry->internal_md.valid_state == STALE)))
+     ((current_time - entry_time >= pclient->grace_period_dirent)))
     {
       /* stats */
       (pclient->stat.func_stats.nb_call[CACHE_INODE_RENEW_ENTRY])++;
@@ -297,27 +268,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
       LogDebug(COMPONENT_CACHE_INODE,
                "Case 1: cached directory entries for entry %p must be renewed"
                " (has been readdir)", pentry);
-
-      if(isFullDebug(COMPONENT_CACHE_INODE))
-        {
-          char name[1024];
-          struct avltree_node *d_node;
-          cache_inode_dir_entry_t *d_dirent;
-          int i = 0;
-
-          d_node = avltree_first(&pentry->object.dir.avl);
-          do {
-              d_dirent = avltree_container_of(d_node, cache_inode_dir_entry_t,
-                                              node_hk);
-              if (d_dirent->pentry->internal_md.valid_state == VALID) {
-                  FSAL_name2str(&(d_dirent->name), name, 1023);
-                  LogDebug(COMPONENT_CACHE_INODE,
-                           "cache_inode_renew_entry: Entry %d %s",
-                           i, name);
-              }
-              i++;
-          } while ((d_node = avltree_next(d_node)));
-        }
 
       /* Do the getattr if it had not being done before */
       if(pfsal_handle == NULL)
@@ -360,18 +310,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
             }
         }
 
-      /* A directory could be removed by something other than Ganesha. */
-      lstatus = isNumlinksZero(pentry, pclient, &object_attributes);
-      if (lstatus != CACHE_INODE_SUCCESS)
-        {
-          if (lstatus != CACHE_INODE_KILLED)
-            *pstatus = CACHE_INODE_FSAL_ESTALE;
-          else
-            *pstatus = lstatus;
-
-          return *pstatus;
-        }
-
       cache_inode_set_attributes(pentry, &object_attributes);
 
       /* Return the attributes as set */
@@ -384,23 +322,13 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
 
       /* Set the refresh time for the cache entry */
       pentry->internal_md.refresh_time = time(NULL);
-
-      /* Would be better if state was a flag that we could and/or the bits but
-       * in any case we need to get rid of stale so we only go through here
-       * once.
-       */
-      if (pstatus == CACHE_INODE_SUCCESS
-          && pentry->internal_md.valid_state == STALE)
-	pentry->internal_md.valid_state = VALID;
     }
 
   /* if( pentry->internal_md.type == DIRECTORY && ... */
   /* if the directory has not been readdir, only update its attributes */
   else if(pentry->internal_md.type == DIRECTORY &&
           pentry->object.dir.has_been_readdir != CACHE_INODE_YES &&
-          ((pclient->expire_type_attr != CACHE_INODE_EXPIRE_NEVER &&
-            (current_time - entry_time) >= pclient->grace_period_attr)
-           || (pentry->internal_md.valid_state == STALE)))
+          ((current_time - entry_time >= pclient->grace_period_attr)))
     {
       /* stats */
       (pclient->stat.func_stats.nb_call[CACHE_INODE_RENEW_ENTRY])++;
@@ -409,27 +337,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
       LogDebug(COMPONENT_CACHE_INODE,
 	       "Case 2: cached directory entries for entry %p must be renewed (has not been readdir)",
                pentry);
-
-      if(isFullDebug(COMPONENT_CACHE_INODE))
-        {
-          char name[1024];
-          struct avltree_node *d_node;
-          cache_inode_dir_entry_t *d_dirent;
-          int i = 0;
-
-          d_node = avltree_first(&pentry->object.dir.avl);
-          do {
-              d_dirent = avltree_container_of(d_node, cache_inode_dir_entry_t,
-                                              node_hk);
-              if (d_dirent->pentry->internal_md.valid_state == VALID) {
-                  FSAL_name2str(&(d_dirent->name), name, 1023);
-                  LogDebug(COMPONENT_CACHE_INODE,
-                           "cache_inode_renew_entry: Entry %d %s",
-                           i, name);
-              }
-              i++;
-          } while ((d_node = avltree_next(d_node)));
-        }
 
       pfsal_handle = &pentry->handle;
 
@@ -468,18 +375,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
           return *pstatus;
         }
 
-      /* A directory could be removed by something other than Ganesha. */
-      lstatus = isNumlinksZero(pentry, pclient, &object_attributes);
-      if (lstatus != CACHE_INODE_SUCCESS)
-        {
-          if (lstatus != CACHE_INODE_KILLED)
-            *pstatus = CACHE_INODE_FSAL_ESTALE;
-          else
-            *pstatus = lstatus;
-
-          return *pstatus;
-        }
-
       cache_inode_set_attributes(pentry, &object_attributes);
 
       /* Return the attributes as set */
@@ -488,22 +383,13 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
 
       /* Set the refresh time for the cache entry */
       pentry->internal_md.refresh_time = time(NULL);
-
-      /* Would be better if state was a flag that we could and/or the bits but
-       * in any case we need to get rid of stale so we only go through here
-       * once.
-       */
-      if (pstatus == CACHE_INODE_SUCCESS
-          && pentry->internal_md.valid_state == STALE)
-	pentry->internal_md.valid_state = VALID;
     }
 
   /* else if( pentry->internal_md.type == DIRECTORY && ... */
   /* Check for attributes expiration in other cases */
   else if(pentry->internal_md.type != DIRECTORY &&
-          ((pclient->expire_type_attr != CACHE_INODE_EXPIRE_NEVER &&
-            (current_time - entry_time) >= pclient->grace_period_attr)
-	   || (pentry->internal_md.valid_state == STALE)))
+          pclient->expire_type_attr != CACHE_INODE_EXPIRE_NEVER &&
+          ((current_time - entry_time >= pclient->grace_period_attr)))
     {
        if((pentry->internal_md.type == FS_JUNCTION) || /* ??? isn't this 'like' a dir? */
 	 (pentry->internal_md.type == UNASSIGNED) ||
@@ -566,20 +452,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
           return *pstatus;
         }
 
-      /* Check if the file was deleted by something other than Ganesha.
-       * If Ganesha has open fd, then numlinks=0 but we still see the file. */
-
-      lstatus = isNumlinksZero(pentry, pclient, &object_attributes);
-      if (lstatus != CACHE_INODE_SUCCESS)
-        {
-          if (lstatus != CACHE_INODE_KILLED)
-            *pstatus = CACHE_INODE_FSAL_ESTALE;
-          else
-            *pstatus = lstatus;
-
-          return *pstatus;
-        }
-
       /* Keep the new attribute in cache */
       cache_inode_set_attributes(pentry, &object_attributes);
 
@@ -589,22 +461,13 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
 
       /* Set the refresh time for the cache entry */
       pentry->internal_md.refresh_time = time(NULL);
-
-      /* Would be better if state was a flag that we could and/or the bits but
-       * in any case we need to get rid of stale so we only go through here
-       * once.
-       */
-      if (pstatus == CACHE_INODE_SUCCESS
-          && pentry->internal_md.valid_state == STALE)
-	pentry->internal_md.valid_state = VALID;
     }
 
   /* if(  pentry->internal_md.type   != DIR_CONTINUE && ... */
   /* Check for link content expiration */
   if(pentry->internal_md.type == SYMBOLIC_LINK &&
-     ((pclient->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
-       (current_time - entry_time) >= pclient->grace_period_link)
-      || (pentry->internal_md.valid_state == STALE)))
+     pclient->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
+     ((current_time - entry_time >= pclient->grace_period_link)))
     {
       assert(pentry->object.symlink);
       pfsal_handle = &pentry->handle;
@@ -628,7 +491,7 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
 #endif
         }
       else
-        { 
+        {
           fsal_status.major = ERR_FSAL_NO_ERROR ;
           fsal_status.minor = 0 ;
         }
@@ -668,18 +531,6 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
               pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENEW_ENTRY] += 1;
             }
         }
-
-      /* Would be better if state was a flag that we could and/or the bits but
-       * in any case we need to get rid of stale so we only go through here
-       * once.
-       */
-      if (pstatus == CACHE_INODE_SUCCESS
-          && pentry->internal_md.valid_state == STALE)
-	pentry->internal_md.valid_state = VALID;
-
-      /* Set the refresh time for the cache entry */
-      pentry->internal_md.refresh_time = time(NULL);
-
     }
 
   /* if( pentry->internal_md.type == SYMBOLIC_LINK && ... */
@@ -687,54 +538,3 @@ cache_inode_status_t cache_inode_renew_entry(cache_entry_t * pentry,
            *pstatus, cache_inode_err_str(*pstatus));
   return *pstatus;
 }                               /* cache_inode_renew_entry */
-
-
-
-static cache_inode_status_t isNumlinksZero(cache_entry_t *pentry,
-                                           cache_inode_client_t *pclient,
-                                           fsal_attrib_list_t *object_attributes)
-{
-  int no_state_or_lock = 1;
-
-  LogDebug(COMPONENT_CACHE_INODE, "isNumlinksZero: numlinks=%lu",
-           object_attributes->numlinks);
-
-  if (pentry->internal_md.type == REGULAR_FILE
-      && (! glist_empty(&pentry->object.file.state_list)
-          || ! glist_empty(&pentry->object.file.lock_list)))
-    no_state_or_lock = 0;
-
-  if (object_attributes->numlinks == 0 && no_state_or_lock )
-    {
-      cache_inode_status_t kill_status;
-      
-      LogDebug(COMPONENT_CACHE_INODE, "isNumlinksZero: numlinks=0,"
-               "deleting inode entry and returning STALE.");
-      /* Now check if we have any locks on the file. If so, then perhaps
-       * a process that doesn't respect locks deleted the file. We should
-       * not close in that case.*/
-      if (pentry->internal_md.type == REGULAR_FILE)
-        if(cache_inode_close(pentry, pclient, &kill_status) !=
-           CACHE_INODE_SUCCESS)
-          LogCrit(COMPONENT_CACHE_INODE,
-                  "isNumlinksZero: Could not close open fd for"
-                  " entry %p, status = %u",
-                  pentry, kill_status);
-
-      pentry->internal_md.valid_state = STALE;
-      if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) ==
-         CACHE_INODE_SUCCESS)
-        {
-          LogCrit(COMPONENT_CACHE_INODE,
-                  "isNumlinksZero: Killed entry %p, "
-                  "status = %u", pentry, kill_status);
-          return CACHE_INODE_KILLED;
-        }
-
-      LogCrit(COMPONENT_CACHE_INODE,
-                "isNumlinksZero: Could not kill entry %p, "
-                "status = %u", pentry, kill_status);
-      return CACHE_INODE_FSAL_ESTALE;
-    }
-  return CACHE_INODE_SUCCESS;
-}

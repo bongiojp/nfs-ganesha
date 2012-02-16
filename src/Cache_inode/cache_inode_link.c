@@ -315,9 +315,6 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
   /* return the attributes */
   *pattr = link_attributes;
 
-  /* Validate the entries */
-  *pstatus = cache_inode_valid(pentry_src, CACHE_INODE_OP_SET, pclient);
-
   /* Release the target dir */
   V_w(&pentry_dir_dest->lock);
 

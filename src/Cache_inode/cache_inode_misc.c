@@ -93,6 +93,8 @@ char *cache_inode_function_names[] = {
   "cache_inode_set_state",
 };
 
+cache_inode_gc_policy_t cache_inode_gc_policy;
+
 const char *cache_inode_err_str(cache_inode_status_t err)
 {
   switch(err)
@@ -144,6 +146,10 @@ const char *cache_inode_err_str(cache_inode_status_t err)
 #ifdef _USE_PROXY
 void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry);
 #endif
+#ifdef _USE_NFS4_ACL
+static void cache_inode_gc_acl(cache_entry_t * pentry);
+#endif                          /* _USE_NFS4_ACL */
+
 
 /**
  *
@@ -284,8 +290,8 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 
       LogDebug(COMPONENT_CACHE_INODE,
                "cache_inode_new_entry: Trying to add an already existing entry."
-	       "Found entry %p type: %d State: %d, New type: %d",
-               pentry, pentry->internal_md.type, pentry->internal_md.valid_state, type);
+               " Found entry %p type: %d, New type: %d",
+               pentry, pentry->internal_md.type, type);
 
        /* conditionally take an extra reference */
        if (flags & CACHE_INODE_FLAG_EXREF)
@@ -389,16 +395,10 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
   pentry->deleted = FALSE;
 #endif
   pentry->internal_md.type = type;
-  pentry->internal_md.valid_state = VALID;
-
-  pentry->internal_md.read_time = 0;
-  pentry->internal_md.mod_time = pentry->internal_md.alloc_time = time(NULL);
-  pentry->internal_md.refresh_time = pentry->internal_md.alloc_time;
-
   pentry->policy = policy ;
   memcpy(&pentry->handle,
-	 pfsdata->fh_desc.start,
-	 pfsdata->fh_desc.len);
+         pfsdata->fh_desc.start,
+         pfsdata->fh_desc.len);
   pentry->fh_desc.start = (caddr_t)&pentry->handle;
   pentry->fh_desc.len = pfsdata->fh_desc.len;
 
@@ -690,11 +690,6 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
         }
     }
 
-  /* Final step */
-  P_w(&pentry->lock);
-  *pstatus = cache_inode_valid(pentry, CACHE_INODE_OP_GET, pclient);
-  V_w(&pentry->lock);
-
   LogDebug(COMPONENT_CACHE_INODE,
            "cache_inode_new_entry: New entry %p added",
            pentry);
@@ -720,11 +715,6 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
 cache_inode_status_t cache_inode_clean_entry(cache_entry_t * pentry)
 {
   pentry->internal_md.type = RECYCLED;
-  pentry->internal_md.valid_state = INVALID;
-  pentry->internal_md.read_time = 0;
-  pentry->internal_md.mod_time = 0;
-  pentry->internal_md.refresh_time = 0;
-  pentry->internal_md.alloc_time = 0;
   return CACHE_INODE_SUCCESS;
 }
 
@@ -844,116 +834,6 @@ cache_inode_status_t cache_inode_error_convert(fsal_status_t fsal_status)
            fsal_status.major, __LINE__);
   return CACHE_INODE_FSAL_ERROR;
 }                               /* cache_inode_error_convert */
-
-/**
- *
- * cache_inode_valid: validates an entry to update its garbagge status.
- *
- * Validates an error to update its garbagge status.
- * Entry is supposed to be locked when this function is called !!
- *
- * @param pentry [INOUT] entry to be validated.
- * @param op [IN] can be set to CACHE_INODE_OP_GET or CACHE_INODE_OP_SET to show the type of operation done.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- *
- * @return CACHE_INODE_SUCCESS if successful
- * @return CACHE_INODE_LRU_ERROR if an errorr occured in LRU management.
- *
- */
-cache_inode_status_t cache_inode_valid(cache_entry_t * pentry,
-                                       cache_inode_op_t op,
-                                       cache_inode_client_t * pclient)
-{
-  /* /!\ NOTE THIS CAREFULLY: entry is supposed to be locked when this function is called !! */
-
-  cache_inode_status_t cache_status;
-  cache_content_status_t cache_content_status;
-  cache_content_client_t *pclient_content = NULL;
-  cache_content_entry_t *pentry_content = NULL;
-#ifndef _NO_BUDDY_SYSTEM
-  buddy_stats_t __attribute__ ((__unused__)) bstats;
-#endif
-
-  if(pentry == NULL)
-    return CACHE_INODE_INVALID_ARGUMENT;
-
-  /* Update internal md */
-  /*
-   * If the cache invalidate code has marked this entry as STALE,
-   * don't overwrite it with VALID.
-   */
-  if (pentry->internal_md.valid_state != STALE)
-    pentry->internal_md.valid_state = VALID;
-
-  if(op == CACHE_INODE_OP_GET)
-    pentry->internal_md.read_time = time(NULL);
-
-  if(op == CACHE_INODE_OP_SET)
-    {
-      pentry->internal_md.mod_time = time(NULL);
-      pentry->internal_md.refresh_time = pentry->internal_md.mod_time;
-    }
-
-  /* Add a call to the GC counter */
-  pclient->call_since_last_gc++;
-
-  /* If open/close fd cache is used for FSAL, manage it here */
-  LogFullDebug(COMPONENT_CACHE_INODE_GC,
-               "--------> use_cache=%u fileno=%d last_op=%u time(NULL)=%u delta=%u retention=%u",
-               pclient->use_fd_cache, pentry->object.file.open_fd.fileno,
-               (unsigned int)pentry->object.file.open_fd.last_op, (unsigned int)time(NULL),
-               (unsigned int)(time(NULL) - pentry->object.file.open_fd.last_op), (unsigned int)pclient->retention);
-
-  if(pentry->internal_md.type == REGULAR_FILE)
-    {
-      if(pclient->use_fd_cache == 1)
-        {
-          if(pentry->object.file.open_fd.fileno != 0)
-            {
-              if(time(NULL) - pentry->object.file.open_fd.last_op > pclient->retention)
-                {
-                  if(cache_inode_close(pentry, pclient, &cache_status) !=
-                     CACHE_INODE_SUCCESS)
-                    {
-                      /* Bad close */
-                      return cache_status;
-                    }
-                }
-            }
-        }
-
-      /* Same of local fd cache */
-      pclient_content = (cache_content_client_t *) pclient->pcontent_client;
-      pentry_content = (cache_content_entry_t *) pentry->object.file.pentry_content;
-
-      if(pentry_content != NULL)
-        if(pclient_content->use_fd_cache == 1)
-          if(pentry_content->local_fs_entry.opened_file.local_fd > 0)
-            if(time(NULL) - pentry_content->local_fs_entry.opened_file.last_op >
-               pclient_content->retention)
-              if(cache_content_close
-                 (pentry_content, pclient_content,
-                  &cache_content_status) != CACHE_CONTENT_SUCCESS)
-                return CACHE_INODE_CACHE_CONTENT_ERROR;
-    }
-
-
-#ifndef _NO_BUDDY_SYSTEM
-
-#if 0
-  BuddyGetStats(&bstats);
-  LogFullDebug(COMPONENT_CACHE_INODE,
-               "(pthread_self=%u) NbStandard=%lu  NbStandardUsed=%lu  InsideStandard(nb=%lu, size=%lu)",
-               (unsigned int)pthread_self(),
-               (long unsigned int)bstats.NbStdPages,
-               (long unsigned int)bstats.NbStdUsed,
-               (long unsigned int)bstats.StdUsedSpace,
-               (long unsigned int)bstats.NbStdUsed);
-#endif
-
-#endif
-  return CACHE_INODE_SUCCESS;
-}                               /* cache_inode_valid */
 
 /**
  *
@@ -1244,8 +1124,6 @@ cache_inode_status_t cache_inode_dump_content(char *path, cache_entry_t * pentry
     return CACHE_INODE_INVALID_ARGUMENT;
 
   /* Dump the information */
-  fprintf(stream, "internal:read_time=%d\n", (int)pentry->internal_md.read_time);
-  fprintf(stream, "internal:mod_time=%d\n", (int)pentry->internal_md.mod_time);
   fprintf(stream, "internal:export_id=%d\n", 0);
 
   snprintHandle(buff, CACHE_INODE_DUMP_LEN, &(pentry->handle));
@@ -1282,28 +1160,18 @@ cache_inode_status_t cache_inode_reload_content(char *path, cache_entry_t * pent
 
   /* The entry is a file (only file inode are dumped), in state VALID for the gc (not garbageable) */
   pentry->internal_md.type = REGULAR_FILE;
-  pentry->internal_md.valid_state = VALID;
 
   /* BUG: what happens if the fscanf's fail? */
   /* Read the information */
   #define XSTR(s) STR(s)
   #define STR(s) #s
-  if(fscanf(stream, "internal:read_time=%" XSTR(CACHE_INODE_DUMP_LEN) "s\n",
-            buff) != 1)
-    goto bad_entry;
-  pentry->internal_md.read_time = atoi(buff);
-
-  if(fscanf(stream, "internal:mod_time=%" XSTR(CACHE_INODE_DUMP_LEN) "s\n",
-            buff) != 1)
-    goto bad_entry;
-  pentry->internal_md.mod_time = atoi(buff);
 
   if(fscanf(stream, "internal:export_id=%" XSTR(CACHE_INODE_DUMP_LEN) "s\n",
             buff) != 1)
     goto bad_entry;
 
   if (fscanf(stream, "file: FSAL handle=%" XSTR(CACHE_INODE_DUMP_LEN) "s",
-	     buff) != 1)
+             buff) != 1)
     goto bad_entry;
   #undef STR
   #undef XSTR
@@ -1591,3 +1459,81 @@ void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry)
                tag, comment, outstr);
 }                               /* cache_inode_print_srvhandle */
 #endif
+
+#ifdef _USE_NFS4_ACL
+/**
+ * Garbagge NFS4 ACLs if any.
+ */
+static void cache_inode_gc_acl(cache_entry_t * pentry)
+{
+  fsal_acl_status_t status = NFS_V4_ACL_SUCCESS;
+  fsal_acl_t *pacl = NULL;
+
+  switch (pentry->internal_md.type)
+    {
+    case REGULAR_FILE:
+      pacl = pentry->object.file.attributes.acl;
+      break;
+
+    case SYMBOLIC_LINK:
+      pacl = pentry->object.symlink->attributes.acl;
+      break;
+
+    case FS_JUNCTION:
+    case DIRECTORY:
+      pacl = pentry->object.dir.attributes.acl;
+      break;
+
+    case SOCKET_FILE:
+    case FIFO_FILE:
+    case BLOCK_FILE:
+    case CHARACTER_FILE:
+      pacl = pentry->object.special_obj.attributes.acl;
+      break;
+
+    case UNASSIGNED:
+    case RECYCLED:
+      LogDebug(COMPONENT_CACHE_INODE_GC,
+                   "Unexpected UNNASIGNED or RECYLCED type in cache_inode_gc_acl");
+      break;
+    }
+
+  /* Release an acl. */
+  if(pacl)
+    {
+      LogDebug(COMPONENT_CACHE_INODE_GC, "cache_inode_gc_acl: md_type = %d, acl  = %p",
+               pentry->internal_md.type, pacl);
+
+      nfs4_acl_release_entry(pacl, &status);
+
+      if(status != NFS_V4_ACL_SUCCESS)
+        LogEvent(COMPONENT_CACHE_INODE_GC, "cache_inode_gc_acl: Failed to gc acl, status=%d", status);
+    }
+}                               /* cache_inode_gc_acl */
+#endif                          /* _USE_NFS4_ACL */
+
+/**
+ *
+ * cache_inode_get_gc_policy: Set the cache_inode garbage collecting policy.
+ *
+ * @return the current policy.
+ *
+ */
+cache_inode_gc_policy_t cache_inode_get_gc_policy(void)
+{
+  return cache_inode_gc_policy;
+}                               /* cache_inode_get_gc_policy */
+
+/**
+ *
+ * cache_inode_set_gc_policy: Set the cache_inode garbage collecting policy.
+ *
+ * @param policy [IN] policy to be set.
+ *
+ * @return nothing (void function)
+ *
+ */
+void cache_inode_set_gc_policy(cache_inode_gc_policy_t policy)
+{
+  cache_inode_gc_policy = policy;
+}                               /* cache_inode_set_gc_policy */

@@ -411,10 +411,6 @@ cache_inode_create(cache_entry_t * pentry_parent,
        /* Get the attributes in return */
        *pattr = object_attributes;
 
-       /* valid the parent */
-       *pstatus = cache_inode_valid(pentry_parent,
-                                    CACHE_INODE_OP_SET,
-                                    pclient);
        /* release the lock for the parent */
        V_w(&pentry_parent->lock);
 

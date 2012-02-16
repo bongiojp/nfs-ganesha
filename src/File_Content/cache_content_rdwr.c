@@ -215,7 +215,6 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
   fsal_handle_t *pfsal_handle = NULL;
   fsal_status_t fsal_status;
   cache_inode_status_t cache_inode_status;
-  cache_content_status_t cache_content_status;
   fsal_path_t local_path;
   int statindex;
   off_t offset;
@@ -328,14 +327,6 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
           return *pstatus;
         }
 
-      if((cache_content_status =
-          cache_content_valid(pentry, CACHE_CONTENT_OP_GET,
-                              pclient)) != CACHE_CONTENT_SUCCESS)
-        {
-          *pstatus = cache_content_status;
-          return *pstatus;
-        }
-
       /* Get the eof */
       if(iosize_after == 0)
         *p_fsal_eof = TRUE;
@@ -363,15 +354,6 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
           return *pstatus;
         }
 
-      if((cache_content_status =
-          cache_content_valid(pentry, CACHE_CONTENT_OP_SET,
-                              pclient)) != CACHE_CONTENT_SUCCESS)
-        {
-          *pstatus = cache_content_status;
-          return *pstatus;
-        }
-
-      /* p_fsal_eof has no meaning here, it is unused */
     }
 
   /* close the local fd */

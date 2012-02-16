@@ -431,9 +431,6 @@ cache_inode_status_t cache_inode_remove_sw(cache_entry_t * pentry,             /
 
     } /* to_remove->numlinks == 0 */
 
-  /* Validate the entries */
-  *pstatus = cache_inode_valid(pentry, CACHE_INODE_OP_SET, pclient);
-
   /* Regular exit */
   if(use_mutex)
     {

@@ -193,18 +193,6 @@ cache_inode_status_t cache_inode_open(cache_entry_t * pentry,
   /* regular exit */
   pentry->object.file.open_fd.last_op = time(NULL);
 
-  /* if file descriptor is too high, garbage collect FDs */
-  if(pclient->use_fd_cache
-     && (pentry->object.file.open_fd.fileno > pclient->max_fd))
-    {
-      if(cache_inode_gc_fd(pclient, pstatus) != CACHE_INODE_SUCCESS)
-        {
-          LogCrit(COMPONENT_CACHE_INODE_GC,
-                  "FAILURE performing FD garbage collection");
-          return *pstatus;
-        }
-    }
-
   *pstatus = CACHE_INODE_SUCCESS;
   return *pstatus;
 
@@ -376,18 +364,6 @@ cache_inode_status_t cache_inode_open_by_name(cache_entry_t * pentry_dir,
 
   /* regular exit */
   pentry_file->object.file.open_fd.last_op = time(NULL);
-
-  /* if file descriptor is too high, garbage collect FDs */
-  if(pclient->use_fd_cache
-     && (pentry_file->object.file.open_fd.fileno > pclient->max_fd))
-    {
-      if(cache_inode_gc_fd(pclient, pstatus) != CACHE_INODE_SUCCESS)
-        {
-          LogCrit(COMPONENT_CACHE_INODE_GC,
-                  "FAILURE performing FD garbage collection");
-          return *pstatus;
-        }
-    }
 
   *pstatus = CACHE_INODE_SUCCESS;
   return *pstatus;

@@ -194,11 +194,13 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
    * returned to the client         This value is the mtime of
    * the pentry. If verifier is unused (as in many NFS
    * Servers) then only a set of zeros is returned (trivial
-   * value) 
+   * value)
    */
   memset(cookie_verifier, 0, NFS4_VERIFIER_SIZE);
+  /*
   if(data->pexport->UseCookieVerifier == 1)
     memcpy(cookie_verifier, &dir_pentry->internal_md.mod_time, sizeof(time_t));
+  */
 
   /* Cookie delivered by the server and used by the client SHOULD not ne 0, 1 or 2 (cf RFC3530, page192)
    * because theses value are reserved for special use.

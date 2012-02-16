@@ -429,8 +429,10 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
           goto out;
         }
       memset(&(res_OPEN4.OPEN4res_u.resok4.cinfo.before), 0, sizeof(changeid4));
+/* XXX
       res_OPEN4.OPEN4res_u.resok4.cinfo.before =
           (changeid4) pentry_parent->internal_md.mod_time;
+*/
 
       /* CLient may have provided fattr4 to set attributes at creation time */
       if(arg_OPEN4.openhow.openflag4_u.how.mode == GUARDED4 ||
@@ -538,8 +540,8 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
                   memset(&(res_OPEN4.OPEN4res_u.resok4.cinfo.after), 0,
                          sizeof(changeid4));
-                  res_OPEN4.OPEN4res_u.resok4.cinfo.after =
-                      (changeid4) pentry_parent->internal_md.mod_time;
+                  /* XXX res_OPEN4.OPEN4res_u.resok4.cinfo.after =
+                     (changeid4) pentry_parent->internal_md.mod_time; */
                   res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = TRUE;
 
                   /* No delegation */
@@ -615,9 +617,9 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
                               memset(&(res_OPEN4.OPEN4res_u.resok4
                                        .cinfo.after), 0, sizeof(changeid4));
-                              res_OPEN4.OPEN4res_u.resok4.cinfo.after =
-                                  (changeid4) pentry_parent
-                                   ->internal_md.mod_time;
+                              /* XXX res_OPEN4.OPEN4res_u.resok4.cinfo.after =
+                                 (changeid4) pentry_parent
+                                 ->internal_md.mod_time; */
                               res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = TRUE;
 
                               /* No delegation */
@@ -1025,8 +1027,8 @@ out_prev:
       res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 3;
     }
 
-  res_OPEN4.OPEN4res_u.resok4.cinfo.after =
-      (changeid4) pentry_parent->internal_md.mod_time;
+  /* res_OPEN4.OPEN4res_u.resok4.cinfo.after =
+     (changeid4) pentry_parent->internal_md.mod_time; */
   res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = TRUE;
 
   /* No delegation */

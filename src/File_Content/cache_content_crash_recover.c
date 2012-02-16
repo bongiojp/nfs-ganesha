@@ -213,14 +213,6 @@ cache_content_status_t cache_content_crash_recover(unsigned short exportid,
                                       "Cached data added successfully for file ID %"PRIx64,
                                       inum);
 
-                  if((cache_content_status =
-                      cache_content_valid(pentry_content, CACHE_CONTENT_OP_GET,
-                                          pclient_data)) != CACHE_CONTENT_SUCCESS)
-                    {
-                      *pstatus = cache_content_status;
-                      return *pstatus;
-                    }
-
                 }
 
             }                   /*  while( ( dirent_export = readdir( export_directory ) ) != NULL ) */

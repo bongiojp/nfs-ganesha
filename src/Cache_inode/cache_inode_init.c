@@ -131,12 +131,6 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
   pclient->retention = paramp->retention;
   pclient->max_fd = paramp->max_fd;
 
-  /* introducing desynchronisation for GC */
-  pclient->time_of_last_gc = time(NULL) + thread_index * 20;
-  pclient->call_since_last_gc = thread_index * 20;
-
-  pclient->time_of_last_gc_fd = time(NULL);
-
   MakePool(&pclient->pool_entry, pclient->nb_prealloc, cache_entry_t, NULL, NULL);
   NamePool(&pclient->pool_entry, "%s Entry Pool", name);
   if(!IsPoolPreallocated(&pclient->pool_entry))

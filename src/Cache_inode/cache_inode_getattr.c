@@ -181,8 +181,6 @@ cache_inode_getattr(cache_entry_t * pentry,
             /* Set the new attributes */
             cache_inode_set_attributes(pentry, pattr);
         }
-    *pstatus = cache_inode_valid(pentry, CACHE_INODE_OP_GET, pclient);
-
     V_r(&pentry->lock);
 
     /* stat */

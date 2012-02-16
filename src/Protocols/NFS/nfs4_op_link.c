@@ -227,7 +227,8 @@ int nfs4_op_link(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       return res_LINK4.status;
     }
   memset(&(res_LINK4.LINK4res_u.resok4.cinfo.before), 0, sizeof(changeid4));
-  res_LINK4.LINK4res_u.resok4.cinfo.before = (changeid4) dir_pentry->internal_md.mod_time;
+  /* res_LINK4.LINK4res_u.resok4.cinfo.before = (changeid4)
+     dir_pentry->internal_md.mod_time; */
 
   /* Convert savedFH into a vnode */
   file_pentry = data->saved_entry;
@@ -246,7 +247,8 @@ int nfs4_op_link(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
     }
 
   memset(&(res_LINK4.LINK4res_u.resok4.cinfo.after), 0, sizeof(changeid4));
-  res_LINK4.LINK4res_u.resok4.cinfo.after = (changeid4) dir_pentry->internal_md.mod_time;
+  /* res_LINK4.LINK4res_u.resok4.cinfo.after = (changeid4)
+     dir_pentry->internal_md.mod_time; */
   res_LINK4.LINK4res_u.resok4.cinfo.atomic = TRUE;
 
   res_LINK4.status = NFS4_OK;
