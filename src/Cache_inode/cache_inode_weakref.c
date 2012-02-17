@@ -47,12 +47,13 @@
 #include "log_macros.h"
 #include "cache_inode.h"
 #include "cache_inode_weakref.h"
+#include "generic_weakref.h"
 
 /**
  *
  * \file cache_inode_weakref.c
  * \author Matt Benjamin
- * \brief Generic weak reference package
+ * \brief Cache inode weak reference package
  *
  * \section DESCRIPTION
  *
@@ -61,4 +62,67 @@
  *
  */
 
+#define WEAKREF_PARTITIONS 17
 
+static gweakref_table_t *cache_inode_wt = NULL;
+
+/*
+ * cache_inode_weakref_init
+ * cache_inode_weakref_insert -- install entry in table
+ * cache_inode_weakref_get -- get initial reference
+ * cache_inode_weakref_delete -- delete entry from table
+ * cache_inode_weakref_shutdown
+ */
+
+/*
+ * Init package.
+ */
+void cache_inode_weakref_init()
+{
+    cache_inode_wt = gweakref_init(17);
+}
+
+/*
+ * Install entry in the weakref table.  Caller must hold a reference
+ * to entry.
+ */
+gweakref_t cache_inode_weakref_insert(cache_entry_t *entry)
+{
+    return (gweakref_insert(cache_inode_wt, entry));
+}
+
+/*
+ * Get an initial reference to a cache entry object, based on (the
+ * address and generation number stored in) ref, or NULL if the reference
+ * is no longer valid.
+ */
+cache_entry_t *cache_inode_weakref_get(gweakref_t *ref)
+{
+    cache_entry_t *entry =
+        (cache_entry_t *) gweakref_lookup(cache_inode_wt, ref);
+
+        if (entry) {
+            /* XXXX Adam--don't forget to add refcount and LRU management :) */
+            abort();
+        }
+
+    return (entry);
+}
+
+/*
+ * Delete a reference from the table.  The caller must hold an initial
+ * reference (and probably must be code internal to the cache_inode_lru
+ * package to ensure atomicity).
+ */
+int32_t cache_inode_weakref_delete(gweakref_t *ref)
+{
+    (void) gweakref_delete(cache_inode_wt, ref);
+}
+
+/*
+ * Clean up, when no further calls will be made on the interface.
+ */
+void cache_inode_weakref_shutdown()
+{
+    gweakref_destroy(cache_inode_wt);
+}

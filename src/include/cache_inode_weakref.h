@@ -52,7 +52,12 @@
 
 #include "log_macros.h"
 #include "cache_inode.h"
+#include "generic_weakref.h"
 
-
+void cache_inode_weakref_init(void);
+gweakref_t cache_inode_weakref_insert(cache_entry_t *entry);
+cache_entry_t *cache_inode_weakref_get(gweakref_t *ref);
+int32_t cache_inode_weakref_delete(gweakref_t *ref);
+void cache_inode_weakref_shutdown();
 
 #endif /* _CACHE_INODE_WEAKREF_H */
