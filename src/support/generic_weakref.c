@@ -70,12 +70,12 @@ typedef struct gweakref_partition_
 {
     pthread_rwlock_t lock;
     struct avltree t;
+    uint64_t genctr;
     CACHE_PAD(0);
 } gweakref_partition_t;
 
 struct gweakref_table_
 {
-    uint64_t genctr;
     CACHE_PAD(0);
     gweakref_partition_t *partition;
     CACHE_PAD(1);
@@ -136,8 +136,8 @@ gweakref_table_t *gweakref_init(uint32_t npart)
         wp = &wt->partition[ix];
         pthread_rwlock_init(&wp->lock, &rwlock_attr);
         avltree_init(&wp->t, wk_cmpf, 0 /* must be 0 */);
+        wp->genctr = 0;
     }
-    wt->genctr = 0;    
 
 out:
     return (wt);
@@ -151,13 +151,17 @@ gweakref_t gweakref_insert(gweakref_table_t *wt, void *obj)
     struct avltree_node *node;
 
     ref = (gweakref_priv_t *) Mem_Alloc(sizeof(gweakref_priv_t));
-
     ref->k.ptr = obj;
-    ref->k.gen = __sync_add_and_fetch(&wt->genctr, 1);
 
     wp = (gweakref_partition_t *) gwt_partition_of_addr_k(wt, ref->k.ptr);
 
+    /* XXX initially wt had a single atomic counter, but for any address,
+     * partition is fixed, and we must take the partition lock exclusive
+     * in any case */
     pthread_rwlock_wrlock(&wp->lock);
+
+    ref->k.gen = ++(wp->genctr);
+
     node = avltree_insert(&ref->node_k, &wp->t);
     if (! node) {
         /* success */
