@@ -256,6 +256,13 @@ typedef enum cache_inode_io_direction__
   CACHE_INODE_WRITE = 2
 } cache_inode_io_direction_t;
 
+typedef enum cache_inode_dirent_op__
+{ CACHE_INODE_DIRENT_OP_LOOKUP = 1,
+  CACHE_INODE_DIRENT_OP_REMOVE = 2,
+  CACHE_INODE_DIRENT_OP_RENAME = 3
+} cache_inode_dirent_op_t;
+
+
 typedef enum cache_inode_avl_which__
 { CACHE_INODE_AVL_NAMES = 1,
   CACHE_INODE_AVL_COOKIES = 2,
@@ -273,28 +280,15 @@ const uint32_t CACHE_INODE_DIR_POPULATED = 0x00000004;
 
 typedef struct cache_inode_internal_md__
 {
-  pthread_rwlock_t attr_lock; /*< Reader-writer lock for attributes */
-  cache_inode_file_type_t type; /*< The type of the entry */
-  uint32_t flags; /*< Flags concerning this entry */
-  time_t change_time; /*< The time of the last operation ganesha
-                          knows about.  We can ue this for
-                          change_info4 but it is NON-ATOMIC. Don't
-                          use it for anything else (servicing
-                          getattr, etc.) */
-  time_t attr_time; /*< Time at which we last refreshed attributes. */
 } cache_inode_internal_md_t;
 
 /* This function should ONLY be used for populating change_info4
    structures. */
 
-static inline cache_inode_get_changeid4(cache_entry_t *entry)
-{
-  return (changeid4) entry->internal_md.change_time;
-}
-
 struct cache_inode_symlink__
 {
-  fsal_path_t content;                                    /**< Content of the link */
+  pthread_rwlock_t sym_lock; /*< Reader-writer lock for symlink content */
+  fsal_path_t content; /*< Content of the link */
 };
 
 typedef struct cache_inode_unstable_data__
@@ -318,52 +312,55 @@ typedef struct cache_inode_dir_entry__
 
 struct cache_entry_t
 {
-  cache_inode_policy_t  policy ;                          /**< The current cache policy for this entry               */
-  fsal_handle_t handle;                                   /**< The FSAL Handle     */
-  struct fsal_handle_desc fh_desc;                        /**< points to handle.  adds size, len for hash table etc. */
-  fsal_attrib_list_t attributes;                          /**< The FSAL Attributes */
-
+  cache_inode_policy_t  policy;                  /*< The current cache policy for this entry               */
+  fsal_handle_t handle;                          /*< The FSAL Handle     */
+  struct fsal_handle_desc fh_desc;               /*< Points to handle.  Adds size, len for hash table etc. */
+  fsal_attrib_list_t attributes;                 /*< The FSAL Attributes */
+  pthread_rwlock_t attr_lock;                    /*< Reader-writer lock for attributes */
+  cache_inode_file_type_t type;                  /*< The type of the entry */
+  uint32_t flags;                                /*< Flags concerning this entry */
+  time_t change_time;                            /*< The time of the last operation ganesha knows about.
+                                                      We can ue this for change_info4, but atomic MUST BE
+                                                      SET TO FALSE.  Don't use it for anything else
+                                                      (servicing getattr, etc.) */
+  time_t attr_time;                              /*< Time at which we last refreshed attributes. */
   union cache_inode_fsobj__
   {
     struct cache_inode_file__
     {
-      cache_inode_opened_file_t open_fd;                             /**< Cached fsal_file_t for optimized access              */
-      fsal_name_t *pname;                                            /**< Pointer to filename, for PROXY only                  */
-      cache_entry_t *pentry_parent_open;                             /**< Parent associated with pname, for PROXY only         */
-      void *pentry_content;                                          /**< Entry in file content cache (NULL if not cached)     */
-      struct glist_head state_list;                                  /**< Pointers for state list                              */
-      struct glist_head lock_list;                                   /**< Pointers for lock list                               */
-      pthread_mutex_t lock_list_mutex;                               /**< Mutex to protect lock list                           */
-      cache_inode_unstable_data_t unstable_data;                     /**< Unstable data, for use with WRITE/COMMIT             */
-    } file;                                   /**< file related filed     */
+      cache_inode_opened_file_t open_fd;         /*< Cached fsal_file_t for optimized access              */
+      fsal_name_t *pname;                        /*< Pointer to filename, for PROXY only                  */
+      cache_entry_t *pentry_parent_open;         /*< Parent associated with pname, for PROXY only         */
+      void *pentry_content;                      /*< Entry in file content cache (NULL if not cached)     */
+      struct glist_head state_list;              /*< Pointers for state list                              */
+      struct glist_head lock_list;               /*< Pointers for lock list                               */
+      pthread_mutex_t lock_list_mutex;           /*< Mutex to protect lock list                           */
+      cache_inode_unstable_data_t unstable_data; /*< Unstable data, for use with WRITE/COMMIT             */
+    } file;                                      /*< file related filed     */
 
-    struct cache_inode_symlink__ *symlink;     /**< symlink related field  */
+    struct cache_inode_symlink__ *symlink;       /*< symlink related field  */
 
     struct cache_inode_dir__
     {
-      unsigned int nbactive;                    /**< Number of known active children                         */
-      char *referral;                           /**< NULL is not a referral, is not this a 'referral string' */
-      struct avltree avl;                       /**< Children */
-      unsigned int collisions;                  /**< For future heuristics. Expect 0. */
-    } dir;                                      /**< DIR related field                */
+      unsigned int nbactive;                     /*< Number of known active children                         */
+      char *referral;                            /*< NULL is not a referral, is not this a 'referral string' */
+      struct avltree avl;                        /*< Children */
+      unsigned int collisions;                   /*< For future heuristics. Expect 0. */
+      pthread_rwlock_t dir_lock;             /*< Lock to protect dirents */
+    } dir;                                       /*< Dir related field                */
 
     /* Note that special data is in the rawdev field of FSAL attributes */
 
-  } object;                                     /**< Type specific field (discriminated by internal_md.type)   */
+  } object;                                      /*< Type specific field (discriminated by internal_md.type)   */
 
-#ifdef _USE_FSAL_UP
-  int deleted;
-#endif
-  rw_lock_t lock;                             /**< a reader-writter lock used to protect the data     */
-  cache_inode_internal_md_t internal_md;      /**< My metadata (from this cache's point of view)      */
-  cache_inode_lru_t lru;                      /**< New style LRU       */
-   
+  cache_inode_lru_t lru;                         /*< New style LRU       */
+
   /* List of parent cache entries of directory entries related by
    * hard links */
   struct cache_inode_parent_entry__
   {
-    cache_entry_t *parent;                           /**< Parent entry */
-    struct cache_inode_parent_entry__ *next_parent;  /**< Next parent */
+    cache_entry_t *parent;                           /*< Parent entry */
+    struct cache_inode_parent_entry__ *next_parent;  /*< Next parent */
   } *parent_list;
 #ifdef _USE_MFSL
   mfsl_object_t mobject;
@@ -693,26 +690,20 @@ cache_inode_status_t cache_inode_link( cache_entry_t * pentry_src,
                                        fsal_op_context_t * pcontext,
                                        cache_inode_status_t * pstatus);
 
-cache_inode_status_t cache_inode_remove_sw(cache_entry_t * pentry,             /**< Parent entry */
-                                           fsal_name_t * pnode_name,
-                                           fsal_attrib_list_t * pattr,
-                                           cache_inode_client_t * pclient,
-                                           fsal_op_context_t * pcontext,
-                                           cache_inode_status_t * pstatus, int use_mutex);
-
-cache_inode_status_t cache_inode_remove_no_mutex(cache_entry_t * pentry,
-                                                 fsal_name_t * pnode_name,
-                                                 fsal_attrib_list_t * pattr,
-                                                 cache_inode_client_t * pclient,
-                                                 fsal_op_context_t * pcontext,
-                                                 cache_inode_status_t * pstatus);
-
 cache_inode_status_t cache_inode_remove(cache_entry_t * pentry,
                                         fsal_name_t * pnode_name,
                                         fsal_attrib_list_t * pattr,
                                         cache_inode_client_t * pclient,
                                         fsal_op_context_t * pcontext,
                                         cache_inode_status_t * pstatus);
+
+cache_inode_status_t cache_inode_remove_int(cache_entry_t *entry,
+                                            fsal_name_t *name,
+                                            cache_inode_client_t *client,
+                                            fsal_op_context_t *context,
+                                            cache_inode_status_t *status,
+                                            bool_t keep_attr_lock,
+                                            bool_t keep_dir_lock);
 
 cache_inode_status_t cache_inode_clean_internal(cache_entry_t * to_remove_entry,
                                                 cache_inode_client_t * pclient);
@@ -954,16 +945,29 @@ int display_key(hash_buffer_t * pbuff, char *str);
 int display_not_implemented(hash_buffer_t * pbuff, char *str);
 int display_value(hash_buffer_t * pbuff, char *str);
 
-/* Refresh the attriutes on an entry.  The attribute lock MUST be
-   held for writes. */
+/* Update cache_entry metadata from its attributes */
 
-static inline cache_inode_status_t
-cache_inode_refresh_attrs(cache_entry_t *entry,
-                          fsal_op_context_t *context,
-                          cache_inode_client_t *client)
+static inline void
+cache_inode_fixup_md(cache_entry_t *entry)
 {
-     fsal_status_t fsal_status = {0, 0};
-     cache_inode_status_t cache_status = 0;
+     /* Set the refresh time for the cache entry */
+     entry->attr_time = time(NULL);
+     /* TODO: This should really be changed to use sub-second time
+        resolution when it's available. */
+     entry->change_time = entry->attributes.chgtime.seconds;
+     /* Almost certainly not necessary */
+     entry->type = cache_inode_fsal_type_convert(entry->attributes.type);
+     /* We have just loaded the attributes from the FSAL. */
+     entry->flags |= CACHE_INODE_TRUST_ATTRS;
+}
+
+/* Prepare for attribute refresh (for new attributes to be written
+   into the cache entry by the FSAL.) */
+
+static inline void
+cache_inode_prep_attrs(cache_entry_t *entry,
+                       cache_inode_client_t *client)
+{
 #ifdef _USE_NFS4_ACL
      fsal_acl_status_t acl_status = 0;
 
@@ -975,11 +979,34 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
      }
      entry->attributes.acl = NULL;
 #endif /* _USE_NFS4_ACL */
+
      memset(&entry->attributes, 0, sizeof(fsal_attrib_list_t));
      entry->attributes.asked_attributes = client->attrmask;
+}
+
+/* Refresh the attriutes on an entry.  The attribute lock MUST be
+   held for writes. */
+
+static inline cache_inode_status_t
+cache_inode_refresh_attrs(cache_entry_t *entry,
+                          fsal_op_context_t *context,
+                          cache_inode_client_t *client)
+{
+     fsal_status_t fsal_status = {0, 0};
+     cache_inode_status_t cache_status = 0;
+
+     if ((entry->type == FS_JUNCTION) ||
+         (entry->type == UNASSIGNED) ||
+         (entry->type == RECYCLED)) {
+          cache_status = CACHE_INODE_INVALID_ARGUMENT;
+          goto out;
+     }
+
+     cache_inode_prep_attrs(entry, client);
+
      /* I assume this function will go away in the Lieb
         Rearchitecture. */
-     fsal_status = FSAL_getattrs_descriptor(cache_inode_fd(pentry),
+     fsal_status = FSAL_getattrs_descriptor(cache_inode_fd(entry),
                                             &entry->handle,
                                             context,
                                             &entry->attributes);
@@ -990,7 +1017,7 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
                                       &entry->attributes);
      }
      if (FSAL_IS_ERROR(fsal_status)) {
-          status = cache_inode_error_convert(fsal_status);
+          cache_status = cache_inode_error_convert(fsal_status);
           goto out;
      }
 
@@ -999,17 +1026,55 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
 
      /* Update the internal metadata */
 
-     /* Set the refresh time for the cache entry */
-     entry->internal_md.attr_time = time(NULL);
-     /* TODO: This should really be changed to use sub-second time
-        resolution when it's available. */
-     entry->internal_md.change_time = entry->attributes.chgtime.seconds;
-     /* Almost certainly not necessary */
-     entry->internal_md.type =
-          cache_inode_fsal_type_convert(entry->attributes.type);
+     cache_inode_fixup_md(entry);
+
      cache_status = CACHE_INODE_SUCCESS;
 
 out:
+
+     return cache_status;
+}
+
+static inline changeid4
+cache_inode_get_changeid4(cache_entry_t *entry)
+{
+     return (changeid4) entry->change_time;
+}
+
+/* Acquire a read lock, if the CACHE_INODE_TRUST_ATTRS bit is not set,
+   dropthe read lock, acquire a write lock, and if the bit is STILL
+   not set, refresh the attributes.  On success this function will
+   return with the attributes either read or write locked.  It should
+   only be used when read access is desired for relatively short
+   periods of time. */
+
+static inline cache_inode_status_t
+cache_inode_lock_trust_attrs(cache_entry_t *entry,
+                             fsal_op_context_t *context,
+                             cache_inode_client_t *client)
+{
+     cache_inode_status_t cache_status = 0;
+
+
+     pthread_rwlock_rdlock(&entry->attr_lock);
+     /* Do we need to refresh? */
+     if (!(entry->flags & CACHE_INODE_TRUST_ATTRS) ||
+         FSAL_TEST_MASK(entry->attributes.asked_attributes,
+                        FSAL_ATTR_RDATTR_ERR)) {
+          pthread_rwlock_unlock(&entry->attr_lock);
+          pthread_rwlock_wrlock(&entry->attr_lock);
+          /* Has someone else done it for us? */
+          if (!(entry->flags & CACHE_INODE_TRUST_ATTRS)) {
+               /* Release teh lock on error */
+               if ((cache_status =
+                    cache_inode_refresh_attrs(entry,
+                                              context,
+                                              client))
+                   != CACHE_INODE_SUCCESS) {
+                    pthread_rwlock_unlock(&entry->attr_lock);
+               }
+          }
+     }
 
      return cache_status;
 }

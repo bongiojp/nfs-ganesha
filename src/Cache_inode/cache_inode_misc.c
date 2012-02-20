@@ -1498,9 +1498,8 @@ cache_inode_check_trust(cache_entry_t *entry,
 {
      time_t current_time = 0;
      cache_inode_status_t pstatus = CACHE_INODE_SUCCESS;
-     time_t attr_time = entry->internal_md.attr_time;
-     time_t change_time = entry->internal_md.change_time;
-     cache_inode_file_type_t type = entry->internal_md.type;
+     time_t attr_time = entry->attr_time;
+     time_t change_time = entry->change_time;
      time_t oldmtime = 0;
 
      if ((type == FS_JUNCTION) ||
@@ -1514,7 +1513,7 @@ cache_inode_check_trust(cache_entry_t *entry,
           goto out;
         }
 
-     pthread_rwlock_rdlock(&entry->interior_md.attr_lock);
+     pthread_rwlock_rdlock(&entry->attr_lock);
      current_time = time(NULL);
 
      oldmtime = entry->attributes.mtime.seconds;
@@ -1522,8 +1521,8 @@ cache_inode_check_trust(cache_entry_t *entry,
      /* Do we need a refresh? */
      if (((client->expire_type_attr == CACHE_INODE_EXPIRE_NEVER) ||
           (attr_time - entry_time < client->grace_period_attr)) &&
-         (entry->internal_md.flags & CACHE_INODE_TRUST_ATTRS) &&
-         !((client->getattr_dir_invalidation) && (type == DIRECTORY))) {
+         (entry->flags & CACHE_INODE_TRUST_ATTRS) &&
+         !((client->getattr_dir_invalidation) && (entry->type == DIRECTORY))) {
           goto unlock;
      }
 
@@ -1536,8 +1535,8 @@ cache_inode_check_trust(cache_entry_t *entry,
      /* Make sure no one else has first */
      if (((client->expire_type_attr == CACHE_INODE_EXPIRE_NEVER) ||
           (attr_time - entry_time < client->grace_period_attr)) &&
-         (entry->internal_md.flags & CACHE_INODE_TRUST_ATTRS)
-         !((client->getattr_dir_invalidation) && (type == DIRECTORY))) {
+         (entry->flags & CACHE_INODE_TRUST_ATTRS)
+         !((client->getattr_dir_invalidation) && (entry->type == DIRECTORY))) {
           goto unlock;
      }
 
@@ -1546,39 +1545,36 @@ cache_inode_check_trust(cache_entry_t *entry,
           goto unlock;
      }
 
-     attr_time = entry->internal_md.attr_time;
-     change_time = entry->internal_md.change_time;
+     attrtime = entry->attr_time;
+     change_time = entry->change_time;
      type = entry->internal_md.type;
 
-     if ((entry->internal_md.type == SYMBOLIC_LINK &&
+     if ((entry->type == SYMBOLIC_LINK &&
           pclient->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
           ((current_time - entry_time >= pclient->grace_period_link))) ||
          !(entry->internal_md.flag & CACHE_INODE_TRUST_CONTENT)) {
-          fsal_path_t link_content;
+          pthread_rwlock_wrlock(pentry->object.symlink->sym_lock);
+          pthread_rwlock_unlock(pentry->object.attrlock);
 
           assert(pentry->object.symlink);
 
-          /* Should symlink content have its own lock? */
-          fsal_status = FSAL_readlink(entry->handle,
+          fsal_status = FSAL_readlink(&entry->handle,
                                       context,
-                                      &link_content,
+                                      &entry->object.symlink->content,
                                       NULL);
           if (FSAL_IS_ERROR) {
-               goto unlock;
+               cache_status = cache_inode_error_convert(fsal_status);
           }
 
-          FSAL_pathcpy(&pentry->object.symlink->content,
-                       &link_content);
-     }
+          pthread_rwlock(unlock(pentry->object.symlink->sym_lock));
+          goto out;
+     } else if ((type == DIRECTORY) &&
+                (oldmtime < entry->attributes.mtime.seconds)) {
+          pthread_rwlock_wrlock(pentry->object.dir.dir_lock);
+          pthread_rwlock_unlock(pentry->object.attr_lock);
 
-     /* XXX Acquire the content lock and release the attribute lock
-        here. */
-
-     if ((type == DIRECTORY) &&
-         (oldmtime < entry->attributes.mtime.seconds)) {
-
-          entry->internal_md &= ~(CACHE_INODE_TRUST_CONTENT |
-                                  CACHE_INODE_DIR_POPULATED);
+          entry->flags &= ~(CACHE_INODE_TRUST_CONTENT |
+                            CACHE_INODE_DIR_POPULATED);
 
           if (cache_inode_invalidate_all_cached_dirent(entry, client,
                                                        &status)
@@ -1587,13 +1583,15 @@ cache_inode_check_trust(cache_entry_t *entry,
                        "cache_inode_invalidate_all_cached_dirent "
                        "returned %d (%s)", status,
                        cache_inode_err_str(status));
-               return *pstatus;
           }
+
+          pthread_rwlock_unlock(pentry->object.dir.dir_lock);
+          goto out;
      }
 
 unlock:
 
-     pthread_rwlock_unlock(entry->internal_md.attr_lock);
+     pthread_rwlock_unlock(entry->attr_lock);
 
 out:
      return status;

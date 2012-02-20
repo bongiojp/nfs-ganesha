@@ -75,9 +75,6 @@
 
 static void *lru_thread(void *arg);
 
-/* Cahe inode entry weakref table */
-/* static hash_table_t weakref_; */
-
 struct lru_q_base
 {
     struct glist_head q; /* LRU is at HEAD, MRU at tail */
@@ -88,6 +85,7 @@ struct lru_q_base
 /*
  * Cache-line padding macro from MCAS
  */
+
 #define CACHE_LINE_SIZE 64 /* XXX arch-specific define */
 #define CACHE_PAD(_n) char __pad ## _n [CACHE_LINE_SIZE]
 #define ALIGNED_ALLOC(_s)                                       \
@@ -130,20 +128,6 @@ static struct lru_q_ LRU_2[LRU_N_Q_LANES];
  * only with loss of protocol correctness, but may have only the sentinel
  * refcount.  To preserve constant time operation, they are stored in an
  * independent partition of the LRU queue.
- */
-
-/* functions:
- * cache_inode_lru_pkginit
- * cache_inode_lru_pkgshutdown
- * cache_inode_lru_get -- get initial reference, aka, EvictBlock()
- * cache_inode_lru_ref -- increment refcount and adjust LRU
- * cache_inode_lru_unref -- decrement refcount, cond recycle
- * cache_inode_lru_pin -- move to protected partition
- * cache_inode_lru_unpin -- move to reclaimable partition
- *
- * other ideas:
- * weakrefs -- planned for use in dirent
- *
  */
 
 static pthread_mutex_t lru_mtx;
@@ -339,16 +323,16 @@ void cache_inode_lru_pkginit(void)
     }
 
     if(pthread_attr_init(&attr_thr) != 0)
-        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't init pthread's attributes");
+        LogCrit(COMPONENT_CACHE_INODE_LRU, "can't init pthread's attributes");
 
     if(pthread_attr_setscope(&attr_thr, PTHREAD_SCOPE_SYSTEM) != 0)
-        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's scope");
+        LogCrit(COMPONENT_CACHE_INODE_LRU, "can't set pthread's scope");
 
     if(pthread_attr_setdetachstate(&attr_thr, PTHREAD_CREATE_JOINABLE) != 0)
-        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's join state");
+        LogCrit(COMPONENT_CACHE_INODE_LRU, "can't set pthread's join state");
 
     if(pthread_attr_setstacksize(&attr_thr, THREAD_STACK_SIZE) != 0)
-        LogDebug(COMPONENT_CACHE_INODE_LRU, "can't set pthread's stack size");
+        LogCrit(COMPONENT_CACHE_INODE_LRU, "can't set pthread's stack size");
 
     /* spawn LRU background thread */
     code = pthread_create(&lru_thread_state.thread_id, &attr_thr, lru_thread,
@@ -403,9 +387,10 @@ try_reap_entry(struct lru_q_base *q)
  * repurpose a resident entry in the LRU system, if the system is
  * above low-water mark, from pool otherwise.
  */
-cache_entry_t *cache_inode_lru_get(cache_inode_client_t *pclient,
-                                   cache_inode_status_t *pstatus,
-                                   uint32_t flags)
+cache_entry_t *
+cache_inode_lru_get(cache_inode_client_t *pclient,
+                    cache_inode_status_t *pstatus,
+                    uint32_t flags)
 {
     /* The lane from which we harvest (or into which we store) the
        new entry.  Usually the lane assigned to this thread. */
