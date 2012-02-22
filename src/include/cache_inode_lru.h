@@ -131,14 +131,17 @@ static inline uint32_t cache_inode_lru_thread_lane(int index)
 
 /* convenience function to increase entry refcount, permissible
  * IFF the caller has an initial reference */
-static inline void cache_inode_ref(cache_entry_t *entry, char *tag)
+static inline void
+cache_inode_ref(struct cache_entry_t *entry,
+                char *tag)
 {
     P(entry->lru.mtx);
     ++(entry->lru.refcount);
     V(entry->lru.mtx);
 }
 
-static inline int64_t cache_inode_lru_readref(cache_entry_t *entry)
+static inline int64_t
+cache_inode_lru_readref(struct cache_entry_t *entry)
 {
     int64_t cnt;
 
@@ -149,15 +152,16 @@ static inline int64_t cache_inode_lru_readref(cache_entry_t *entry)
     return (cnt);
 }
 
-extern cache_entry_t *cache_inode_lru_get(cache_inode_client_t *pclient,
-                                           cache_inode_status_t *pstatus,
-                                           uint32_t flags);
-extern cache_inode_status_t cache_inode_lru_ref(cache_entry_t *entry,
-                                                cache_inode_client_t *pclient,
-                                                uint32_t flags);
-extern cache_inode_status_t cache_inode_lru_unref(cache_entry_t * entry,
-                                                  cache_inode_client_t *pclient,
-                                                  uint32_t flags);
+extern struct cache_entry_t *cache_inode_lru_get(cache_inode_client_t *pclient,
+                                                 cache_inode_status_t *pstatus,
+                                                 uint32_t flags);
+extern cache_inode_status_t cache_inode_lru_ref(
+     cache_entry_t *entry,
+     cache_inode_client_t *pclient,
+     uint32_t flags);
+extern int cache_inode_lru_unref(cache_entry_t * entry,
+                                 cache_inode_client_t *pclient,
+                                 uint32_t flags);
 extern void lru_wake_thread();
 
 #endif /* _CACHE_INODE_LRU_H */

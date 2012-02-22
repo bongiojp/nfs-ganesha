@@ -55,6 +55,8 @@ typedef struct gweakref_table_ gweakref_table_t;
 gweakref_table_t *gweakref_init(uint32_t npart);
 gweakref_t gweakref_insert(gweakref_table_t *wt, void *obj);
 void *gweakref_lookup(gweakref_table_t *wt, gweakref_t *ref);
+void *gweakref_lookupex(gweakref_table_t *wt, gweakref_t *ref,
+                        pthread_rwlock_t **lock);
 void gweakref_delete(gweakref_table_t *wt, gweakref_t *ref);
 void gweakref_destroy(gweakref_table_t *wt);
 

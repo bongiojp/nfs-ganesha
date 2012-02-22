@@ -55,60 +55,57 @@
 #include <pthread.h>
 #include <assert.h>
 
-cache_inode_status_t cache_inode_readlink(cache_entry_t * pentry,
-                                          fsal_path_t * plink_content,
-                                          cache_inode_client_t * pclient,
-                                          fsal_op_context_t * pcontext,
-                                          cache_inode_status_t * pstatus)
+/**
+ * @brief Read the target of a symlink
+ *
+ * Copy the content of a symbolic link into the address pointed to by
+ * link_content.
+ *
+ * @param entry [in] The link to read
+ * @param link_content [out] The location into which to write the
+ *                           target
+ * @param client [in] Structure for resource management
+ * @param context [in] FSAL operation context
+ * @param status [out] Status of the operation.
+ *
+ * @return CACHE_INODE_SUCCESS on success, other things on failure.
+ */
+
+cache_inode_status_t cache_inode_readlink(cache_entry_t *entry,
+                                          fsal_path_t *link_content,
+                                          cache_inode_client_t *client,
+                                          fsal_op_context_t *context,
+                                          cache_inode_status_t *status)
 {
-  fsal_status_t fsal_status;
-  fsal_attrib_list_t attr ;
+     fsal_status_t fsal_status;
+     fsal_attrib_list_t attr;
 
-  /* Set the return default to CACHE_INODE_SUCCESS */
-  *pstatus = CACHE_INODE_SUCCESS;
+     /* Set the return default to CACHE_INODE_SUCCESS */
+     *status = CACHE_INODE_SUCCESS;
 
-  /* stats */
-  (pclient->stat.nb_call_total)++;
-  (pclient->stat.func_stats.nb_call[CACHE_INODE_READLINK])++;
+     /* stats */
+     (client->stat.nb_call_total)++;
+     (client->stat.func_stats.nb_call[CACHE_INODE_READLINK])++;
 
-  /* Lock the entry */
-  P_w(&pentry->lock);
-  if(cache_inode_renew_entry(pentry, NULL, pclient, pcontext, pstatus) !=
-     CACHE_INODE_SUCCESS)
-    {
-      (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READLINK])++;
-      V_w(&pentry->lock);
-      return *pstatus;
-    }
-  /* RW_Lock obtained as writer turns to reader */
-  rw_lock_downgrade(&pentry->lock);
+     if (entry->type != SYMBOLIC_LINK) {
+          *status = CACHE_INODE_BAD_TYPE;
+          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
+          return *pstatus;
+     }
 
-  switch (pentry->internal_md.type)
-    {
-    case REGULAR_FILE:
-    case DIRECTORY:
-    case CHARACTER_FILE:
-    case BLOCK_FILE:
-    case SOCKET_FILE:
-    case FIFO_FILE:
-    case UNASSIGNED:
-    case FS_JUNCTION:
-    case RECYCLED:
-      *pstatus = CACHE_INODE_BAD_TYPE;
-      V_r(&pentry->lock);
-
-      /* stats */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
-
-      return *pstatus;
-      break;
-
-    case SYMBOLIC_LINK:
-      assert(pentry->object.symlink);
-      if( CACHE_INODE_KEEP_CONTENT( pentry->policy ) )
-        {
-          fsal_status = FSAL_pathcpy(plink_content, &(pentry->object.symlink->content)); /* need copy ctor? */
-        }
+     if (CACHE_INODE_KEEP_CONTENT(pentry->policy)) {
+          assert(pentry->object.symlink);
+          pthread_rwlock_rdlock(&entry->symlink->sym_lock);
+          if (entry->flags & CACHE_INODE_TRUST_CONTENT) {
+               fsal_status
+                    = FSAL_pathcpy(link_content,
+                                   &(entry->object.symlink->content));
+               pthread_rwlock_unlock(&entry->symlink->sym_lock);
+          } else {
+               /* Load in the new data */
+               
+          }
+     }
       else
         {
            /* Content is not cached, call FSAL_readlink here */

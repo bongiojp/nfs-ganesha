@@ -59,62 +59,30 @@
 
 /**
  *
- * cache_inode_get: Gets an entry by using its fsdata as a key and caches it if needed.
+ * @brief Gets an entry by using its fsdata as a key and caches it if needed.
  *
  * Gets an entry by using its fsdata as a key and caches it if needed.
  *
- * If a cache entry is returned, its refcount is +1.
+ * If a cache entry is returned, its refcount is incremented by one.
  *
- * @param fsdata [IN] file system data
- * @param pattr [OUT] pointer to the attributes for the result.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
+ * cache_inode_get_located is no longer needed with the split between
+ * directory ad attribute locks.
+ *
+ * @param fsdata [IN] File system data
+ * @param pattr [OUT] Pointer to the attributes for the result
+ * @param pclient [INOUT] Pointer to resource management structure
  * @param pcontext [IN] FSAL credentials
- * @param pstatus [OUT] returned status.
+ * @param pstatus [OUT] Returned status
  *
- * @return the pointer to the entry is successfull, NULL otherwise.
+ * @return If successful, the pointer to the entry; NULL otherwise
  *
  */
-cache_entry_t *cache_inode_get( cache_inode_fsal_data_t * pfsdata,
-                                cache_inode_policy_t policy,
-                                fsal_attrib_list_t * pattr,
-                                cache_inode_client_t * pclient,
-                                fsal_op_context_t * pcontext,
-                                cache_inode_status_t * pstatus )
-{
-  return cache_inode_get_located( pfsdata, NULL, policy, pattr, pclient, pcontext, pstatus ) ;
-} /* cache_inode_get */
-
-/**
- *
- * cache_inode_get_located: Gets an entry by using its fsdata as a key and caches it if needed, with origin information.
- *
- * Gets an entry by using its fsdata as a key and caches it if needed,
- * with origin/location information.  The reason to this call is
- * cross-junction management : you can go through a directory that it
- * its own parent from a FSAL point of view. This could lead to hang
- * (same P_w taken twice on the same entry). To deal this, a check
- * feature is added through the plocation argument.
- *
- * If a cache entry is returned, its refcount is +1.
- *
- * @param fsdata [IN] file system data
- * @param plocation [IN] pentry used as "location form where the call is done". Usually a son of a parent entry
- * @param pattr [OUT] pointer to the attributes for the result.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials
- * @param pstatus [OUT] returned status.
- *
- * @return the pointer to the entry is successfull, NULL otherwise.
- *
- */
-
-cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
-                                       cache_entry_t * plocation,
-                                       cache_inode_policy_t policy,
-                                       fsal_attrib_list_t * pattr,
-                                       cache_inode_client_t * pclient,
-                                       fsal_op_context_t * pcontext,
-                                       cache_inode_status_t * pstatus)
+cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
+                               cache_inode_policy_t policy,
+                               fsal_attrib_list_t * pattr,
+                               cache_inode_client_t * pclient,
+                               fsal_op_context_t * pcontext,
+                               cache_inode_status_t * pstatus )
 {
   hash_buffer_t key, value;
   cache_entry_t *pentry = NULL;
@@ -331,7 +299,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
   cache_inode_release_fsaldata_key(&key, pclient);
 
   return ( pentry );
-}  /* cache_inode_get_located */
+}  /* cache_inode_get */
 
 /**
  *

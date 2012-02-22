@@ -93,14 +93,13 @@ static cache_inode_status_t cache_inode_readdir_nonamecache( cache_entry_t * pen
      fsal_dir_t fsal_dirhandle;
      fsal_status_t fsal_status;
      fsal_attrib_list_t dir_attributes;
-
      fsal_cookie_t begin_cookie;
      fsal_cookie_t end_cookie;
      fsal_count_t iter;
      fsal_boolean_t fsal_eod;
      fsal_dirent_t fsal_dirent_array[FSAL_READDIR_SIZE + 20];
-
      cache_inode_fsal_data_t entry_fsdata;
+     cache_entry_t *entry = NULL;
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *pstatus = CACHE_INODE_SUCCESS;
@@ -186,16 +185,20 @@ static cache_inode_status_t cache_inode_readdir_nonamecache( cache_entry_t * pen
           }
 
 
-          /* fills in the dirent_array */
-          if( ( dirent_array[iter]->pentry= cache_inode_get( &entry_fsdata,
-                                                             policy,
-                                                             &fsal_dirent_array[iter].attributes,
-                                                             pclient,
-                                                             pcontext,
-                                                             pstatus ) ) == NULL )
-               return *pstatus ;
+          if ((entry = cache_inode_get(&entry_fsdata,
+                                       policy,
+                                       &fsal_dirent_array[iter].attributes,
+                                       pclient,
+                                       pcontext,
+                                       pstatus)) == NULL) {
+               return *pstatus;
+          }
 
-          fsal_status = FSAL_namecpy( &dirent_array[iter]->name, &fsal_dirent_array[iter].name ) ;
+          /* fills in the dirent_array */
+          dirent_array[iter]->entry = entry->weakref;
+
+          fsal_status = FSAL_namecpy(&dirent_array[iter]->name,
+                                     &fsal_dirent_array[iter].name);
           if(FSAL_IS_ERROR(fsal_status))
           {
                *pstatus = cache_inode_error_convert(fsal_status);
@@ -390,8 +393,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
      if (*pstatus == CACHE_INODE_SUCCESS) {
           /* As noted, if a mutating operation was performed, we must
            * invalidate cached cookies. */
-          cache_inode_release_dirents(
-               pentry_parent, pclient, CACHE_INODE_AVL_COOKIES);
+          cache_inode_release_dirents(pentry_parent, pclient);
 
           /* Someone has to repopulate the avl cookie cache.  Populating it
            * lazily is ok, but the logic to do it makes supporting simultaneous
@@ -484,53 +486,35 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
                               fsal_op_context_t *pcontext,
                               cache_inode_status_t *pstatus)
 {
-  fsal_status_t fsal_status;
-  cache_inode_parent_entry_t *next_parent_entry = NULL;
-  cache_inode_dir_entry_t *new_dir_entry = NULL;
+     fsal_status_t fsal_status;
+     cache_inode_dir_entry_t *new_dir_entry = NULL;
 
-  *pstatus = CACHE_INODE_SUCCESS;
+     *pstatus = CACHE_INODE_SUCCESS;
 
-  /* Sanity check */
-  if(pentry_parent->type != DIRECTORY) {
+     /* Sanity check */
+     if(pentry_parent->type != DIRECTORY) {
+          *pstatus = CACHE_INODE_BAD_TYPE;
+          return *pstatus;
+     }
 
-       *pstatus = CACHE_INODE_BAD_TYPE;
-       return *pstatus;
-  }
+     /* in cache inode avl, we always insert on pentry_parent */
+     GetFromPool(new_dir_entry, &pclient->pool_dir_entry, cache_inode_dir_entry_t);
 
-  /* in cache inode avl, we always insert on pentry_parent */
-  GetFromPool(new_dir_entry, &pclient->pool_dir_entry, cache_inode_dir_entry_t);
-
-  if(new_dir_entry == NULL)
-    {
-      *pstatus = CACHE_INODE_MALLOC_ERROR;
-      return *pstatus;
-    }
+     if(new_dir_entry == NULL) {
+          *pstatus = CACHE_INODE_MALLOC_ERROR;
+          return *pstatus;
+     }
 
   fsal_status = FSAL_namecpy(&new_dir_entry->name, pname);
-  if(FSAL_IS_ERROR(fsal_status))
-  {
-    *pstatus = CACHE_INODE_FSAL_ERROR;
-    return *pstatus;
+  if(FSAL_IS_ERROR(fsal_status)) {
+       *pstatus = CACHE_INODE_FSAL_ERROR;
+       return *pstatus;
   }
-
-  /* XXX for now, still need the parent list */
-  GetFromPool(next_parent_entry, &pclient->pool_parent,
-              cache_inode_parent_entry_t);
-  if(next_parent_entry == NULL)
-    {
-      *pstatus = CACHE_INODE_MALLOC_ERROR;
-      return *pstatus;
-    }
-
-  /* Init the next_parent_entry variable */
-  next_parent_entry->parent = NULL;
-  next_parent_entry->next_parent = NULL;
 
   /* add to avl */
   if (cache_inode_avl_qp_insert(pentry_parent, new_dir_entry) == -1) {
        /* collision, tree not updated--release both pool objects and return
         * err */
-      ReleaseToPool(next_parent_entry, &pclient->pool_parent);
       ReleaseToPool(new_dir_entry, &pclient->pool_dir_entry);
       *pstatus = CACHE_INODE_ENTRY_EXISTS;
       return *pstatus;
@@ -540,14 +524,9 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
 
   /* we're going to succeed */
   pentry_parent->object.dir.nbactive++;
-  new_dir_entry->pentry = pentry_added;
+  new_dir_entry->entry = pentry_added->weakref;
 
   cache_inode_lru_ref(pentry_added, pclient, LRU_REQ_SCAN);
-
-  /* link with the parent entry (insert as first entry) */
-  next_parent_entry->parent = pentry_parent;
-  next_parent_entry->next_parent = pentry_added->parent_list;
-  pentry_added->parent_list = next_parent_entry;
 
   return *pstatus;
 }                               /* cache_inode_add_cached_dirent */
@@ -577,17 +556,17 @@ cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
   *pstatus = CACHE_INODE_SUCCESS;
 
   /* Only DIRECTORY entries are concerned */
-  if(pentry->internal_md.type != DIRECTORY)
+  if(pentry->type != DIRECTORY)
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
       return *pstatus;
     }
 
   /* Get ride of entries cached in the DIRECTORY */
-  cache_inode_release_dirents(pentry, pclient, CACHE_INODE_AVL_BOTH);
+  cache_inode_release_dirents(pentry, pclient);
 
   /* Reinit the fields */
-  pentry->object.dir.has_been_readdir = CACHE_INODE_NO;
+  pentry->flags |= CACHE_INODE_DIR_POPULATED;
   *pstatus = CACHE_INODE_SUCCESS;
 
   return *pstatus;
@@ -617,15 +596,12 @@ cache_inode_status_t cache_inode_remove_cached_dirent(
     cache_inode_status_t * pstatus)
 {
   cache_entry_t *removed_pentry = NULL;
-  cache_inode_parent_entry_t *parent_iter = NULL;
-  cache_inode_parent_entry_t *previous_iter = NULL;
-  int found = 0;
 
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
 
   /* Sanity check */
-  if(pentry_parent->internal_md.type != DIRECTORY)
+  if(pentry_parent->type != DIRECTORY)
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
       return *pstatus;
@@ -636,45 +612,11 @@ cache_inode_status_t cache_inode_remove_cached_dirent(
   if((removed_pentry = cache_inode_operate_cached_dirent(pentry_parent,
                                                          pname,
                                                          NULL,
-							 pclient,
+                                                         pclient,
                                                          CACHE_INODE_DIRENT_OP_REMOVE,
                                                          pstatus)) == NULL)
     return *pstatus;
 
-  /* Remove the parent entry from the entry whose dirent is removed */
-  for(previous_iter = NULL, parent_iter = removed_pentry->parent_list;
-      (parent_iter != NULL) && (parent_iter->parent != NULL);
-      previous_iter = parent_iter, parent_iter = parent_iter->next_parent)
-    {
-      if(parent_iter->parent == pentry_parent)
-        {
-          found = 1;
-          break;
-        }
-    }
-
-  /* Check for pentry cache inconsistency */
-  if(!found)
-    {
-      *pstatus = CACHE_INODE_INCONSISTENT_ENTRY;
-    }
-  else
-    {
-      if(previous_iter == NULL)
-        {
-          /* this is the first parent */
-          removed_pentry->parent_list = parent_iter->next_parent;
-        }
-      else
-        {
-          /* This is not the first parent */
-          previous_iter->next_parent = parent_iter->next_parent;
-        }
-
-      /* It is now time to put parent_iter back to its pool */
-      ReleaseToPool(parent_iter, &pclient->pool_parent);
-
-    }
   return CACHE_INODE_SUCCESS;
 }                               /* cache_inode_remove_cached_dirent */
 
@@ -763,7 +705,7 @@ cache_inode_status_t cache_inode_readdir_populate(
   *pstatus = CACHE_INODE_SUCCESS;
 
   /* Only DIRECTORY entries are concerned */
-  if(pentry_dir->internal_md.type != DIRECTORY)
+  if(pentry_dir->type != DIRECTORY)
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
       return *pstatus;
@@ -781,7 +723,7 @@ cache_inode_status_t cache_inode_readdir_populate(
 #endif
 
   /* If directory is already populated , there is no job to do */
-  if(pentry_dir->object.dir.has_been_readdir == CACHE_INODE_YES)
+  if(pentry_dir->flags & CACHE_INODE_DIR_POPULATED)
     {
       *pstatus = CACHE_INODE_SUCCESS;
       return *pstatus;
@@ -999,29 +941,10 @@ cache_inode_status_t cache_inode_readdir_populate(
     }
 
   /* End of work */
-  pentry_dir->object.dir.has_been_readdir = CACHE_INODE_YES;
+  pentry_dir->flags |= CACHE_INODE_DIR_POPULATED;
   *pstatus = CACHE_INODE_SUCCESS;
   return *pstatus;
 }                               /* cache_inode_readdir_populate */
-
-
-/**
- *
- * revalidate_cookie_cache:  no-op
- *
- * In a future revision, this functino may be used to reorganize the
- * dirent avl based on collision heuristics.
- *
- * @param pentry [IN] entry for the parent directory to be read.
- *
- * @return void
- *
- */
-static inline void revalidate_cookie_cache(cache_entry_t *dir_pentry,
-                                           cache_inode_client_t *pclient)
-{
-  return;
-}
 
 /**
  *
@@ -1039,33 +962,40 @@ static inline void revalidate_cookie_cache(cache_entry_t *dir_pentry,
  * This is the only function in the cache_inode_readdir.c file that manages MT
  * safety on a directory cache entry.
  *
- * @param pentry [IN] entry for the parent directory to be read.
- * @param cookie [IN] cookie for the readdir operation (basically the offset).
+ * @param dir_pentry [IN] Entry for the parent directory to be read.
+ * @param policy [IN] Caching policy.
+ * @param cookie [IN] Cookie for the readdir operation (basically the offset).
  * @param nbwanted [IN] Maximum number of directory entries wanted.
- * @param peod_met [OUT] A flag to know if end of directory was met during this call.
- * @param dirent_array [OUT] the resulting array of found directory entries.
- * @param unlock [OUT] the caller shall release read-lock on pentry when done
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
+ * @param pnbfound [OUT] Number of entries returned.
+ * @param pend_cookie [OUT] Cookie at end of returned entries
+ * @param peod_met [OUT] A flag to know if end of directory was met
+ *                       during this call.
+ * @param dirent_array [OUT] The resulting array of found directory entries.
+ * @param unlock [OUT] The caller shall release read-lock on pentry when done
+ * @param pclient [INOUT] Ressource allocated by the client for the
+ *                        nfs management.
  * @param pcontext [IN] FSAL credentials
  * @param pstatus [OUT] returned status.
  *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_BAD_TYPE if entry is not related to a directory\n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
+ * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ *                               validating the entry
  *
  */
-cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
-                                         cache_inode_policy_t policy,
-                                         uint64_t cookie,
-                                         unsigned int nbwanted,
-                                         unsigned int *pnbfound,
-                                         uint64_t *pend_cookie,
-                                         cache_inode_endofdir_t *peod_met,
-                                         cache_inode_dir_entry_t **dirent_array,
-                                         int *unlock,
-                                         cache_inode_client_t *pclient,
-                                         fsal_op_context_t *pcontext,
-                                         cache_inode_status_t *pstatus)
+cache_inode_status_t
+cache_inode_readdir(cache_entry_t * dir_pentry,
+                    cache_inode_policy_t policy,
+                    uint64_t cookie,
+                    unsigned int nbwanted,
+                    unsigned int *pnbfound,
+                    uint64_t *pend_cookie,
+                    cache_inode_endofdir_t *peod_met,
+                    cache_inode_dir_entry_t **dirent_array,
+                    int *unlock,
+                    cache_inode_client_t *pclient,
+                    fsal_op_context_t *pcontext,
+                    cache_inode_status_t *pstatus)
 {
      cache_inode_dir_entry_t dirent_key[1], *dirent;
      struct avltree_node *dirent_node;
@@ -1115,32 +1045,31 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
      }
 
      /* Force dir content invalidation if policy enforced no name cache */
-     if( !CACHE_INODE_KEEP_CONTENT( dir_pentry->policy ) )
-          return  cache_inode_readdir_nonamecache( dir_pentry,
-                                                   policy,
-                                                   cookie,
-                                                   nbwanted,
-                                                   pnbfound,
-                                                   pend_cookie,
-                                                   peod_met,
-                                                   dirent_array,
-                                                   unlock,
-                                                   pclient,
-                                                   pcontext,
-                                                   pstatus );
+     if(!CACHE_INODE_KEEP_CONTENT(dir_pentry->policy))
+          return  cache_inode_readdir_nonamecache(dir_pentry,
+                                                  policy,
+                                                  cookie,
+                                                  nbwanted,
+                                                  pnbfound,
+                                                  pend_cookie,
+                                                  peod_met,
+                                                  dirent_array,
+                                                  unlock,
+                                                  pclient,
+                                                  pcontext,
+                                                  pstatus);
 
      cache_inode_lock_trust_attrs(dir_pentry, pcontext, pclient);
 
      /* readdir can be done only with a directory */
-     if(dir_pentry->internal_md.type != DIRECTORY) {
-          pthread_rwlock_unlock(&dir_pentry->attr_lock);
+     if(dir_pentry->type != DIRECTORY) {
           *pstatus = CACHE_INODE_BAD_TYPE;
           /* stats */
           (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_READDIR])++;
-          return *pstatus;
+          goto unlock_attrs;
      }
 
-     /* Check is user (as specified by the credentials) is authorized to read
+     /* Check if user (as specified by the credentials) is authorized to read
       * the directory or not */
      access_mask = (FSAL_MODE_MASK_SET(FSAL_R_OK) |
                     FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_LIST_DIR));
@@ -1151,17 +1080,14 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
                                      pcontext,
                                      pstatus)
          != CACHE_INODE_SUCCESS) {
-          pthread_rwlock_unlock(&dir_pentry->attr_lock);
           (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
-          return *pstatus;
+          goto unlock_attrs;
      }
 
-     pthread_rwlock_wrlock(&dir_pentry->object.dir.dir_lock);
-
-     /* Is the directory fully cached (this is done if a readdir call is
-        done on the directory) */
      if (!(dir_pentry->flags & (CACHE_INODE_TRUST_CONTENT |
                                 CACHE_INODE_DIR_POPULATED))) {
+          pthread_rwlock_wrlock(&dir_pentry->object.dir.dir_lock);
+          pthread_rwlock_unlock(&dir_pentry->attr_lock);
           if (cache_inode_readdir_populate(dir_pentry,
                                            policy,
                                            pclient,
@@ -1169,122 +1095,116 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
                                            pstatus)
               != CACHE_INODE_SUCCESS) {
                /* stats */
-               (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_READDIR])++;
+               (pclient->stat.func_stats.
+                nb_err_unrecover[CACHE_INODE_READDIR])++;
+               goto unlock_dir;
+          }
+     } else {
+          pthread_rwlock_rdlock(&dir_pentry->object.dir.dir_lock);
+          pthread_rwlock_unlock(&dir_pentry->attr_lock);
+     }
 
-      V_w(&dir_pentry->lock);
-      return *pstatus;
-    }
-  }
+     /* deal with initial cookie value:
+      * 1. cookie is invalid (-should- be checked by caller)
+      * 2. cookie is 0 (first cookie) -- ok
+      * 3. cookie is > than highest dirent position (error)
+      * 4. cookie <= highest dirent position but > highest cached cookie
+      *    (currently equivalent to #2, because we pre-populate the cookie avl)
+      * 5. cookie is in cached range -- ok */
 
-  /* deal with dentry cache invalidates */
-  revalidate_cookie_cache(dir_pentry, pclient);
+     if (cookie > 0) {
+          /* Nb., cache_inode_avl_qp_insert_s ensures k > 2 */
+          if (cookie < 3) {
+               *pstatus = CACHE_INODE_BAD_COOKIE;
+               goto unlock_dir;
+          }
 
-  /* Downgrade Writer lock to a reader one. */
-  rw_lock_downgrade(&dir_pentry->lock);
+          /* we assert this can now succeed */
+          dirent_key->hk.k = cookie;
+          dirent = cache_inode_avl_lookup_k(dir_pentry, dirent_key);
+          if (!dirent) {
+               LogFullDebug(COMPONENT_NFS_READDIR,
+                            "%s: seek to cookie=%"PRIu64" fail",
+                            __func__,
+                            cookie);
+               *pstatus = CACHE_INODE_NOT_FOUND;
+               goto unlock_dir;
+          }
 
-  /* deal with initial cookie value:
-   * 1. cookie is invalid (-should- be checked by caller)
-   * 2. cookie is 0 (first cookie) -- ok
-   * 3. cookie is > than highest dirent position (error) 
-   * 4. cookie <= highest dirent position but > highest cached cookie
-   *    (currently equivalent to #2, because we pre-populate the cookie avl)
-   * 5. cookie is in cached range -- ok */
+          dirent_node = &dirent->node_hk;
 
-  if (cookie > 0) {
+          /* client wants the cookie -after- the last we sent, and
+           * the Linux 3.0 and 3.1.0-rc7 clients misbehave if we
+           * resend the last one */
+          dirent_node = avltree_next(dirent_node);
+     } else {
+          /* initial readdir */
+          dirent_node = avltree_first(&dir_pentry->object.dir.avl);
+     }
 
-      /* Nb., cache_inode_avl_qp_insert_s ensures k > 2 */
-      if (cookie < 3) {
-	  *pstatus = CACHE_INODE_BAD_COOKIE;
-	  V_r(&dir_pentry->lock);
-	  return *pstatus;
-      }
+     LogFullDebug(COMPONENT_NFS_READDIR,
+                  "About to readdir in cache_inode_readdir: pentry=%p "
+                  "cookie=%"PRIu64" collisions %d",
+                  dir_pentry,
+                  cookie,
+                  dir_pentry->object.dir.collisions);
 
-      /* we assert this can now succeed */
-      dirent_key->hk.k = cookie;
-      dirent = cache_inode_avl_lookup_k(dir_pentry, dirent_key);
-      if (! dirent) {
+     /* Now satisfy the request from the cached readdir--stop when either
+      * the requested sequence or dirent sequence is exhausted */
+     *pnbfound = 0;
+     *peod_met = TO_BE_CONTINUED;
+
+     for(i = 0; i < nbwanted; ++i) {
+          if (!dirent_node) {
+               break;
+          }
+
+          dirent = avltree_container_of(dirent_node,
+                                        cache_inode_dir_entry_t,
+                                        node_hk);
+
           LogFullDebug(COMPONENT_NFS_READDIR,
-                       "%s: seek to cookie=%"PRIu64" fail",
-                       __func__,
-                       cookie);
-          *pstatus = CACHE_INODE_NOT_FOUND;
-          V_r(&dir_pentry->lock);
-          return *pstatus;
-      }
+                       "cache_inode_readdir: dirent=%p name=%s "
+                       "cookie=%"PRIu64" (probes %d)",
+                       dirent,
+                       dirent->name.name,
+                       dirent->hk.k,
+                       dirent->hk.p);
 
-      dirent_node = &dirent->node_hk;
+          dirent_array[i] = dirent;
+          (*pnbfound)++;
 
-      /* client wants the cookie -after- the last we sent, and
-       * the Linux 3.0 and 3.1.0-rc7 clients misbehave if we
-       * resend the last one */
-      dirent_node = avltree_next(dirent_node);
+          dirent_node = avltree_next(dirent_node);
+     }
 
-  } else {
-      /* initial readdir */
-      dirent_node = avltree_first(&dir_pentry->object.dir.avl);
-  }
+     if (*pnbfound > 0) {
+          if (!dirent) {
+               LogCrit(COMPONENT_CACHE_INODE, "cache_inode_readdir: "
+                       "UNEXPECTED CASE: dirent is NULL whereas nbfound > 0");
+               *pstatus = CACHE_INODE_INCONSISTENT_ENTRY;
+               goto unlock_dir;
+          }
+          *pend_cookie = dirent->hk.k;
+     }
 
-  LogFullDebug(COMPONENT_NFS_READDIR,
-               "About to readdir in cache_inode_readdir: pentry=%p "
-               "cookie=%"PRIu64" collisions %d",
-               dir_pentry,
-               cookie,
-               dir_pentry->object.dir.collisions
-      );
+     if (!dirent_node)
+          *peod_met = END_OF_DIR;
 
-  /* Now satisfy the request from the cached readdir--stop when either
-   * the requested sequence or dirent sequence is exhausted */
-  *pnbfound = 0;
-  *peod_met = TO_BE_CONTINUED;
+unlock_dir:
 
-  for(i = 0; i < nbwanted; ++i)
-    {
-      if (!dirent_node)
-        break;
+     /* stats */
+     if(*pstatus != CACHE_INODE_SUCCESS) {
+          (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
+          pthread_rwlock_unlock(&dir_pentry->object.dir.dir_lock);
+     } else {
+          (pclient->stat.func_stats.nb_success[CACHE_INODE_READDIR])++;
+          *unlock = TRUE;
+     }
 
-      dirent = avltree_container_of(dirent_node,
-                                    cache_inode_dir_entry_t,
-                                    node_hk);
+     return *pstatus;
 
-      LogFullDebug(COMPONENT_NFS_READDIR,
-                   "cache_inode_readdir: dirent=%p name=%s "
-                   "cookie=%"PRIu64" (probes %d)",
-                   dirent,
-                   dirent->name.name,
-                   dirent->hk.k,
-                   dirent->hk.p);
+unlock_attrs:
 
-      dirent_array[i] = dirent;
-      (*pnbfound)++;
-
-      dirent_node = avltree_next(dirent_node);
-  }
-
-  if (*pnbfound > 0)
-  {
-      if (!dirent)
-      {
-         LogCrit(COMPONENT_CACHE_INODE, "cache_inode_readdir: "
-                 "UNEXPECTED CASE: dirent is NULL whereas nbfound>0");
-         V_r(&dir_pentry->lock);
-         *pstatus = CACHE_INODE_INCONSISTENT_ENTRY;
-         return CACHE_INODE_INCONSISTENT_ENTRY;
-      }
-      *pend_cookie = dirent->hk.k;
-  }
-
-  if (! dirent_node)
-      *peod_met = END_OF_DIR;
-
-  /* stats */
-  if(*pstatus != CACHE_INODE_SUCCESS) {
-      (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
-      V_r(&dir_pentry->lock);
-  }
-  else {
-      (pclient->stat.func_stats.nb_success[CACHE_INODE_READDIR])++;
-      *unlock = TRUE;
-  }
-
-  return *pstatus;
-}                               /* cache_inode_readdir */
+     pthread_rwlock_unlock(&dir_pentry->attr_lock);
+     return *pstatus;
+} /* cache_inode_readdir */

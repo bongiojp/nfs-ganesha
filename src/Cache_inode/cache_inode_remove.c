@@ -25,6 +25,7 @@
 #include "fsal.h"
 #include "cache_inode.h"
 #include "cache_inode_lru.h"
+#include "cache_inode_weakref.h"
 #include "cache_content.h"
 #include "stuff_alloc.h"
 
@@ -100,20 +101,13 @@ cache_inode_status_t cache_inode_clean_internal(cache_entry_t * to_remove_entry,
                                                 cache_inode_client_t * pclient)
 {
   fsal_handle_t *pfsal_handle_remove;
-  cache_inode_parent_entry_t *parent_iter = NULL;
-  cache_inode_parent_entry_t *parent_iter_next = NULL;
   cache_inode_fsal_data_t fsaldata;
-  cache_inode_status_t status;
   hash_buffer_t key, old_key, old_value;
   int rc;
 
-  memset( (char *)&fsaldata, 0, sizeof( fsaldata ) ) ;
+  memset((char *)&fsaldata, 0, sizeof( fsaldata ) ) ;
 
-  if((pfsal_handle_remove =
-      cache_inode_get_fsal_handle(to_remove_entry, &status)) == NULL)
-    {
-      return status;
-    }
+  pfsal_handle_remove = &to_remove_entry->handle;
 
   /* delete the entry from the cache */
   key.pdata = to_remove_entry->fh_desc.start;
@@ -148,40 +142,30 @@ cache_inode_status_t cache_inode_clean_internal(cache_entry_t * to_remove_entry,
         }
     }
 
-  /* Free the parent list entries */
-
-  parent_iter = to_remove_entry->parent_list;
-  while(parent_iter != NULL)
-    {
-      parent_iter_next = parent_iter->next_parent;
-
-      ReleaseToPool(parent_iter, &pclient->pool_parent);
-
-      parent_iter = parent_iter_next;
-    }
+  /* Delete from the weakref table */
+  cache_inode_weakref_delete(&to_remove_entry->weakref);
 
   return CACHE_INODE_SUCCESS;
 }                               /* cache_inode_clean_internal */
 
 /**
  *
- * cache_inode_remove_sw: removes a pentry addressed by its parent pentry and
- * its FSAL name.  Mutex management is switched.
+ * @brief Public function to remove a name from a directory.
  *
- * Removes a pentry addressed by its parent pentry and its FSAL name.  Mutex
- * management is switched.
+ * Removes a pentry addressed by its parent pentry and its FSAL name.
  *
- * @param pentry  [IN]     entry for the parent directory to be managed.
- * @param name    [IN]     name of the entry that we are looking for in the cache.
- * @param pattr   [OUT]    attributes for the entry that we have found.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext   [IN]    FSAL credentials
- * @param pstatus [OUT]   returned status.
+ * @param pentry [IN] Entry for the parent directory to be managed
+ * @param pnode_name [IN] Name to be removed
+ * @param pattr [OUT] Attributes of the directory on success
+ * @param pclient [INOUT] Ressource allocated by the client for NFS management
+ * @param pcontext [IN] FSAL credentials
+ * @param pstatus [OUT] Returned status.
  *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
  */
+
 cache_inode_status_t cache_inode_remove(cache_entry_t *pentry,
                                         fsal_name_t *pnode_name,
                                         fsal_attrib_list_t *pattr,
@@ -218,16 +202,15 @@ cache_inode_status_t cache_inode_remove(cache_entry_t *pentry,
 
      pthread_rwlock_wrlock(&pentry->object.dir.dir_lock);
 
-     cache_inode_remove_int(pentry,
-                            pnode_name,
-                            pclient,
-                            pcontext,
-                            pstatus,
-                            TRUE, /* Keep the attribute lock so we
-                                     can copy attributes back to the
-                                     caller.  I plan to get rid of
-                                     this later. */
-                            FALSE);
+     cache_inode_remove_impl(pentry,
+                             pnode_name,
+                             pclient,
+                             pcontext,
+                             pstatus,
+                             /* Keep the attribute lock so we can copy
+                                attributes back to the caller.  I plan
+                                to get rid of this later. --ACE */
+                             CACHE_INODE_FLAG_ATTR_HOLD);
 
      *pattr = pentry->attributes;
 
@@ -252,28 +235,28 @@ unlock_attr:
  * directory contents and attributes are locked for writes.  The
  * attribute lock is released unless keep_md_lock is TRUE.
  *
- * @param entry   [IN]    entry for the parent directory to be managed.
- * @param name    [IN]    name of the entry that we are looking for in the cache.
- * @param client  [INOUT] ressource allocated by the client for the nfs management.
- * @param context [IN]    FSAL credentials
- * @param status  [OUT]   returned status.
+ * @param entry [IN] Entry for the parent directory to be managed.
+ * @param name [IN] Name of the entry that we are looking for in the cache.
+ * @param client [INOUT] Ressource allocated by the client for NFS management.
+ * @param context [IN] FSAL credentials
+ * @param status [OUT] Returned status.
+ * @param flags [IN] Flags to control lock retention
  *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
+ * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ *                               validating the entry
  *
  */
-cache_inode_status_t cache_inode_remove_int(cache_entry_t *entry,
-                                            fsal_name_t *name,
-                                            cache_inode_client_t *client,
-                                            fsal_op_context_t *context,
-                                            cache_inode_status_t *status,
-                                            bool_t keep_attr_lock,
-                                            bool_t keep_dir_lock)
+cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
+                                             fsal_name_t *name,
+                                             cache_inode_client_t *client,
+                                             fsal_op_context_t *context,
+                                             cache_inode_status_t *status,
+                                             uint32_t flags)
 {
      cache_entry_t *to_remove_entry = NULL;
      cache_content_status_t content_status = 0;
      fsal_status_t fsal_status = {0, 0};
-     fsal_attrib_list_t remove_attr;
 
      if(entry->type != DIRECTORY) {
           *status = CACHE_INODE_BAD_TYPE;
@@ -286,14 +269,12 @@ cache_inode_status_t cache_inode_remove_int(cache_entry_t *entry,
 
      /* Looks up for the entry to remove */
      if ((to_remove_entry
-          = cache_inode_lookup_sw(entry,
-                                  name,
-                                  CACHE_INODE_JOKER_POLICY,
-                                  &remove_attr,
-                                  client,
-                                  context,
-                                  status,
-                                  FALSE)) == NULL) {
+          = cache_inode_lookup_impl(entry,
+                                    name,
+                                    CACHE_INODE_JOKER_POLICY,
+                                    client,
+                                    context,
+                                    status)) == NULL) {
           goto out;
      }
 
@@ -325,13 +306,13 @@ cache_inode_status_t cache_inode_remove_int(cache_entry_t *entry,
      }
      cache_inode_fixup_md(entry);
 
-     if (!keep_attr_lock) {
+     if (!(flags & CACHE_INODE_FLAG_ATTR_HOLD)) {
           pthread_rwlock_unlock(&entry->attr_lock);
      }
 
      /* Remove the entry from parent dir_entries avl */
      cache_inode_remove_cached_dirent(entry, name, client, status);
-     if (!keep_dir_lock) {
+     if (!(flags & CACHE_INODE_FLAG_DIR_HOLD)) {
           pthread_rwlock_unlock(&entry->object.dir.dir_lock);
      }
 

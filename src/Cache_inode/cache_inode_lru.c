@@ -571,6 +571,11 @@ cache_inode_lru_ref(cache_entry_t *entry,
                     cache_inode_client_t *client,
                     uint32_t flags)
 {
+    /* Refuse to grant a reference if we're below the sentinel value */
+    if (entry->lru.refcount == 0) {
+        return CACHE_INODE_DEAD_ENTRY;
+    }
+
     /* These shouldn't ever be set */
     flags &= ~(LRU_ENTRY_PINNED | LRU_ENTRY_L2);
 

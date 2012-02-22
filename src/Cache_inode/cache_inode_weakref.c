@@ -53,74 +53,107 @@
  *
  * \file cache_inode_weakref.c
  * \author Matt Benjamin
+ * \author Adam C. Emerson
  * \brief Cache inode weak reference package
  *
  * \section DESCRIPTION
  *
  * Manage weak references to cache inode objects (e.g., references from
  * directory entries).
- *
  */
 
 #define WEAKREF_PARTITIONS 17
 
 static gweakref_table_t *cache_inode_wt = NULL;
 
-/*
- * cache_inode_weakref_init
- * cache_inode_weakref_insert -- install entry in table
- * cache_inode_weakref_get -- get initial reference
- * cache_inode_weakref_delete -- delete entry from table
- * cache_inode_weakref_shutdown
- */
-
-/*
- * Init package.
+/**
+ * @brief Init package
+ *
+ * Create the global reference table.
  */
 void cache_inode_weakref_init()
 {
     cache_inode_wt = gweakref_init(17);
 }
 
-/*
- * Install entry in the weakref table.  Caller must hold a reference
- * to entry.
+/**
+ * @brief Install an entry in the weakref table
+ *
+ * This function installs an entry in the weakref table.  The caller
+ * must already hold a reference to it.  It is expected this function
+ * will only be called by cache_inode_new_entry.
  */
+
 gweakref_t cache_inode_weakref_insert(cache_entry_t *entry)
 {
     return (gweakref_insert(cache_inode_wt, entry));
 }
 
-/*
- * Get an initial reference to a cache entry object, based on (the
- * address and generation number stored in) ref, or NULL if the reference
- * is no longer valid.
+/**
+ * @brief Get a reference from the weakref
+ *
+ * Attempt to get a reference on a weakref.  In order to prevent a
+ * race condition, the function retains the read lock on the table
+ * (blocking any delete) and acquires the mutex on the lru entry
+ * before releasing it.  If the entry has type RECYCLED or
+ * cache_inode_lru_ref fails (which it will if the refcount has
+ * dropped to 0) it will act as if the entry has not existed.
+ *
+ * @see cache_inode_lru_unref for the other half of the story.
+ *
+ * @param ref [in] The weakref from which to derive a reference
+ * @param client [in] The per-thread resource management structure
+ * @param flags [in] Flags passed in to cache_inode_lru_ref, for scan
+ *                   resistance
+ *
+ * @return A pointer to the cache_entry_t on success, or NULL on
+ *         failure.
  */
-cache_entry_t *cache_inode_weakref_get(gweakref_t *ref)
-{
-    cache_entry_t *entry =
-        (cache_entry_t *) gweakref_lookup(cache_inode_wt, ref);
 
-        if (entry) {
-            /* XXXX Adam--don't forget to add refcount and LRU management :) */
-            abort();
+cache_entry_t *cache_inode_weakref_get(gweakref_t *ref,
+                                       cache_inode_client_t *client,
+                                       uint32_t flags)
+{
+    pthread_rwlock_t *lock = NULL;
+    cache_entry_t *entry =
+        (cache_entry_t *) gweakref_lookupex(cache_inode_wt, ref, &lock);
+
+    if (entry) {
+        if (cache_inode_lru_ref(entry, client, flags)
+            != CACHE_INODE_SUCCESS) {
+            return NULL;
         }
+    }
 
     return (entry);
 }
 
-/*
- * Delete a reference from the table.  The caller must hold an initial
- * reference (and probably must be code internal to the cache_inode_lru
- * package to ensure atomicity).
+/**
+ * @brief Delete a reference from the table
+ *
+ * This function deletes a weak reference and is expected to be used
+ * only by cache_inode_lru_unref, cache_inode_get, and
+ * cache_inode_kill_entry.
+ *
+ * @todo ACE: Should cache_inode_kill entry actually use it?
+ *            Probably, since we don't want people getting more
+ *            references on bad filehandles, even if we are waiting
+ *            for people who have references on them to relinquish
+ *            them before deallocating.
+ *
+ * @param ref [in] The entry to delete
  */
-int32_t cache_inode_weakref_delete(gweakref_t *ref)
+
+void cache_inode_weakref_delete(gweakref_t *ref)
 {
-    (void) gweakref_delete(cache_inode_wt, ref);
+    gweakref_delete(cache_inode_wt, ref);
 }
 
-/*
- * Clean up, when no further calls will be made on the interface.
+/**
+ * @brief Clean up on shutdown
+ *
+ * Destroy the weakref table and free all resources associated with
+ * it.
  */
 void cache_inode_weakref_shutdown()
 {

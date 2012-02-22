@@ -18,7 +18,8 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  *
  * ---------------------------------------
  */
@@ -48,6 +49,8 @@
 #include "HashTable.h"
 #include "fsal.h"
 #include "cache_inode.h"
+#include "cache_inode_lru.h"
+#include "cache_inode_weakref.h"
 #include "stuff_alloc.h"
 
 #include <unistd.h>
@@ -58,193 +61,133 @@
 
 /**
  *
- * cache_inode_lookupp_sw: looks up (and caches) the parent directory for a directory. A switches tells is mutex are use.
+ * @brief: Implements parent lookup functionality
  *
- * Looks up (and caches) the parent directory for a directory.  If a the an entry is
- * returned, that entry's refcount is +1.  As normally, pentry must be referenced in the
- * current call path, its refcount is not changed by this routine.
+ * Looks up (and caches) the parent directory for a directory.  If an
+ * entry is returned, that entry's refcount is incremented by one.
+ * The caller must hold a reference on the entry.  It is expected that
+ * the caller holds the directory lock on entry.  It is also expected
+ * that the caller will relinquish the directory lock after return.
+ * If result was not cached, the function will drop the read lock and
+ * acquire a write lock so it can add the result to the cache.
  *
- * @param pentry [IN] entry whose parent is to be obtained.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials 
- * @param pstatus [OUT] returned status.
- * @param use_mutex [IN] if TRUE mutex are use, not otherwise.
+ * @param entry [IN] Entry whose parent is to be obtained
+ * @param client [INOUT] Per-thread resource control structure
+ * @param context [IN] FSAL operation context
+ * @param status [OUT] returned status.
  *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
- *
+ * @return CACHE_INODE_SUCCESS if operation is a success
+ * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ *                               validating the entry
  */
-cache_entry_t *cache_inode_lookupp_sw( cache_entry_t * pentry,
-                                       cache_inode_client_t * pclient,
-                                       fsal_op_context_t * pcontext,
-                                       cache_inode_status_t * pstatus,
-                                       unsigned int flags)
+
+cache_entry_t *
+cache_inode_lookupp_impl(cache_entry_t *entry,
+                         cache_inode_client_t *client,
+                         fsal_op_context_t *context,
+                         cache_inode_status_t *status)
 {
-  cache_entry_t *pentry_parent = NULL;
-  fsal_status_t fsal_status;
-  fsal_attrib_list_t object_attributes;
-  cache_inode_fsal_data_t fsdata;
+     cache_entry_t *parent = NULL;
+     fsal_status_t fsal_status;
+     fsal_attrib_list_t object_attributes;
+     cache_inode_fsal_data_t fsdata;
 
-  /* Set the return default to CACHE_INODE_SUCCESS */
-  *pstatus = CACHE_INODE_SUCCESS;
+     /* Set the return default to CACHE_INODE_SUCCESS */
+     *status = CACHE_INODE_SUCCESS;
 
-  /* stats */
-  (pclient->stat.nb_call_total)++;
-  (pclient->stat.func_stats.nb_call[CACHE_INODE_LOOKUP])++;
+     /* stats */
+     (client->stat.nb_call_total)++;
+     (client->stat.func_stats.nb_call[CACHE_INODE_LOOKUPP])++;
 
-  /* The entry should be a directory */
-  if(flags & CACHE_INODE_FLAG_LOCK)
-    P_r(&pentry->lock);
-  if(pentry->internal_md.type != DIRECTORY)
-    {
-      if(flags & CACHE_INODE_FLAG_LOCK)
-        V_r(&pentry->lock);
-      *pstatus = CACHE_INODE_BAD_TYPE;
+     /* Try the weakref to the parent first.  This increments the
+        refcount. */
+     parent = cache_inode_weakref_get(&entry->object.dir.parent,
+                                      client,
+                                      LRU_REQ_INITIAL);
+     if (!parent) {
+          /* If we didn't find it, drop the read lock, get a write
+             lock, and make sure nobody filled it in while we waited. */
+          pthread_rwlock_unlock(&entry->object.dir.dir_lock);
+          pthread_rwlock_wrlock(&entry->object.dir.dir_lock);
+          parent = cache_inode_weakref_get(&entry->object.dir.parent,
+                                           client,
+                                           LRU_REQ_INITIAL);
+     }
 
-      /* stats */
-      (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_LOOKUPP])++;
+     if (!parent) {
+          fsal_handle_t parent_handle;
 
-      return NULL;
-    }
+          memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
+          object_attributes.asked_attributes = client->attrmask;
+          fsal_status =
+               FSAL_lookup(&entry->handle, (fsal_name_t *) &FSAL_DOT_DOT,
+                           context, &parent_handle, &object_attributes);
 
-  /* Renew the entry (ie, its cached data and metadata, not the cache entry
-   * per se--that is protected by refcount) */
-  if(cache_inode_renew_entry(pentry, NULL, pclient, pcontext, pstatus) !=
-     CACHE_INODE_SUCCESS)
-    {
-      (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_GETATTR])++;
-      return NULL;
-    }
+          if(FSAL_IS_ERROR(fsal_status)) {
+               *status = cache_inode_error_convert(fsal_status);
+               /* stats */
+               (client->stat.func_stats
+                .nb_err_unrecover[CACHE_INODE_LOOKUPP])++;
+               return NULL;
+          }
 
-  /* Does the parent belongs to the cache ? */
-  if(pentry->parent_list && pentry->parent_list->parent)
-    {
-      /* YES, the parent is cached, use the pentry that we have found */
-      pentry_parent = pentry->parent_list->parent;
-    }
-  else
-    {
-      fsal_handle_t parent_handle;
+          /* Call cache_inode_get to populate the cache with the parent entry */
+          fsdata.fh_desc.start = &parent_handle;
+          fsdata.fh_desc.len = 0;
+          FSAL_ExpandHandle(pcontext->export_context,
+                            FSAL_DIGEST_SIZEOF,
+                            &fsdata.fh_desc);
 
-      /* NO, the parent is not cached, query FSAL to get it and cache the result */
-      object_attributes.asked_attributes = pclient->attrmask;
-      fsal_status =
-          FSAL_lookup(&pentry->handle, (fsal_name_t *) & FSAL_DOT_DOT,
-                      pcontext, &parent_handle, &object_attributes);
 
-      if(FSAL_IS_ERROR(fsal_status))
-        {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          if(flags & CACHE_INODE_FLAG_LOCK)
-            V_r(&pentry->lock);
+          /* Call cache_inode_get to populate the cache with the
+             parent entry.  This increments the refcount. */
+          if((parent = cache_inode_get(&fsdata,
+                                       /* Same policy as child */
+                                       entry->policy,
+                                       &object_attributes,
+                                       client,
+                                       context,
+                                       status)) == NULL) {
+               return NULL;
+          }
 
-          /* Stale File Handle to be detected and managed */
-          if(fsal_status.major == ERR_FSAL_STALE)
-            {
-              cache_inode_status_t kill_status;
+          /* Link in a weak reference */
+          entry->object.dir.parent = parent->weakref;
+     }
 
-              LogDebug(COMPONENT_CACHE_INODE,
-                       "cache_inode_lookupp: Stale FSAL FH detected for pentry %p, fsal_status=(%u,%u)",
-                       pentry, fsal_status.major, fsal_status.minor);
+     /* stat */
+     if(*status != CACHE_INODE_SUCCESS) {
+          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_LOOKUPP])++;
+     } else {
+          (client->stat.func_stats.nb_success[CACHE_INODE_LOOKUPP])++;
+     }
 
-              if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
-                 CACHE_INODE_SUCCESS)
-                LogCrit(COMPONENT_CACHE_INODE,
-                        "cache_inode_remove: Could not kill entry %p, status = %u",
-                        pentry, kill_status);
-
-              *pstatus = CACHE_INODE_FSAL_ESTALE;
-            }
-
-          /* stats */
-          (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_LOOKUPP])++;
-
-          return NULL;
-        }
-
-      /* Call cache_inode_get to populate the cache with the parent entry */
-      fsdata.fh_desc.start = (caddr_t)&parent_handle;
-      fsdata.fh_desc.len = 0;
-      (void) FSAL_ExpandHandle(pcontext->export_context,
-			       FSAL_DIGEST_SIZEOF,
-			       &fsdata.fh_desc);
-
-      if((pentry_parent = cache_inode_get_located( &fsdata,
-                                                   pentry,
-                                                   pentry->policy, /* same policy as son */
-                                                   &object_attributes,
-                                                   pclient,
-                                                   pcontext,
-                                                   pstatus)) == NULL)
-        {
-          if(flags & CACHE_INODE_FLAG_LOCK)
-            V_r(&pentry->lock);
-
-          /* stats */
-          (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_LOOKUPP])++;
-
-          return NULL;
-        }
-    }
-
-  if(flags & CACHE_INODE_FLAG_LOCK)
-    V_r(&pentry->lock);
-
-  /* stat */
-  if(*pstatus != CACHE_INODE_SUCCESS)
-    (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_LOOKUPP])++;
-  else
-    (pclient->stat.func_stats.nb_success[CACHE_INODE_LOOKUPP])++;
-
-  return pentry_parent;
-}                               /* cache_inode_lookupp_sw */
+     return parent;
+} /* cache_inode_lookupp_impl */
 
 /**
  *
- * cache_inode_lookupp: looks up (and caches) the parent directory for a directory.
- * 
- * Looks up (and caches) the parent directory for a directory.
+ * @brief Public function to look up a directory's parent
+ *
+ * This function looks up (and potentially caches) the parent of a
+ * directory.
  *
  * If a cache entry is returned, its refcount is +1.
  *
- * @param pentry [IN] entry whose parent is to be obtained.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
+ * @param pentry [IN] Entry whose parent is to be obtained.
+ * @param pclient [INOUT] Structure for per-thread resouce allocation
  * @param pcontext [IN] FSAL credentials
- * @param pstatus [OUT] returned status.
+ * @param pstatus [OUT] Returned status
  *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
+ * @return CACHE_INODE_SUCCESS if operation is a success
+ * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ *                               validating the entry
  *
  */
-cache_entry_t *cache_inode_lookupp(cache_entry_t * pentry,
-                                   cache_inode_client_t * pclient,
-                                   fsal_op_context_t * pcontext,
-                                   cache_inode_status_t * pstatus,
-                                   unsigned int flags)
+cache_entry_t *cache_inode_lookupp(cache_entry_t *pentry,
+                                   cache_inode_client_t *pclient,
+                                   fsal_op_context_t *pcontext,
+                                   cache_inode_status_t *pstatus)
 {
-  return cache_inode_lookupp_sw(pentry, pclient, pcontext, pstatus, flags | CACHE_INODE_FLAG_LOCK);
-}                               /* cache_inode_lookupp_sw */
-
-/**
- *
- * cache_inode_lookupp_no_mutex: looks up (and caches) the parent directory for a directory. No mutex management
- * 
- * Looks up (and caches) the parent directory for a directory.
- *
- * @param pentry [IN] entry whose parent is to be obtained.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials
- * @param pstatus [OUT] returned status.
- *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
- *
- */
-cache_entry_t *cache_inode_lookupp_no_mutex(cache_entry_t * pentry,
-                                            cache_inode_client_t * pclient,
-                                            fsal_op_context_t * pcontext,
-                                            cache_inode_status_t * pstatus,
-                                            unsigned int flags)
-{
-  return cache_inode_lookupp_sw(pentry, pclient, pcontext, pstatus, flags &~ CACHE_INODE_FLAG_LOCK);
-}                               /* cache_inode_lookupp_no_mutex */
+     return cache_inode_lookupp_impl(pentry, pclient, pcontext, pstatus);
+} /* cache_inode_lookupp */
