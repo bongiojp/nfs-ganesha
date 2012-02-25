@@ -180,10 +180,10 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   dir_pentry = data->current_entry;
 
   /* Sanity check: dir_pentry should be ACTUALLY a directory */
-  if(dir_pentry->internal_md.type != DIRECTORY)
+  if(dir_pentry->type != DIRECTORY)
     {
       /* This is not a directory */
-      if(dir_pentry->internal_md.type == SYMBOLIC_LINK)
+      if(dir_pentry->type == SYMBOLIC_LINK)
         res_LOOKUP4.status = NFS4ERR_SYMLINK;
       else
         res_LOOKUP4.status = NFS4ERR_NOTDIR;
@@ -198,18 +198,10 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
                                        data->pexport->cache_inode_policy,
                                        &attrlookup,
                                        data->pclient,
-                                       data->pcontext, &cache_status,
-                                       CACHE_INODE_FLAG_NONE)) != NULL)
+                                       data->pcontext, &cache_status)) != NULL)
     {
       /* Extract the fsal attributes from the cache inode pentry */
-      pfsal_handle = cache_inode_get_fsal_handle(file_pentry, &cache_status);
-
-      if(cache_status != CACHE_INODE_SUCCESS)
-        {
-          res_LOOKUP4.status = NFS4ERR_SERVERFAULT;
-          cache_inode_put(file_pentry, data->pclient);
-          return res_LOOKUP4.status;
-        }
+      pfsal_handle = &file_pentry->handle;
 
       /* Convert it to a file handle */
       if(!nfs4_FSALToFhandle(&data->currentFH, pfsal_handle, data))
@@ -238,10 +230,10 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
           LogFullDebug(COMPONENT_NFS_V4,
                        "----> FSAL handle parent puis fils dans nfs4_op_lookup");
           print_buff(COMPONENT_NFS_V4,
-                     (char *)cache_inode_get_fsal_handle(file_pentry, &cache_status),
+                     (char *)&file_pentry->handle,
                      sizeof(fsal_handle_t));
           print_buff(COMPONENT_NFS_V4,
-                     (char *)cache_inode_get_fsal_handle(dir_pentry, &cache_status),
+                     (char *)&dir_pentry->handle,
                      sizeof(fsal_handle_t));
         }
       LogHandleNFS4("NFS4 LOOKUP CURRENT FH: ", &data->currentFH);
@@ -255,7 +247,7 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
 
       /* Keep the pointer within the compound data */
       data->current_entry = file_pentry;
-      data->current_filetype = file_pentry->internal_md.type;
+      data->current_filetype = file_pentry->type;
 
       /* Return successfully */
       res_LOOKUP4.status = NFS4_OK;
@@ -266,7 +258,7 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
         res_LOOKUP4.status = nfs4_fh_to_xattrfh(&(data->currentFH), &(data->currentFH));
 #endif
 
-      if((data->current_entry->internal_md.type == DIRECTORY) &&
+      if((data->current_entry->type == DIRECTORY) &&
          (data->current_entry->object.dir.referral != NULL))
         {
           if(!nfs4_Set_Fh_Referral(&(data->currentFH)))

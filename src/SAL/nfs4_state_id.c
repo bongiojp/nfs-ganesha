@@ -403,7 +403,7 @@ int nfs4_Check_Stateid(stateid4        * pstate,
   if(pentry == NULL)
     return NFS4ERR_SERVERFAULT;
 
-  if(pentry->internal_md.type != REGULAR_FILE)
+  if(pentry->type != REGULAR_FILE)
     return NFS4ERR_SERVERFAULT;
 
   if(isDebug(COMPONENT_STATE))

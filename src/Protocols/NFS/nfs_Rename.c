@@ -248,8 +248,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              &tst_attr,
                                              pclient,
                                              pcontext,
-                                             &cache_status,
-                                             CACHE_INODE_FLAG_NONE);
+                                             &cache_status);
 
       if(cache_status == CACHE_INODE_NOT_FOUND)
         {
@@ -260,8 +259,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                              &tst_attr,
                                              pclient,
                                              pcontext,
-                                             &cache_status,
-                                             CACHE_INODE_FLAG_NONE);
+                                             &cache_status);
 
           /* Rename entry */
           if(cache_status == CACHE_INODE_SUCCESS)
@@ -361,8 +359,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                                      &tst_attr,
                                                      pclient,
                                                      pcontext,
-                                                     &cache_status,
-                                                     CACHE_INODE_FLAG_NONE))
+                                                     &cache_status))
                  != NULL)
                 {
                   /* If pentry is the same for source and target, then we are trying to rename

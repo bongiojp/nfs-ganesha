@@ -154,8 +154,8 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                     broken_dirent = dirent;
                }
           }
-          pthread_rwlock_unlock(&pentry_parent->object.dir.dir_lock);
-          pthread_rwlock_wrlock(&pentry_parent->object.dir.dir_lock);
+          pthread_rwlock_unlock(&pentry_parent->content_lock);
+          pthread_rwlock_wrlock(&pentry_parent->content_lock);
           /* Make sure nobody put the entry in the cache while we
              were waiting. */
           dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
@@ -263,7 +263,6 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                                       type,
                                       policy,
                                       &create_arg,
-                                      NULL,
                                       pclient,
                                       pcontext,
                                       CACHE_INODE_FLAG_EXREF,
@@ -355,14 +354,14 @@ cache_inode_lookup(cache_entry_t *pentry_parent,
           return NULL;
      }
 
-     pthread_rwlock_rdlock(&pentry_parent->object.dir.dir_lock);
+     pthread_rwlock_rdlock(&pentry_parent->content_lock);
      entry = cache_inode_lookup_impl(pentry_parent,
                                      pname,
                                      policy,
                                      pclient,
                                      pcontext,
                                      pstatus);
-     pthread_rwlock_unlock(&pentry_parent->object.dir.dir_lock);
+     pthread_rwlock_unlock(&pentry_parent->content_lock);
 
      return entry;
 } /* cache_inode_lookup */

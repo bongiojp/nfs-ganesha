@@ -1277,7 +1277,7 @@ int nfs4_FSALattr_To_Fattr(exportlist_t * pexport,
           break;
 
         case FATTR4_FS_LOCATIONS:
-          if(data->current_entry->internal_md.type != DIRECTORY)
+          if(data->current_entry->type != DIRECTORY)
             {
               op_attr_success = 0;
               break;

@@ -288,7 +288,6 @@ int nfs3_Access_Xattr(nfs_arg_t * parg,
                       struct svc_req *preq, nfs_res_t * pres)
 {
   fsal_attrib_list_t attr;
-  cache_inode_status_t cache_status;
   fsal_handle_t *pfsal_handle = NULL;
   cache_entry_t *pentry = NULL;
   file_handle_v3_t *pfile_handle = NULL;
@@ -310,14 +309,7 @@ int nfs3_Access_Xattr(nfs_arg_t * parg,
       goto out;
     }
 
-  /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(pentry, &cache_status);
-  if(cache_status != CACHE_INODE_SUCCESS)
-    {
-      pres->res_access3.status = nfs3_Errno(cache_status);
-      rc = NFS_REQ_OK;
-      goto out;
-    }
+  pfsal_handle = &pentry->handle;
 
   /* Rebuild the FH */
   pfile_handle = (file_handle_v3_t *) (parg->arg_access3.object.data.data_val);
@@ -471,14 +463,7 @@ int nfs3_Lookup_Xattr(nfs_arg_t * parg,
         goto out;
     }
 
-  /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(pentry_dir, &cache_status);
-  if(cache_status != CACHE_INODE_SUCCESS)
-    {
-      pres->res_lookup3.status = nfs3_Errno(cache_status);
-      rc = NFS_REQ_OK;
-      goto out;
-    }
+  pfsal_handle = &pentry_dir->handle;
 
   if((cache_status = cache_inode_error_convert(FSAL_str2name(strpath,
                                                              MAXNAMLEN,
@@ -597,7 +582,7 @@ int nfs3_Readdir_Xattr(nfs_arg_t * parg,
   unsigned long estimated_num_entries;
   unsigned long asked_num_entries;
   unsigned int eod_met;
-  cache_inode_status_t cache_status;
+  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   fsal_handle_t *pfsal_handle = NULL;
   fsal_status_t fsal_status;
   entry_name_array_item_t *entry_name_array = NULL;
@@ -628,14 +613,7 @@ int nfs3_Readdir_Xattr(nfs_arg_t * parg,
       goto out;
     }
 
-  /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(dir_pentry, &cache_status);
-  if(cache_status != CACHE_INODE_SUCCESS)
-    {
-      pres->res_readdir3.status = nfs3_Errno(cache_status);
-      rc = NFS_REQ_OK;
-      goto out;
-    }
+  pfsal_handle = &dir_pentry->handle;
 
   /* Turn the nfs FH into something readable */
   pfile_handle = (file_handle_v3_t *) (parg->arg_readdir3.dir.data.data_val);
@@ -922,7 +900,6 @@ int nfs3_Create_Xattr(nfs_arg_t * parg,
   fsal_attrib_list_t pre_attr;
   fsal_attrib_list_t post_attr;
   fsal_attrib_list_t attr_attrs;
-  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   fsal_handle_t *pfsal_handle = NULL;
   fsal_name_t attr_name = FSAL_NAME_INITIALIZER;
   fsal_status_t fsal_status;
@@ -947,7 +924,7 @@ int nfs3_Create_Xattr(nfs_arg_t * parg,
     }
 
   /* Get the associated FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(parent_pentry, &cache_status);
+  pfsal_handle = &parent_pentry->handle;
 
   /* convert attr name to FSAL name */
   FSAL_str2name(parg->arg_create3.where.name, FSAL_MAX_NAME_LEN, &attr_name);
@@ -1046,7 +1023,6 @@ int nfs3_Write_Xattr(nfs_arg_t * parg,
   cache_entry_t *pentry;
   fsal_attrib_list_t attr;
   fsal_attrib_list_t attr_attrs;
-  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   fsal_off_t offset = 0;
   fsal_status_t fsal_status;
   file_handle_v3_t *pfile_handle = NULL;
@@ -1073,7 +1049,7 @@ int nfs3_Write_Xattr(nfs_arg_t * parg,
   pfile_handle = (file_handle_v3_t *) (parg->arg_write3.file.data.data_val);
 
   /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(pentry, &cache_status);
+  pfsal_handle = &pentry->handle;
 
   /* for Xattr FH, we adopt the current convention:
    * xattr_pos = 0 ==> the FH is the one of the actual FS object
@@ -1166,7 +1142,6 @@ int nfs3_Read_Xattr(nfs_arg_t * parg,
 {
   cache_entry_t *pentry;
   fsal_attrib_list_t attr, xattr_attrs;
-  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   fsal_size_t size = 0;
   size_t size_returned = 0;
   fsal_status_t fsal_status;
@@ -1196,7 +1171,7 @@ int nfs3_Read_Xattr(nfs_arg_t * parg,
   pfile_handle = (file_handle_v3_t *) (parg->arg_read3.file.data.data_val);
 
   /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(pentry, &cache_status);
+  pfsal_handle = &pentry->handle;
 
   /* for Xattr FH, we adopt the current convention:
    * xattr_pos = 0 ==> the FH is the one of the actual FS object
@@ -1324,7 +1299,7 @@ int nfs3_Readdirplus_Xattr(nfs_arg_t * parg,
   unsigned long estimated_num_entries;
   unsigned long asked_num_entries;
   unsigned int eod_met;
-  cache_inode_status_t cache_status;
+  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   fsal_handle_t *pfsal_handle = NULL;
   fsal_status_t fsal_status;
   entry_name_array_item_t *entry_name_array = NULL;
@@ -1356,14 +1331,7 @@ int nfs3_Readdirplus_Xattr(nfs_arg_t * parg,
       goto out;
     }
 
-  /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(dir_pentry, &cache_status);
-  if(cache_status != CACHE_INODE_SUCCESS)
-    {
-      pres->res_readdirplus3.status = nfs3_Errno(cache_status);
-      rc = NFS_REQ_OK;
-      goto out;
-    }
+  pfsal_handle = &dir_pentry->handle;
 
   /* Turn the nfs FH into something readable */
   pfile_handle = (file_handle_v3_t *) (parg->arg_readdirplus3.dir.data.data_val);
@@ -1728,7 +1696,6 @@ int nfs3_Getattr_Xattr(nfs_arg_t * parg,
                        struct svc_req *preq, nfs_res_t * pres)
 {
   fsal_attrib_list_t attr;
-  cache_inode_status_t cache_status;
   fsal_handle_t *pfsal_handle = NULL;
   cache_entry_t *pentry = NULL;
   file_handle_v3_t *pfile_handle = NULL;
@@ -1748,13 +1715,7 @@ int nfs3_Getattr_Xattr(nfs_arg_t * parg,
     }
 
   /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(pentry, &cache_status);
-  if(cache_status != CACHE_INODE_SUCCESS)
-    {
-      pres->res_getattr3.status = nfs3_Errno(cache_status);
-      rc = NFS_REQ_OK;
-      goto out;
-    }
+  pfsal_handle = &pentry->handle;
 
   /* Rebuild the FH */
   pfile_handle = (file_handle_v3_t *) (parg->arg_getattr3.object.data.data_val);
@@ -1815,7 +1776,6 @@ int nfs3_Remove_Xattr(nfs_arg_t * parg /* IN  */ ,
                       nfs_res_t * pres /* OUT */ )
 {
   cache_entry_t *pentry = NULL;
-  cache_inode_status_t cache_status;
   fsal_handle_t *pfsal_handle = NULL;
   fsal_status_t fsal_status;
   fsal_name_t name = FSAL_NAME_INITIALIZER;
@@ -1835,13 +1795,7 @@ int nfs3_Remove_Xattr(nfs_arg_t * parg /* IN  */ ,
     }
 
   /* Get the FSAL Handle */
-  pfsal_handle = cache_inode_get_fsal_handle(pentry, &cache_status);
-  if(cache_status != CACHE_INODE_SUCCESS)
-    {
-      pres->res_remove3.status = nfs3_Errno(cache_status);
-      rc = NFS_REQ_OK;
-      goto out;
-    }
+  pfsal_handle = &pentry->handle;
 
   /* convert attr name to FSAL name */
   FSAL_str2name(parg->arg_remove3.object.name, MAXNAMLEN, &name);

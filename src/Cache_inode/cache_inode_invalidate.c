@@ -62,89 +62,108 @@
  *
  * cache_inode_invalidate: invalidates an entry in the cache
  *
- * This function invalidates the related cache entry correponding to a FSAL handle. It is designed to be called as a FSAL upcall is triggered.
+ * This function invalidates the related cache entry correponding to a
+ * FSAL handle. It is designed to be called as a FSAL upcall is
+ * triggered.
  *
- * @param pfsal_handle [IN] FSAL handle for the entry to be invalidated
- * @param pattr [OUT] the attributes for the entry (if found) in the cache just before it was invalidated
- * @param pclient [INOUT] Cache Inode client (useful for having pools in which entry releasing invalidated records)
- * @param pstatus [OUT] returned status.
+ * @todo ACE: Decide what to do for regular files.
  *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_INVALID_ARGUMENT bad parameter(s) as input \n
- * @return CACHE_INODE_NOT_FOUND if entry is not cached \n
- * @return CACHE_INODE_STATE_CONFLICT if invalidating this entry would result is state conflict \n
- * @return CACHE_INODE_INCONSISTENT_ENTRY if entry is not consistent \n
- * @return Other errors shows a FSAL error.
+ * @param handle [IN] FSAL handle for the entry to be invalidated
+ * @param client [INOUT] Cache Inode client (useful for having pools
+ *                       in which entry releasing invalidated records)
+ * @param status [OUT] returned status.
+ *
+ * @retval CACHE_INODE_SUCCESS if operation is a success
+ * @retval CACHE_INODE_INVALID_ARGUMENT bad parameter(s) as input
+ * @retval CACHE_INODE_NOT_FOUND if entry is not cached
+ * @retval CACHE_INODE_STATE_CONFLICT if invalidating this entry would
+ *                                    result is state conflict
+ * @retval CACHE_INODE_INCONSISTENT_ENTRY if entry is not consistent
+ * @retval Other errors shows a FSAL error.
  *
  */
-cache_inode_status_t cache_inode_invalidate( fsal_handle_t        * pfsal_handle,
-                                             fsal_attrib_list_t   * pattr,
-                                             cache_inode_client_t * pclient,
-                                             cache_inode_status_t * pstatus)
+cache_inode_status_t
+cache_inode_invalidate(fsal_handle_t *handle,
+                       cache_inode_client_t *client,
+                       cache_inode_status_t *status)
 {
-  cache_entry_t * pentry = NULL ;
+     cache_inode_fsal_data_t fsal_data;
+     hash_buffer_t key, value;
+     void *htoken;
+     int rc = 0 ;
 
-  cache_inode_fsal_data_t fsal_data; 
-  hash_buffer_t key, value;
-  void *htoken;
-  int rc = 0 ;
+     if (pstatus == NULL || pattr == NULL || pclient == NULL ||
+         pfsal_handle == NULL) {
+          return CACHE_INODE_INVALID_ARGUMENT ;
+     }
 
-  if( pstatus == NULL || pattr == NULL || pclient == NULL || pfsal_handle == NULL ) 
-    return CACHE_INODE_INVALID_ARGUMENT ;
+     /* Locate the entry in the cache */
+     fsal_data.fh_desc.start = (caddr_t)pfsal_handle ;
+     fsal_data.fh_desc.len = 0;  /* No DIR_CONTINUE is managed here */
+     (void) FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
+                              FSAL_DIGEST_SIZEOF,
+                              &fsal_data.fh_desc);
 
-  /* Locate the entry in the cache */
-  fsal_data.fh_desc.start = (caddr_t)pfsal_handle ;
-  fsal_data.fh_desc.len = 0;  /* No DIR_CONTINUE is managed here */
-  (void) FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
-			   FSAL_DIGEST_SIZEOF,
-			   &fsal_data.fh_desc);
+     /* Turn the input to a hash key */
+     key.pdata = fsal_data.fh_desc.start;
+     key.len = fsal_data.fh_desc.len;
 
-  /* Turn the input to a hash key */
-  key.pdata = fsal_data.fh_desc.start;
-  key.len = fsal_data.fh_desc.len;
+     if (status == NULL || client == NULL || handle == NULL) {
+          *status = CACHE_INODE_INVALID_ARGUMENT;
+          goto out;
+     }
 
-  /* Search the cache for an entry with the related fsal_handle */
-  if( ( rc = HashTable_GetEx(fh_to_cache_entry_ht,
-                             &key,
-                             &value,
-                             &htoken) ) == HASHTABLE_ERROR_NO_SUCH_KEY )
-   {
-      /* Entry is not cached */
-      *pstatus = CACHE_INODE_NOT_FOUND ;
-      return *pstatus ;
-   }
-  else if ( rc != HASHTABLE_SUCCESS )
-   {
-       LogCrit( COMPONENT_CACHE_INODE, "Unexpected error %u while calling HashTable_Get", rc ) ;
-       
-       *pstatus = CACHE_INODE_INVALID_ARGUMENT;
-       return *pstatus ;
-   }
 
-  /* At this point, we are sure that an entry has been found.  Also,
-   * htoken implies a reader lock on a portion of HashTable ht.  This
-   * ensures atomicity for the following ref of pentry. */
-  pentry = (cache_entry_t *)value.pdata;
-  cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
-  HashTable_Release(fh_to_cache_entry_ht, htoken);
+     if ((rc = HashTable_GetEx(fh_to_cache_entry_ht,
+                               &key,
+                               &value)) == HASHTABLE_ERROR_NO_SUCH_KEY) {
+          /* Entry is not cached */
+          *status = CACHE_INODE_NOT_FOUND;
+          return *status ;
+     } else if (rc != HASHTABLE_SUCCESS) {
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "Unexpected error %u while calling HashTable_GetEx", rc) ;
+          *status = CACHE_INODE_INVALID_ARGUMENT;
+          goto out;
+     }
 
-  /* Never invalidate an entry that holds states */
-  if( cache_inode_file_holds_state( pentry ) )
-   {
-       *pstatus = CACHE_INODE_STATE_CONFLICT ;
-       return *pstatus ;
-   }
+     entry = (cache_entry_t *)value.pdata;
 
-  /* return attributes additionally (may be useful to be caller, at least for
-   * debugging purpose */
-  *pattr = pentry->attributes;
+     pthread_rwlock_wrlock(&entry->attr_lock);
+     pthread_rwlock_wrlock(&entry->content_lock);
 
-  /* pentry is lock, I call cache_inode_kill_entry with 'locked' flag set */
-  P_w( &pentry->lock );
-  *pstatus = cache_inode_kill_entry( pentry, WT_LOCK, pclient, pstatus );
+     /* We can invalidate entries with state just fine.  We force
+        Cache_inode to contact the FSAL for any use of content or
+        attributes, and if the FSAL indicates the entry is stale, it
+        can be disposed of then. */
 
-  /* we still hold an extra ref */
-  cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+     /* We should have a way to invalidate content and attributes
+        separately.  Or at least a way to invalidate attributes
+        without invalidating content (since any change in content
+        really ought to modify mtime, at least.) */
 
-  return (*pstatus);
+     atomic_clear_int_bits(&entry->flags,
+                           CACHE_INODE_TRUST_ATTRS |
+                           CACHE_INODE_TRUST_CONTENT);
+
+     if (entry->type == DIRECTORY) {
+          if (cache_inode_invalidate_all_cached_dirent(entry,
+                                                       client,
+                                                       status)
+               != CACHE_INODE_SUCCESS) {
+               goto unlock;
+          }
+     }
+
+unlock:
+
+     pthread_rwlock_unlock(&entry->attr_lock);
+     pthread_rwlock_unlock(&entry->content_lock);
+
+out:
+
+     /* Memory copying attributes with every call is expensive.
+        Let's not do it.  */
+
+     return (*status);
 } /* cache_inode_invalidate */

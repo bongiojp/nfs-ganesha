@@ -212,9 +212,7 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
                                           fsal_op_context_t * pcontext,
                                           cache_content_status_t * pstatus)
 {
-  fsal_handle_t *pfsal_handle = NULL;
   fsal_status_t fsal_status;
-  cache_inode_status_t cache_inode_status;
   fsal_path_t local_path;
   int statindex;
   off_t offset;
@@ -258,20 +256,6 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
 
   /* stat */
   pclient->stat.func_stats.nb_call[statindex] += 1;
-
-  /* Get the fsal handle */
-  if((pfsal_handle =
-      cache_inode_get_fsal_handle(pentry->pentry_inode, &cache_inode_status)) == NULL)
-    {
-      *pstatus = CACHE_CONTENT_BAD_CACHE_INODE_ENTRY;
-
-      LogMajor(COMPONENT_CACHE_CONTENT,
-                        "cache_content_rdwr: cannot get handle");
-      /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[statindex] += 1;
-
-      return *pstatus;
-    }
 
   /* Convert the path to FSAL path */
   fsal_status =

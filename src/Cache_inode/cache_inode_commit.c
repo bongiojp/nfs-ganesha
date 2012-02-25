@@ -65,6 +65,9 @@
  *
  * Reads/Writes through the cache layer.
  *
+ * @todo ACE: This function is bad and wrong and dangerous and does
+ *            not handle locking safely.
+ *
  * @param pentry [IN] entry in cache inode layer whose content is to be accessed.
  * @param read_or_write [IN] a flag of type cache_content_io_direction_t to tell if a read or write is to be done.
  * @param seek_descriptor [IN] absolute position (in the FSAL file) where the IO will be done.
@@ -86,146 +89,140 @@ cache_inode_status_t
 cache_inode_commit(cache_entry_t * pentry,
                    uint64_t offset,
                    fsal_size_t count,
-                   fsal_attrib_list_t * pfsal_attr,
-                   cache_inode_client_t * pclient,
-                   fsal_op_context_t * pcontext,
+                   fsal_attrib_list_t *pfsal_attr,
+                   cache_inode_client_t *pclient,
+                   fsal_op_context_t *pcontext,
                    uint64_t typeofcommit,
-                   cache_inode_status_t * pstatus)
+                   cache_inode_status_t *pstatus)
 {
-    cache_inode_status_t status;
-    fsal_seek_t seek_descriptor;
-    fsal_size_t size_io_done;
-    fsal_boolean_t eof;
-    cache_inode_unstable_data_t *udata;
-    fsal_status_t fsal_status;
+     cache_inode_status_t status = CACHE_INODE_SUCCESS;
+     fsal_seek_t seek_descriptor = {0, 0};
+     fsal_size_t size_io_done = 0;
+     fsal_boolean_t eof = FALSE;
+     cache_inode_unstable_data_t *udata = NULL;
+     fsal_status_t fsal_status = {0, 0};
 
-    /* Do not use this function is Data Cache is used */
-    if(pentry->object.file.pentry_content != NULL)
-     {
-            *pstatus = CACHE_INODE_SUCCESS;
-            return *pstatus;
+     /* Do not use this function is Data Cache is used */
+     if(pentry->object.file.pentry_content != NULL) {
+          *pstatus = CACHE_INODE_SUCCESS;
+          return *pstatus;
      }
 
-    /* If we aren't using the Ganesha write buffer, then we're using the filesystem
-     * write buffer so execute a normal fsal_commit() call. */
-    if (typeofcommit == FSAL_UNSAFE_WRITE_TO_FS_BUFFER)
-    {
+     /* If we aren't using the Ganesha write buffer, then we're using
+      * the filesystem write buffer so execute a normal fsal_commit()
+      * call. */
+     if (typeofcommit == FSAL_UNSAFE_WRITE_TO_FS_BUFFER) {
+          /* Can't sync a file descriptor if it's currently closed. */
+          if (cache_inode_open(pentry,
+                               pclient,
+                               FSAL_O_WRONLY,
+                               pcontext,
+                               pstatus) != CACHE_INODE_SUCCESS) {
+               /* stats */
+               pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_COMMIT]
+                    += 1;
+               return *pstatus;
+          }
 
-      P_w(&pentry->lock);
-
-      /* Can't sync a file descriptor if it's currently closed. */
-      if(cache_inode_open(pentry,
-                          pclient,
-                          FSAL_O_WRONLY, pcontext, pstatus) != CACHE_INODE_SUCCESS)
-        {
-
-          V_w(&pentry->lock);
-          
-          /* stats */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_COMMIT] += 1;
-          
-          return *pstatus;
-        }
-
-#ifdef _USE_MFSL      
-      fsal_status = MFSL_commit(&(pentry->object.file.open_fd.mfsl_fd), offset, count, NULL); 
+#ifdef _USE_MFSL
+          fsal_status
+               = MFSL_commit(&(pentry->object.file.open_fd.mfsl_fd),
+                             offset,
+                             count,
+                             NULL);
 #else
-      fsal_status = FSAL_commit(&(pentry->object.file.open_fd.fd), offset, count );
+          fsal_status = FSAL_commit(&(pentry->object.file.open_fd.fd),
+                                    offset,
+                                    count);
 #endif
-      if(FSAL_IS_ERROR(fsal_status))
-      {
-        LogMajor(COMPONENT_CACHE_INODE,
-                 "cache_inode_rdwr: fsal_commit() failed: fsal_status.major = %d",
-                 fsal_status.major);
+          if(FSAL_IS_ERROR(fsal_status)) {
+               LogMajor(COMPONENT_CACHE_INODE,
+                        "cache_inode_rdwr: fsal_commit() failed: "
+                        "fsal_status.major = %d", fsal_status.major);
 
-      /* Close the fd that we just opened before the FSAL_commit(). We are already
-       * replying with an error. No need to catch an additional error form 
-       * a close? */
-         cache_inode_close(pentry, pclient, &status);
+               /* Close the fd that we just opened before the
+                * FSAL_commit(). We are already replying with an
+                * error. No need to catch an additional error form a
+                * close? */
+               cache_inode_close(pentry, pclient, &status);
+               /* stats */
+               pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_COMMIT]
+                    += 1;
 
-        V_w(&pentry->lock);
+               *pstatus = CACHE_INODE_FSAL_ERROR;
+               return *pstatus;
+          }
+          *pstatus = CACHE_INODE_SUCCESS;
 
-        /* stats */
-        pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_COMMIT] += 1;
+          /* Close the fd that we just opened before the FSAL_commit() */
+          if(cache_inode_close(pentry, pclient, pstatus)
+             != CACHE_INODE_SUCCESS) {
+               LogEvent(COMPONENT_CACHE_INODE,
+                        "cache_inode_rdwr: cache_inode_close = %d",
+                        *pstatus);
+               /* stats */
+               pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_COMMIT]
+                    += 1;
+               return *pstatus;
+          }
+     } else {
+          /* Ok, it looks like we're using the Ganesha write
+           * buffer. This means we will either be writing to the
+           * buffer, or writing a stable write to the file system if
+           * the buffer is already full. */
+          udata = &pentry->object.file.unstable_data;
+          if (udata->buffer == NULL) {
+               *pstatus = CACHE_INODE_SUCCESS;
+               return *pstatus;
+          }
+          if(count == 0 || count == 0xFFFFFFFFL) {
+               /* Count = 0 means "flush all data to permanent storage */
+               seek_descriptor.offset = udata->offset;
+               seek_descriptor.whence = FSAL_SEEK_SET;
 
-        *pstatus = CACHE_INODE_FSAL_ERROR;
-        return *pstatus;
-      }
-      *pstatus = CACHE_INODE_SUCCESS;
+               status = cache_inode_rdwr(pentry,
+                                         CACHE_INODE_WRITE,
+                                         &seek_descriptor,
+                                         udata->length,
+                                         &size_io_done,
+                                         pfsal_attr,
+                                         udata->buffer,
+                                         &eof,
+                                         pclient,
+                                         pcontext,
+                                         TRUE,
+                                         pstatus);
+               if (status != CACHE_INODE_SUCCESS)
+                    return *pstatus;
 
-      /* Close the fd that we just opened before the FSAL_commit() */
-      if(cache_inode_close(pentry, pclient, pstatus) != CACHE_INODE_SUCCESS)
-        {
-          LogEvent(COMPONENT_CACHE_INODE,
-                   "cache_inode_rdwr: cache_inode_close = %d",
-                   *pstatus);
-          
-          V_w(&pentry->lock);
-          
-          /* stats */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_COMMIT] += 1;
-          
-          return *pstatus;
-        }
-
-      V_w(&pentry->lock);      
-      return *pstatus;
-    }
-
-    /* Ok, it looks like we're using the Ganesha write buffer. This means we
-     * will either be writing to the buffer, or writing a stable write to the
-     * file system if the buffer is already full. */
-
-    udata = &pentry->object.file.unstable_data;
-    if(udata->buffer == NULL)
-        {
-            *pstatus = CACHE_INODE_SUCCESS;
-            return *pstatus;
-        }
-    if(count == 0 || count == 0xFFFFFFFFL)
-        {
-            /* Count = 0 means "flush all data to permanent storage */
-            seek_descriptor.offset = udata->offset;
-            seek_descriptor.whence = FSAL_SEEK_SET;
-
-            status = cache_inode_rdwr(pentry,
-                                      CACHE_INODE_WRITE,
-                                      &seek_descriptor, udata->length,
-                                      &size_io_done, pfsal_attr,
-                                      udata->buffer, &eof,
-                                      pclient, pcontext, TRUE, pstatus);
-            if (status != CACHE_INODE_SUCCESS)
-                return *pstatus;
-
-            P_w(&pentry->lock);
-
-            Mem_Free(udata->buffer);
-            udata->buffer = NULL;
-
-            V_w(&pentry->lock);
-        }
-    else
-        {
-            if(offset < udata->offset)
-                {
+               Mem_Free(udata->buffer);
+               udata->buffer = NULL;
+          } else {
+               if(offset < udata->offset) {
                     *pstatus = CACHE_INODE_INVALID_ARGUMENT;
                     return *pstatus;
-                }
+               }
 
-            seek_descriptor.offset = offset;
-            seek_descriptor.whence = FSAL_SEEK_SET;
+               seek_descriptor.offset = offset;
+               seek_descriptor.whence = FSAL_SEEK_SET;
 
-            return cache_inode_rdwr(pentry,
-                                    CACHE_INODE_WRITE,
-                                    &seek_descriptor,
-                                    count,
-                                    &size_io_done,
-                                    pfsal_attr,
-                                    (char *)(udata->buffer + offset - udata->offset),
-                                    &eof, pclient,
-                                    pcontext, TRUE, pstatus);
-    }
-  /* Regulat exit */
-  *pstatus = CACHE_INODE_SUCCESS;
-  return *pstatus;
+            return
+                 cache_inode_rdwr(pentry,
+                                  CACHE_INODE_WRITE,
+                                  &seek_descriptor,
+                                  count,
+                                  &size_io_done,
+                                  pfsal_attr,
+                                  (char *)(udata->buffer +
+                                           offset - udata->offset),
+                                  &eof,
+                                  pclient,
+                                  pcontext,
+                                  TRUE,
+                                  pstatus);
+          }
+     }
+
+     *pstatus = CACHE_INODE_SUCCESS;
+     return *pstatus;
 }

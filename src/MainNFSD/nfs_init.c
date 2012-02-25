@@ -618,24 +618,9 @@ void nfs_set_param_default()
 #endif
 
   /* Cache inode parameters : Garbage collection policy */
-  nfs_param.cache_layers_param.gcpol.file_expiration_delay = -1;     /* No gc */
-  nfs_param.cache_layers_param.gcpol.directory_expiration_delay = -1;        /* No gc */
   nfs_param.cache_layers_param.gcpol.hwmark_nb_entries = 10000;
   nfs_param.cache_layers_param.gcpol.lwmark_nb_entries = 10000;
-  //nfs_param.cache_layers_param.gcpol.run_interval = 3600;    /* 1h */
-  nfs_param.cache_layers_param.gcpol.run_interval = 0;    /* NO Data Cache */
-  nfs_param.cache_layers_param.gcpol.nb_call_before_gc = 1000;
-
-  /* Cache inode client parameters */
-  nfs_param.cache_layers_param.cache_inode_client_param.lru_param.nb_entry_prealloc =
-      2048;
-  nfs_param.cache_layers_param.cache_inode_client_param.lru_param.entry_to_str =
-      lru_inode_entry_to_str;
-  nfs_param.cache_layers_param.cache_inode_client_param.lru_param.clean_entry =
-      lru_inode_clean_entry;
-  nfs_param.cache_layers_param.cache_inode_client_param.lru_param.lp_name = "Cache Inode Client LRU";
   nfs_param.cache_layers_param.cache_inode_client_param.nb_prealloc_entry = 1024;
-  nfs_param.cache_layers_param.cache_inode_client_param.nb_pre_parent = 2048;
   nfs_param.cache_layers_param.cache_inode_client_param.nb_pre_state_v4 = 512;
   nfs_param.cache_layers_param.cache_inode_client_param.grace_period_attr   = 0;
   nfs_param.cache_layers_param.cache_inode_client_param.grace_period_link   = 0;
@@ -1475,8 +1460,6 @@ void nfs_reset_stats(void)
 
   for(i = 0; i < nfs_param.core_param.nb_worker; i++)
     {
-      workers_data[i].cache_inode_client.stat.nb_gc_lru_active = 0;
-      workers_data[i].cache_inode_client.stat.nb_gc_lru_total = 0;
       workers_data[i].cache_inode_client.stat.nb_call_total = 0;
 
       for(j = 0; j < CACHE_INODE_NB_COMMAND; j++)

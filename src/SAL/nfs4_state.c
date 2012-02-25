@@ -153,7 +153,7 @@ state_status_t state_add(cache_entry_t         * pentry,
     }
 
   /* Acquire lock to enter critical section on this entry */
-  P_w(&pentry->lock);
+  pthread_rwlock_wrlock(&pentry->content_lock);
 
   GetFromPool(pnew_state, &pclient->pool_state_v4, state_t);
 
@@ -165,7 +165,7 @@ state_status_t state_add(cache_entry_t         * pentry,
       /* stat */
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
 
-      V_w(&pentry->lock);
+      pthread_rwlock_unlock(&pentry->content_lock);
 
       *pstatus = STATE_MALLOC_ERROR;
       return *pstatus;
@@ -189,7 +189,7 @@ state_status_t state_add(cache_entry_t         * pentry,
 
           ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
-          V_w(&pentry->lock);
+          pthread_rwlock_unlock(&pentry->content_lock);
 
           *pstatus = STATE_STATE_CONFLICT;
           return *pstatus;
@@ -210,7 +210,7 @@ state_status_t state_add(cache_entry_t         * pentry,
 
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
-      V_w(&pentry->lock);
+      pthread_rwlock_unlock(&pentry->content_lock);
 
       *pstatus = STATE_STATE_ERROR;
       return *pstatus;
@@ -241,7 +241,7 @@ state_status_t state_add(cache_entry_t         * pentry,
 
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
-      V_w(&pentry->lock);
+      pthread_rwlock_unlock(&pentry->content_lock);
 
       /* Return STATE_MALLOC_ERROR since most likely the nfs4_State_Set failed
        * to allocate memory.
@@ -264,7 +264,7 @@ state_status_t state_add(cache_entry_t         * pentry,
   LogFullDebug(COMPONENT_STATE,
                "Add State: %s", debug_str);
 
-  V_w(&pentry->lock);
+  pthread_rwlock_unlock(&pentry->content_lock);
 
   /* Regular exit */
   *pstatus = STATE_SUCCESS;
@@ -311,7 +311,7 @@ state_status_t state_del(state_t              * pstate,
       return *pstatus;
     }
 
-  P_w(&pentry->lock);
+  pthread_rwlock_wrlock(&pentry->content_lock);
 
   /* Remove from list of states owned by owner */
 
@@ -344,5 +344,6 @@ state_status_t state_del(state_t              * pstate,
 
   *pstatus = STATE_SUCCESS;
 
+  pthread_rwlock_unlock(&pentry->content_lock);
   return *pstatus;
 }                               /* state_del */

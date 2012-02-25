@@ -208,34 +208,8 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
               /* stats */
               pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_GET] += 1;
 
-              if(fsal_status.major == ERR_FSAL_STALE)
-                {
-                  cache_inode_status_t kill_status;
-
-                  LogEvent(COMPONENT_CACHE_INODE,
-                           "cache_inode_get: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                           pentry, fsal_status.major, fsal_status.minor);
-
-                  /* return reference we just took */
-                  cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
-
-                  /* hashtable refcount will likely drop to zero now */
-                  if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
-                     CACHE_INODE_SUCCESS)
-                    LogCrit(COMPONENT_CACHE_INODE,
-                            "cache_inode_get: Could not kill entry %p, "
-                            "status = %u",
-                            pentry,
-                            kill_status);
-
-                  *pstatus = CACHE_INODE_FSAL_ESTALE;
-
-                }
-
-              return NULL;
             }
         }
-
       /* Add the entry to the cache */
       if ( type == 1)
         LogCrit(COMPONENT_CACHE_INODE,"inode get");
@@ -245,7 +219,6 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
                                           type,
                                           policy,
                                           &create_arg,
-                                          NULL,    /* never used to add a new DIR_CONTINUE within this function */
                                           pclient,
                                           pcontext,
                                           CACHE_INODE_FLAG_EXREF, /* This is a population, not a creation */

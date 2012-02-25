@@ -70,9 +70,6 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
   cache_entry_t *pentry = NULL;
 
   cache_inode_endofdir_t eod_met;
-  fsal_attrib_list_t attrlookup;
-  cache_inode_status_t cache_status;
-  cache_inode_status_t cache_status_attr;
 
   char __attribute__ ((__unused__)) funcname[] = "nfs4_op_readdir";
 
@@ -94,7 +91,8 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
   unsigned int i = 0;
   unsigned int outbuffsize = 0 ;
   unsigned int entrysize = 0 ;
- 
+  cache_inode_status_t cache_status = 0;
+
   bitmap4 RdAttrErrorBitmap = { 1, (uint32_t *) "\0\0\0\b" };   /* 0xB = 11 = FATTR4_RDATTR_ERROR */
   attrlist4 RdAttrErrorVals = { 0, NULL };      /* Nothing to be seen here */
 
@@ -306,13 +304,13 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
           entry_nfs_array[i].cookie = dirent_array[i]->hk.k;
 
           /* Get the pentry for the object's attributes and filehandle */
-          if( ( pentry = cache_inode_lookup_no_mutex( dir_pentry,
-                                                      &dirent_array[i]->name,
-                                                      data->pexport->cache_inode_policy,
-                                                      &attrlookup,
-                                                      data->pclient,
-                                                      data->pcontext,
-                                                      &cache_status ) ) == NULL )
+          if ((pentry
+               = cache_inode_lookup_impl(dir_pentry,
+                                         &dirent_array[i]->name,
+                                         data->pexport->cache_inode_policy,
+                                         data->pclient,
+                                         data->pcontext,
+                                         &cache_status)) == NULL)
             {
               Mem_Free((char *)entry_nfs_array);
               res_READDIR4.status = NFS4ERR_SERVERFAULT;
@@ -326,28 +324,20 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
            */
           if(arg_READDIR4.attr_request.bitmap4_val != NULL)
             {
-              if((entry_FSALhandle =
-                  cache_inode_get_fsal_handle(pentry,
-                                              &cache_status_attr)) == NULL)
-                {
-                  /* Faulty Handle or pentry */
-                  Mem_Free((char *)entry_nfs_array);
-                  res_READDIR4.status = NFS4ERR_SERVERFAULT;
-                  goto out;
-                }
-
-              cache_inode_put(pentry, data->pclient);
+              entry_FSALhandle = &pentry->handle;
               if(!nfs4_FSALToFhandle(&entryFH, entry_FSALhandle, data))
                 {
                   /* Faulty type */
                   Mem_Free((char *)entry_nfs_array);
+                  cache_inode_put(pentry, data->pclient);
                   res_READDIR4.status = NFS4ERR_SERVERFAULT;
                   goto out;
                 }
             }
 
+          pthread_rwlock_rdlock(&pentry->attr_lock);
           if(nfs4_FSALattr_To_Fattr(data->pexport,
-                                    &attrlookup,
+                                    &pentry->attributes,
                                     &(entry_nfs_array[i].attrs),
                                     data, &entryFH, &(arg_READDIR4.attr_request)) != 0)
             {
@@ -355,7 +345,9 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
               entry_nfs_array[i].attrs.attrmask = RdAttrErrorBitmap;
               entry_nfs_array[i].attrs.attr_vals = RdAttrErrorVals;
             }
+          pthread_rwlock_unlock(&pentry->attr_lock);
 
+          cache_inode_put(pentry, data->pclient);
           /* Update the size of the output buffer */
           entrysize = sizeof( nfs_cookie4 ) ; /* nfs_cookie4 */
           entrysize += sizeof( u_int ) ; /* pathname4::utf8strings_len */
@@ -425,7 +417,7 @@ int nfs4_op_readdir(struct nfs_argop4 *op,
 out:
   /* release read lock on dir_pentry, if requested */
   if (dir_pentry_unlock)
-      V_r(&dir_pentry->lock);
+    pthread_rwlock_unlock(&dir_pentry->content_lock);
 
   if (dirent_array)
    {

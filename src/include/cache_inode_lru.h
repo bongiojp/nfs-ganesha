@@ -94,7 +94,7 @@
 
 /* The minimum reference count for a cache entry not being recycled. */
 
-#define LRU_SENTINEL_REFCOUNT    1
+#define LRU_SENTINEL_REFCOUNT  1
 
 /* The number of lanes comprising a logical queue.  This must be
    prime. */
@@ -159,9 +159,10 @@ extern cache_inode_status_t cache_inode_lru_ref(
      cache_entry_t *entry,
      cache_inode_client_t *pclient,
      uint32_t flags);
-extern int cache_inode_lru_unref(cache_entry_t * entry,
-                                 cache_inode_client_t *pclient,
-                                 uint32_t flags);
+extern cache_inode_status_t cache_inode_lru_unref(
+     cache_entry_t * entry,
+     cache_inode_client_t *pclient,
+     uint32_t flags);
 extern void lru_wake_thread();
 
 #endif /* _CACHE_INODE_LRU_H */

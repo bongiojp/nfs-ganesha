@@ -124,13 +124,7 @@ cache_content_status_t cache_content_create_name(char *path,
   int i, nb_char;
   short hash_val;
 
-  if((pfsal_handle = cache_inode_get_fsal_handle(pentry_inode, &cache_status)) == NULL)
-    {
-      /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_CONTENT_NEW_ENTRY] += 1;
-
-      return CACHE_CONTENT_BAD_CACHE_INODE_ENTRY;
-    }
+  pfsal_handle = &pentry_inode->handle;
 
   fh_desc.start = (caddr_t)&fileid4;
   fh_desc.len = sizeof(fileid4);

@@ -18,7 +18,8 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  *
  * ---------------------------------------
  */
@@ -61,6 +62,11 @@
  * Copy the content of a symbolic link into the address pointed to by
  * link_content.
  *
+ * @todo ACE: If policy changes, do we need to allocate a symlink
+ *            object, or can we assume that either policy is immutable
+ *            or that the allocation would take place at the site of
+ *            policy change?
+ *
  * @param entry [in] The link to read
  * @param link_content [out] The location into which to write the
  *                           target
@@ -77,8 +83,7 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t *entry,
                                           fsal_op_context_t *context,
                                           cache_inode_status_t *status)
 {
-     fsal_status_t fsal_status;
-     fsal_attrib_list_t attr;
+     fsal_status_t fsal_status = {0, 0};
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
@@ -89,67 +94,59 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t *entry,
 
      if (entry->type != SYMBOLIC_LINK) {
           *status = CACHE_INODE_BAD_TYPE;
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
-          return *pstatus;
+          client->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
+          return *status;
      }
 
-     if (CACHE_INODE_KEEP_CONTENT(pentry->policy)) {
-          assert(pentry->object.symlink);
-          pthread_rwlock_rdlock(&entry->symlink->sym_lock);
-          if (entry->flags & CACHE_INODE_TRUST_CONTENT) {
+     if (CACHE_INODE_KEEP_CONTENT(entry->policy)) {
+          assert(entry->object.symlink);
+          pthread_rwlock_rdlock(&entry->content_lock);
+          if (!(entry->flags & CACHE_INODE_TRUST_CONTENT)) {
+               /* Our data are stale.  Drop the lock, get a
+                  write-lock, load in new data, and copy it out to
+                  the caller. */
+               pthread_rwlock_unlock(&entry->content_lock);
+               pthread_rwlock_wrlock(&entry->content_lock);
+               /* Make sure nobody updated the content while we were
+                  waiting. */
+               if (!(entry->flags & CACHE_INODE_TRUST_CONTENT)) {
+                    fsal_status
+                         = FSAL_readlink(&entry->handle,
+                                         context,
+                                         &entry->object.symlink->content,
+                                         NULL);
+                    if (!(FSAL_IS_ERROR(fsal_status))) {
+                         atomic_set_int_bits(&entry->flags,
+                                             CACHE_INODE_TRUST_CONTENT);
+                    }
+               }
+          }
+          if (!(FSAL_IS_ERROR(fsal_status))) {
                fsal_status
                     = FSAL_pathcpy(link_content,
                                    &(entry->object.symlink->content));
-               pthread_rwlock_unlock(&entry->symlink->sym_lock);
-          } else {
-               /* Load in the new data */
-               
           }
+          pthread_rwlock_unlock(&entry->content_lock);
+     } else {
+          /* Content is not cached, call FSAL_readlink here */
+          fsal_status
+               = FSAL_readlink(&entry->handle,
+                               context,
+                               link_content,
+                               NULL);
      }
-      else
-        {
-           /* Content is not cached, call FSAL_readlink here */
-           fsal_status = FSAL_readlink( &pentry->handle, pcontext, plink_content, &attr ) ; 
-        }
 
-      if(FSAL_IS_ERROR(fsal_status))
-        {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          V_r(&pentry->lock);
+     if (FSAL_IS_ERROR(fsal_status)) {
+          *status = cache_inode_error_convert(fsal_status);
+          client->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
+          return *status;
+     }
 
-          if(fsal_status.major == ERR_FSAL_STALE)
-            {
-              cache_inode_status_t kill_status;
+     if(*status != CACHE_INODE_SUCCESS) {
+          client->stat.func_stats.nb_err_retryable[CACHE_INODE_READLINK] += 1;
+     } else {
+          client->stat.func_stats.nb_success[CACHE_INODE_READLINK] += 1;
+     }
 
-              LogEvent(COMPONENT_CACHE_INODE,
-                       "cache_inode_readlink: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                       pentry, fsal_status.major, fsal_status.minor);
-
-              if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
-                 CACHE_INODE_SUCCESS)
-                LogCrit(COMPONENT_CACHE_INODE,
-                        "cache_inode_readlink: Could not kill entry %p, status = %u",
-                        pentry, kill_status);
-
-              *pstatus = CACHE_INODE_FSAL_ESTALE;
-            }
-          /* stats */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
-
-          return *pstatus;
-        }
-
-      break;
-    }
-
-  /* Release the entry */
-  V_r(&pentry->lock);
-
-  /* stat */
-  if(*pstatus != CACHE_INODE_SUCCESS)
-    pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READLINK] += 1;
-  else
-    pclient->stat.func_stats.nb_success[CACHE_INODE_READLINK] += 1;
-
-  return *pstatus;
-}                               /* cache_inode_readlink */
+     return *status;
+} /* cache_inode_readlink */

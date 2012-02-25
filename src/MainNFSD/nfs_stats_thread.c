@@ -622,7 +622,7 @@ void *stats_thread(void *addr)
       stats_collect(&ganesha_stats);
 
       /* Printing the cache_inode stat */
-      fprintf(stats_file, "CACHE_INODE_CALLS,%s;%u,%u,%u",
+      fprintf(stats_file, "CACHE_INODE_CALLS,%s;%u",
               strdate,
               global_cache_inode_stat->nb_call_total,
               global_cache_inode_stat->nb_gc_lru_total,

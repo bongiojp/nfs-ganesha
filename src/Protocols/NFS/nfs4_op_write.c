@@ -264,9 +264,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       /* Special stateid, no open state, check to see if any share conflicts */
       pstate_open = NULL;
 
-      /* Acquire lock to enter critical section on this entry */
-      P_r(&pentry->lock);
-
       /* Iterate through file's state to look for conflicts */
       glist_for_each(glist, &pentry->object.file.state_list)
         {
@@ -278,7 +275,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                 if(pstate_iterate->state_data.share.share_deny & OPEN4_SHARE_DENY_WRITE)
                   {
                     /* Writing to this file is prohibited, file is write-denied */
-                    V_r(&pentry->lock);
                     res_WRITE4.status = NFS4ERR_LOCKED;
                     LogDebug(COMPONENT_NFS_V4_LOCK,
                              "WRITE is denied by state %p",
@@ -304,8 +300,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                 break;
             }
         }
-      // TODO FSF: need to check against existing locks
-      V_r(&pentry->lock);
     }
 
   if (pstate_open == NULL)

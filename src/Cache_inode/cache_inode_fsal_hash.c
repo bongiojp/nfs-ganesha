@@ -258,5 +258,5 @@ int display_value(hash_buffer_t * pbuff, char *str)
 
     return snprintf(str, HASHTABLE_DISPLAY_STRLEN,
                     "(Type=%d, Address=%p)",
-                    pentry->internal_md.type, pentry);
+                    pentry->type, pentry);
 }

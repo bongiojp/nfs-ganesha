@@ -104,7 +104,6 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
                             cache_inode_client_parameter_t * paramp,
                             int thread_index, void * pworker_data)
 {
-  LRU_status_t lru_status;
   char name[256];
 
   if(thread_index < SMALL_CLIENT_INDEX)
@@ -114,18 +113,17 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
   else
     sprintf(name, "Cache Inode NLM Async #%d", thread_index - NLM_THREAD_INDEX);
 
-  pclient->attrmask = paramp->attrmask;
-  pclient->nb_prealloc = paramp->nb_prealloc_entry;
-  pclient->nb_pre_parent = paramp->nb_pre_parent;
-  pclient->nb_pre_state_v4 = paramp->nb_pre_state_v4;
-  pclient->expire_type_attr = paramp->expire_type_attr;
-  pclient->expire_type_link = paramp->expire_type_link;
-  pclient->expire_type_dirent = paramp->expire_type_dirent;
-  pclient->grace_period_attr = paramp->grace_period_attr;
-  pclient->grace_period_link = paramp->grace_period_link;
-  pclient->grace_period_dirent = paramp->grace_period_dirent;
-  pclient->use_test_access = paramp->use_test_access;
-  pclient->getattr_dir_invalidation = paramp->getattr_dir_invalidation;
+  pclient->attrmask = param.attrmask;
+  pclient->nb_prealloc = param.nb_prealloc_entry;
+  pclient->nb_pre_state_v4 = param.nb_pre_state_v4;
+  pclient->expire_type_attr = param.expire_type_attr;
+  pclient->expire_type_link = param.expire_type_link;
+  pclient->expire_type_dirent = param.expire_type_dirent;
+  pclient->grace_period_attr = param.grace_period_attr;
+  pclient->grace_period_link = param.grace_period_link;
+  pclient->grace_period_dirent = param.grace_period_dirent;
+  pclient->use_test_access = param.use_test_access;
+  pclient->getattr_dir_invalidation = param.getattr_dir_invalidation;
   pclient->pworker = pworker_data;
   pclient->use_fd_cache = paramp->use_fd_cache;
   pclient->retention = paramp->retention;
@@ -155,15 +153,6 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Dir Entry Pool", name);
-      return 1;
-    }
-
-  MakePool(&pclient->pool_parent, pclient->nb_pre_parent, cache_inode_parent_entry_t, NULL, NULL);
-  NamePool(&pclient->pool_parent, "%s Parent Link Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_parent))
-    {
-      LogCrit(COMPONENT_CACHE_INODE,
-              "Can't init %s Parent Link Pool", name);
       return 1;
     }
 
@@ -213,15 +202,6 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Key Pool", name);
-      return 1;
-    }
-
-  paramp->lru_param.lp_name = name;
-
-  if((pclient->lru_gc = LRU_Init(paramp->lru_param, &lru_status)) == NULL)
-    {
-      LogCrit(COMPONENT_CACHE_INODE,
-              "Can't init %s lru gc", name);
       return 1;
     }
 

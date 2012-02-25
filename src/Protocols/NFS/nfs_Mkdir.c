@@ -254,14 +254,13 @@ int nfs_Mkdir(nfs_arg_t * parg,
            * Lookup file to see if it exists.  If so, use it.  Otherwise
            * create a new one.
            */
-          dir_pentry = cache_inode_lookup( parent_pentry,
-                                           &dir_name,
-                                           pexport->cache_inode_policy,
-                                           &attr,
-                                           pclient,
-                                           pcontext,
-                                           &cache_status_lookup,
-                                           CACHE_INODE_FLAG_NONE);
+          dir_pentry = cache_inode_lookup(parent_pentry,
+                                          &dir_name,
+                                          pexport->cache_inode_policy,
+                                          &attr,
+                                          pclient,
+                                          pcontext,
+                                          &cache_status_lookup);
 
           if(cache_status_lookup == CACHE_INODE_NOT_FOUND)
             {
@@ -283,17 +282,25 @@ int nfs_Mkdir(nfs_arg_t * parg,
                   /*
                    * Get the FSAL handle for this entry 
                    */
-                  pfsal_handle = cache_inode_get_fsal_handle(dir_pentry, &cache_status);
+                  pfsal_handle = &dir_pentry->handle;
 
-                  if(cache_status == CACHE_INODE_SUCCESS)
+                  switch (preq->rq_vers)
                     {
-                      switch (preq->rq_vers)
+                    case NFS_V2:
+                      /* Build file handle */
+                      if(!nfs2_FSALToFhandle
+                         (&(pres->res_dirop2.DIROP2res_u.diropok.file), pfsal_handle,
+                          pexport))
+                        pres->res_dirop2.status = NFSERR_IO;
+                      else
                         {
-                        case NFS_V2:
-                          /* Build file handle */
-                          if(!nfs2_FSALToFhandle
-                             (&(pres->res_dirop2.DIROP2res_u.diropok.file), pfsal_handle,
-                              pexport))
+                          /*
+                           * Build entry
+                           * attributes
+                           */
+                          if(nfs2_FSALattr_To_Fattr(pexport, &attr,
+                                                    &(pres->res_dirop2.DIROP2res_u.
+                                                      diropok.attributes)) == 0)
                             pres->res_dirop2.status = NFSERR_IO;
                           else
                             {
@@ -363,9 +370,56 @@ int nfs_Mkdir(nfs_arg_t * parg,
 
                           break;
                         }
-                      rc = NFS_REQ_OK;
-                      goto out;
+
+                      if(nfs3_FSALToFhandle
+                         (&pres->res_mkdir3.MKDIR3res_u.resok.obj.post_op_fh3_u.
+                          handle, pfsal_handle, pexport) == 0)
+                        {
+                          Mem_Free((char *)pres->res_mkdir3.MKDIR3res_u.resok.obj.
+                                   post_op_fh3_u.handle.data.data_val);
+                          pres->res_mkdir3.status = NFS3ERR_INVAL;
+                          rc = NFS_REQ_OK;
+                          goto out;
+                        }
+                      else
+                        {
+                          /* Set Post Op Fh3 structure */
+                          pres->res_mkdir3.MKDIR3res_u.resok.obj.handle_follows =
+                            TRUE;
+                          pres->res_mkdir3.MKDIR3res_u.resok.obj.post_op_fh3_u.handle.
+                            data.data_len = sizeof(file_handle_v3_t);
+
+                          /*
+                           * Build entry
+                           * attributes
+                           */
+                          nfs_SetPostOpAttr(pcontext, pexport,
+                                            dir_pentry,
+                                            &attr,
+                                            &(pres->res_mkdir3.MKDIR3res_u.resok.
+                                              obj_attributes));
+
+                          /* Get the attributes of the parent after the operation */
+                          attr_parent_after = parent_pentry->attributes;
+
+                          /*
+                           * Build Weak Cache
+                           * Coherency data
+                           */
+                          nfs_SetWccData(pcontext, pexport,
+                                         parent_pentry,
+                                         ppre_attr,
+                                         &attr_parent_after,
+                                         &(pres->res_mkdir3.MKDIR3res_u.resok.
+                                           dir_wcc));
+
+                          pres->res_mkdir3.status = NFS3_OK;
+                        }
+
+                      break;
                     }
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
             }                   /* If( cache_status_lookup == CACHE_INODE_NOT_FOUND ) */
           else

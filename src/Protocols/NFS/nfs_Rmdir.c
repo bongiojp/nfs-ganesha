@@ -208,8 +208,7 @@ int nfs_Rmdir(nfs_arg_t * parg /* IN  */ ,
                                                 &pentry_child_attr,
                                                 pclient,
                                                 pcontext,
-                                                &cache_status,
-                                                CACHE_INODE_FLAG_NONE)) != NULL)
+                                                &cache_status)) != NULL)
             {
               /* Extract the filetype */
               childtype = cache_inode_fsal_type_convert(pentry_child_attr.type);

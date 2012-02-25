@@ -48,6 +48,8 @@
 #include "HashTable.h"
 #include "fsal.h"
 #include "cache_inode.h"
+#include "cache_inode_lru.h"
+#include "cache_inode_weakref.h"
 #include "stuff_alloc.h"
 #include <unistd.h>
 #include <sys/types.h>
@@ -59,8 +61,8 @@
  *
  * cache_inode_create: creates an entry through the cache.
  *
- * Creates an entry through the cache.  If an entry is returned, its refcount charged to the
- * call path is +1.
+ * Creates an entry through the cache.  If an entry is returned, its
+ * refcount charged to the call path is +1.
  *
  * @param pentry_parent [IN] pointer to the pentry parent
  * @param pname         [IN] pointer to the name of the object in the destination directory.
@@ -85,7 +87,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
                    cache_inode_policy_t policy,
                    fsal_accessmode_t mode,
                    cache_inode_create_arg_t * pcreate_arg,
-                   fsal_attrib_list_t * pattr,
+                   fsal_attrib_list_t *pattr,
                    cache_inode_client_t * pclient,
                    fsal_op_context_t * pcontext,
                    cache_inode_status_t * pstatus)
@@ -106,8 +108,8 @@ cache_inode_create(cache_entry_t * pentry_parent,
     cache_inode_create_arg_t zero_create_arg;
 
     memset(&zero_create_arg, 0, sizeof(zero_create_arg));
-    memset( ( char *)&fsal_data, 0, sizeof( fsal_data ) ) ;
-    memset( ( char *)&object_handle, 0, sizeof( object_handle ) ) ;
+    memset(&fsal_data, 0, sizeof(fsal_data));
+    memset(&object_handle, 0, sizeof(object_handle));
 
     fsal_accessflags_t access_mask = 0;
 
@@ -156,24 +158,23 @@ cache_inode_create(cache_entry_t * pentry_parent,
     /*
      * Check if an entry of the same name exists
      */
-    pentry = cache_inode_lookup( pentry_parent,
-                                 pname,
-                                 policy,
-                                 &object_attributes,
-                                 pclient,
-                                 pcontext,
-                                 pstatus,
-                                 CACHE_INODE_FLAG_EXREF);
+    pentry = cache_inode_lookup(pentry_parent,
+                                pname,
+                                policy,
+                                pattr,
+                                pclient,
+                                pcontext,
+                                pstatus);
     if (pentry != NULL)
         {
             *pstatus = CACHE_INODE_ENTRY_EXISTS;
-
-            if(pentry->internal_md.type != type)
+            if(pentry->type != type)
                 {
                     /*
                      * Incompatible types, returns NULL
                      */
-                    /* stats */
+                    cache_inode_lru_unref(pentry, pclient,
+                                          LRU_FLAG_NONE);
                     inc_func_err_unrecover(pclient, CACHE_INODE_CREATE);
                     return NULL;
                 }
@@ -193,8 +194,6 @@ cache_inode_create(cache_entry_t * pentry_parent,
      * At this point, the entry was not found, this means
      * that it doesn't exist in FSAL, we can create it
      */
-    /* Get the lock for the parent */
-    P_w(&pentry_parent->lock);
 
     dir_handle = pentry_parent->handle;
     object_attributes.asked_attributes = pclient->attrmask;
@@ -202,7 +201,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
         {
         case REGULAR_FILE:
 #ifdef _USE_MFSL
-	    parent_attributes = pentry_parent->attributes;
+            parent_attributes = pentry_parent->attributes;
             fsal_status = MFSL_create(&pentry_parent->mobject,
                                       pname, pcontext,
                                       &pclient->mfsl_context,
@@ -218,12 +217,14 @@ cache_inode_create(cache_entry_t * pentry_parent,
 
         case DIRECTORY:
 #ifdef _USE_MFSL
-	    parent_attributes = pentry_parent->attributes;
+            parent_attributes = pentry_parent->attributes;
             fsal_status = MFSL_mkdir(&pentry_parent->mobject,
                                      pname, pcontext,
                                      &pclient->mfsl_context,
                                      mode, &object_handle,
-                                     &object_attributes, &parent_attributes, NULL);
+                                     &object_attributes,
+                                     &parent_attributes,
+                                     NULL);
 #else
             fsal_status = FSAL_mkdir(&dir_handle,
                                      pname, pcontext, mode,
@@ -233,11 +234,12 @@ cache_inode_create(cache_entry_t * pentry_parent,
 
         case SYMBOLIC_LINK:
 #ifdef _USE_MFSL
-	    parent_attributes = pentry_parent->attributes;
+            parent_attributes = pentry_parent->attributes;
             fsal_status = MFSL_symlink(&pentry_parent->mobject,
                                        pname, &pcreate_arg->link_content,
                                        pcontext, &pclient->mfsl_context,
-                                       mode, &object_handle, &object_attributes, NULL);
+                                       mode, &object_handle,
+                                       &object_attributes, NULL);
 #else
             fsal_status = FSAL_symlink(&dir_handle,
                                        pname, &pcreate_arg->link_content,
@@ -250,11 +252,15 @@ cache_inode_create(cache_entry_t * pentry_parent,
 #ifdef _USE_MFSL
             fsal_status = MFSL_mknode(&pentry_parent->mobject, pname,
                                       pcontext, &pclient->mfsl_context, mode,
-                                      FSAL_TYPE_SOCK, NULL, /* no dev_t needed for socket file */
-                                      &object_handle, &object_attributes, NULL);
+                                      FSAL_TYPE_SOCK, NULL,
+                                      /* no dev_t needed for socket file */
+                                      &object_handle,
+                                      &object_attributes,
+                                      NULL);
 #else
             fsal_status = FSAL_mknode(&dir_handle, pname, pcontext,
-                                      mode, FSAL_TYPE_SOCK, NULL, /* no dev_t needed for socket file */
+                                      mode, FSAL_TYPE_SOCK, NULL,
+                                      /* no dev_t needed for socket file */
                                       &object_handle, &object_attributes);
 #endif
             break;
@@ -263,11 +269,15 @@ cache_inode_create(cache_entry_t * pentry_parent,
 #ifdef _USE_MFSL
             fsal_status = MFSL_mknode(&pentry_parent->mobject, pname,
                                       pcontext, &pclient->mfsl_context,
-                                      mode, FSAL_TYPE_FIFO, NULL, /* no dev_t needed for FIFO file */
-                                      &object_handle, &object_attributes, NULL);
+                                      mode, FSAL_TYPE_FIFO, NULL,
+                                      /* no dev_t needed for FIFO file */
+                                      &object_handle,
+                                      &object_attributes,
+                                      NULL);
 #else
             fsal_status = FSAL_mknode(&dir_handle, pname, pcontext,
-                                      mode, FSAL_TYPE_FIFO, NULL, /* no dev_t needed for FIFO file */
+                                      mode, FSAL_TYPE_FIFO, NULL,
+                                      /* no dev_t needed for FIFO file */
                                       &object_handle, &object_attributes);
 #endif
             break;
@@ -279,7 +289,9 @@ cache_inode_create(cache_entry_t * pentry_parent,
                                       &pclient->mfsl_context,
                                       mode, FSAL_TYPE_BLK,
                                       &pcreate_arg->dev_spec,
-                                      &object_handle, &object_attributes, NULL);
+                                      &object_handle,
+                                      &object_attributes,
+                                      NULL);
 #else
             fsal_status = FSAL_mknode(&dir_handle,
                                       pname, pcontext,
@@ -296,24 +308,25 @@ cache_inode_create(cache_entry_t * pentry_parent,
                                       &pclient->mfsl_context,
                                       mode, FSAL_TYPE_CHR,
                                       &pcreate_arg->dev_spec,
-                                      &object_handle, &object_attributes, NULL);
+                                      &object_handle,
+                                      &object_attributes,
+                                      NULL);
 #else
             fsal_status = FSAL_mknode(&dir_handle,
                                       pname, pcontext,
                                       mode, FSAL_TYPE_CHR,
                                       &pcreate_arg->dev_spec,
-                                      &object_handle, &object_attributes);
+                                      &object_handle,
+                                      &object_attributes);
 #endif
             break;
 
         default:
             /* we should never go there */
             *pstatus = CACHE_INODE_INCONSISTENT_ENTRY;
-            V_w(&pentry_parent->lock);
 
             /* stats */
             inc_func_err_unrecover(pclient, CACHE_INODE_CREATE);
-
             return NULL;
             break;
         }
@@ -322,23 +335,6 @@ cache_inode_create(cache_entry_t * pentry_parent,
     if(FSAL_IS_ERROR(fsal_status))
         {
             *pstatus = cache_inode_error_convert(fsal_status);
-            V_w(&pentry_parent->lock);
-
-            if(fsal_status.major == ERR_FSAL_STALE)
-                {
-                    cache_inode_status_t kill_status;
-                    LogEvent(COMPONENT_CACHE_INODE,
-                             "cache_inode_create: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                             pentry_parent, fsal_status.major, fsal_status.minor);
-
-                    cache_inode_kill_entry(pentry_parent, NO_LOCK,
-                                           pclient, &kill_status);
-                    if(kill_status != CACHE_INODE_SUCCESS)
-                        LogCrit(COMPONENT_CACHE_INODE,
-                                "cache_inode_create: Could not kill entry %p, status = %u",
-                                pentry_parent, kill_status);
-                    *pstatus = CACHE_INODE_FSAL_ESTALE;
-                }
             /* stats */
             inc_func_err_unrecover(pclient, CACHE_INODE_CREATE);
 
@@ -347,28 +343,28 @@ cache_inode_create(cache_entry_t * pentry_parent,
     else
         {
 #ifdef _USE_MFSL
-	    fsal_data.fh_desc.start = (caddr_t)(&object_handle.handle);
+            fsal_data.fh_desc.start = &object_handle.handle;
 #else
-            fsal_data.fh_desc.start = (caddr_t)(&object_handle);
+            fsal_data.fh_desc.start = &object_handle;
 #endif
             fsal_data.fh_desc.len = 0;
             (void) FSAL_ExpandHandle(pcontext->export_context,
-				     FSAL_DIGEST_SIZEOF,
-				     &fsal_data.fh_desc);
+                                     FSAL_DIGEST_SIZEOF,
+                                     &fsal_data.fh_desc);
 
-            pentry = cache_inode_new_entry( &fsal_data,
-                                            &object_attributes,
-                                            type,
-                                            policy,
-                                            pcreate_arg, NULL,
-                                            pclient,
-                                            pcontext,
-                                            CACHE_INODE_FLAG_CREATE | CACHE_INODE_FLAG_EXREF, /* This is a creation and not a population */
-                                            pstatus);
+            pentry = cache_inode_new_entry(&fsal_data,
+                                           &object_attributes,
+                                           type,
+                                           policy,
+                                           pcreate_arg,
+                                           pclient,
+                                           pcontext,
+                                           CACHE_INODE_FLAG_CREATE |
+                                           CACHE_INODE_FLAG_EXREF,
+                                           pstatus);
             if (pentry == NULL)
                 {
                     *pstatus = CACHE_INODE_INSERT_ERROR;
-                    V_w(&pentry_parent->lock);
 
                     /* stats */
                     inc_func_err_unrecover(pclient, CACHE_INODE_CREATE);
@@ -380,6 +376,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
                    (char *)&object_handle, sizeof(mfsl_object_t));
 #endif
 
+            pthread_rwlock_wrlock(&pentry_parent->content_lock);
             /* Add this entry to the directory (also takes an internal ref) */
             status = cache_inode_add_cached_dirent(pentry_parent,
                                                    pname, pentry,
@@ -387,18 +384,19 @@ cache_inode_create(cache_entry_t * pentry_parent,
                                                    pclient,
                                                    pcontext,
                                                    pstatus);
+            pthread_rwlock_unlock(&pentry_parent->content_lock);
             if (status != CACHE_INODE_SUCCESS)
                 {
-                    V_w(&pentry_parent->lock);
-
                     /* stats */
                     inc_func_err_unrecover(pclient, CACHE_INODE_CREATE);
                     return NULL;
                 }
         }
 
-       /* Update the parent cached attributes */
-       cache_inode_set_time_current( &pentry_parent->attributes.mtime ) ;
+
+    pthread_rwlock_wrlock(&pentry->attr_lock);
+    /* Update the parent cached attributes */
+       cache_inode_set_time_current(&pentry_parent->attributes.mtime);
        pentry_parent->attributes.ctime = pentry_parent->attributes.mtime;
        /*
         * if the created object is a directory, it contains a link
@@ -412,7 +410,7 @@ cache_inode_create(cache_entry_t * pentry_parent,
        *pattr = object_attributes;
 
        /* release the lock for the parent */
-       V_w(&pentry_parent->lock);
+       pthread_rwlock_unlock(&pentry_parent->attr_lock);
 
        /* stat */
        if(*pstatus != CACHE_INODE_SUCCESS)

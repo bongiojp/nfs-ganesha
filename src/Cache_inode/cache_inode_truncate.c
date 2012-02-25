@@ -57,30 +57,29 @@
 #include <pthread.h>
 
 /**
- *
- * cache_inode_truncate_sw: truncates a regular file specified by its cache entry.
+ * @brief truncates a regular file specified by its cache entry.
  *
  * Truncates a regular file specified by its cache entry.
  *
- * @param pentry    [INOUT] entry pointer for the fs object to be truncated. 
- * @param length    [IN]    wanted length for the file. 
- * @param pattr     [OUT]   attrtibutes for the file after the operation. 
- * @param pclient   [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext     [IN]    FSAL credentials 
- * @param pstatus   [OUT]   returned status.
- * @param use_mutex [IN]    if TRUE, mutex management is done, not if equal to FALSE.
+ * @param pentry [INOUT] Entry pointer for the fs object to be truncated.
+ * @param length [IN] Wanted length for the file.
+ * @param pattr [OUT] Attrtibutes for the file after the operation.
+ * @param pclient [INOUT] Structure for per-thread resource management
+ * @param pcontext [IN] FSAL credentials
+ * @param pstatus [OUT] Returned status.
  *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
- *
+ * @return CACHE_INODE_SUCCESS if operation is a success
+ * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ *         validating the entry
  */
-cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
-                                             fsal_size_t length,
-                                             fsal_attrib_list_t * pattr,
-                                             cache_inode_client_t * pclient,
-                                             fsal_op_context_t * pcontext,
-                                             cache_inode_status_t * pstatus,
-                                             int use_mutex)
+
+cache_inode_status_t
+cache_inode_truncate_impl(cache_entry_t *pentry,
+                          fsal_size_t length,
+                          fsal_attrib_list_t *pattr,
+                          cache_inode_client_t *pclient,
+                          fsal_op_context_t *pcontext,
+                          cache_inode_status_t *pstatus)
 {
   fsal_status_t fsal_status;
   cache_content_status_t cache_content_status;
@@ -92,47 +91,36 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
   pclient->stat.nb_call_total += 1;
   pclient->stat.func_stats.nb_call[CACHE_INODE_TRUNCATE] += 1;
 
-  if(use_mutex)
-    P_w(&pentry->lock);
-
   /* Only regular files can be truncated */
-  if(pentry->internal_md.type != REGULAR_FILE)
+  if(pentry->type != REGULAR_FILE)
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
-      if(use_mutex)
-        V_w(&pentry->lock);
-
       /* stats */
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
-
       return *pstatus;
     }
 
   /* Calls file content cache to operate on the cache */
-  if(pentry->object.file.pentry_content != NULL)
+  if (pentry->object.file.pentry_content != NULL)
     {
-      if(cache_content_truncate(pentry->object.file.pentry_content,
-                                length,
-                                (cache_content_client_t *) pclient->pcontent_client,
-                                &cache_content_status) != CACHE_CONTENT_SUCCESS)
-        {
-          *pstatus = cache_content_error_convert(cache_content_status);
-          if(use_mutex)
-            V_w(&pentry->lock);
+      if (cache_content_truncate(pentry->object.file.pentry_content,
+                                 length,
+                                 (cache_content_client_t *)
+                                 pclient->pcontent_client,
+                                 &cache_content_status)
+          != CACHE_CONTENT_SUCCESS) {
+        *pstatus = cache_content_error_convert(cache_content_status);
+        pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
+        return *pstatus;
+      }
 
-          /* stats */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
-
-          return *pstatus;
-        }
-
-      /* Cache truncate succeeded, we must now update the size in the attributes */
-      if((pentry->attributes.asked_attributes & FSAL_ATTR_SIZE) ||
-         (pentry->attributes.asked_attributes & FSAL_ATTR_SPACEUSED))
-        {
-          pentry->attributes.filesize = length;
-          pentry->attributes.spaceused = length;
-        }
+      /* Cache truncate succeeded, we must now update the size in the
+         attributes */
+      if ((pentry->attributes.asked_attributes & FSAL_ATTR_SIZE) ||
+          (pentry->attributes.asked_attributes & FSAL_ATTR_SPACEUSED)) {
+        pentry->attributes.filesize = length;
+        pentry->attributes.spaceused = length;
+      }
 
       /* Set the time stamp values too */
       cache_inode_set_time_current( &pentry->attributes.mtime ) ;
@@ -143,46 +131,26 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
       /* Call FSAL to actually truncate */
       pentry->attributes.asked_attributes = pclient->attrmask;
 #ifdef _USE_MFSL
-      fsal_status = MFSL_truncate(&pentry->mobject, pcontext, &pclient->mfsl_context, length, NULL,    
+      fsal_status = MFSL_truncate(&pentry->mobject, pcontext,
+                                  &pclient->mfsl_context, length, NULL,
                                   &pentry->attributes, NULL);
 #else
-      fsal_status = FSAL_truncate(&pentry->handle, pcontext, length, NULL,  /** @todo &pentry->object.file.open_fd.fd, *//* Used only with FSAL_PROXY */
+      fsal_status = FSAL_truncate(&pentry->handle, pcontext, length,
+                                  NULL, /**
+                                           @todo
+                                           &pentry->object.file.open_fd.fd,
+                                           Used only with FSAL_PROXY*/
                                   &pentry->attributes);
 #endif /* _USE_MFSL */
 
       if(FSAL_IS_ERROR(fsal_status))
         {
           *pstatus = cache_inode_error_convert(fsal_status);
-          if(use_mutex)
-            V_w(&pentry->lock);
-
           /* stats */
           pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
-
-          if(fsal_status.major == ERR_FSAL_STALE)
-            {
-              cache_inode_status_t kill_status;
-
-              LogEvent(COMPONENT_CACHE_INODE,
-                       "cache_inode_truncate: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                       pentry,fsal_status.major, fsal_status.minor );
-
-              if(cache_inode_kill_entry( pentry, NO_LOCK, pclient, &kill_status) !=
-                 CACHE_INODE_SUCCESS)
-                LogCrit(COMPONENT_CACHE_INODE,
-                        "cache_inode_truncate: Could not kill entry %p, status = %u",
-                        pentry, kill_status);
-
-              *pstatus = CACHE_INODE_FSAL_ESTALE;
-            }
-
           return *pstatus;
         }
     }
-
-  /* Regular exit */
-  if(use_mutex)
-    V_w(&pentry->lock);
 
   /* Returns the attributes */
   *pattr = pentry->attributes;
@@ -198,36 +166,8 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
 
 /**
  *
- * cache_inode_truncate_no_mutex: truncates a regular file specified by its cache entry (no mutex management).
- *
- * Truncates a regular file specified by its cache entry.
- *
- * @param pentry    [INOUT] entry pointer for the fs object to be truncated.
- * @param length    [IN]    wanted length for the file.
- * @param pattr     [OUT]   attrtibutes for the file after the operation.
- * @param pclient   [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext     [IN]    FSAL credentials
- * @param pstatus   [OUT]   returned status.
- * 
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
- *
- */
-cache_inode_status_t cache_inode_truncate_no_mutex(cache_entry_t * pentry,
-                                                   fsal_size_t length,
-                                                   fsal_attrib_list_t * pattr,
-                                                   cache_inode_client_t * pclient,
-                                                   fsal_op_context_t * pcontext,
-                                                   cache_inode_status_t * pstatus)
-{
-  return cache_inode_truncate_sw(pentry,
-                                 length, pattr, pclient, pcontext, pstatus, FALSE);
-}                               /* cache_inode_truncate_no_mutex */
-
-/**
- *
  * cache_inode_truncate: truncates a regular file specified by its cache entry.
- * 
+ *
  * Truncates a regular file specified by its cache entry.
  *
  * @param pentry    [INOUT] entry pointer for the fs object to be truncated.
@@ -236,7 +176,7 @@ cache_inode_status_t cache_inode_truncate_no_mutex(cache_entry_t * pentry,
  * @param pclient   [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext     [IN]    FSAL credentials
  * @param pstatus   [OUT]   returned status.
- * 
+ *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
  * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
  *
@@ -248,6 +188,10 @@ cache_inode_status_t cache_inode_truncate(cache_entry_t * pentry,
                                           fsal_op_context_t * pcontext,
                                           cache_inode_status_t * pstatus)
 {
-  return cache_inode_truncate_sw(pentry,
-                                 length, pattr, pclient, pcontext, pstatus, TRUE);
-}                               /* cache_inode_truncate */
+  pthread_rwlock_wrlock(&pentry->attr_lock);
+  pthread_rwlock_wrlock(&pentry->content_lock);
+  return cache_inode_truncate_impl(pentry,
+                                   length, pattr, pclient, pcontext, pstatus);
+  pthread_rwlock_unlock(&pentry->attr_lock);
+  pthread_rwlock_unlock(&pentry->content_lock);
+} /* cache_inode_truncate */

@@ -70,41 +70,34 @@ cache_inode_status_t cache_inode_release_data_cache(cache_entry_t * pentry,
   pclient->stat.nb_call_total += 1;
   pclient->stat.func_stats.nb_call[CACHE_INODE_RELEASE_DATA_CACHE] += 1;
 
-  P_w(&pentry->lock);
-
   /* Operate only on a regular file */
-  if(pentry->internal_md.type != REGULAR_FILE)
+  if(pentry->type != REGULAR_FILE)
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
-      V_w(&pentry->lock);
-
-      /* stats */
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RELEASE_DATA_CACHE] += 1;
 
       return *pstatus;
     }
 
+  pthread_rwlock_wrlock(&pentry->content_lock);
   if(pentry->object.file.pentry_content == NULL)
     {
       /* The object is not cached */
       *pstatus = CACHE_INODE_CACHE_CONTENT_EMPTY;
 
-      V_w(&pentry->lock);
-
+      pthread_rwlock_unlock(&pentry->content_lock);
       /* stats */
       pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_RELEASE_DATA_CACHE] += 1;
-
       return *pstatus;
     }
 
-  if(cache_content_release_entry
-     ((cache_content_entry_t *) pentry->object.file.pentry_content,
-      (cache_content_client_t *) pclient->pcontent_client,
-      &cache_content_status) != CACHE_CONTENT_SUCCESS)
+  if (cache_content_release_entry
+      ((cache_content_entry_t *) pentry->object.file.pentry_content,
+       (cache_content_client_t *) pclient->pcontent_client,
+       &cache_content_status) != CACHE_CONTENT_SUCCESS)
     {
+      pthread_rwlock_unlock(&pentry->content_lock);
       *pstatus = cache_content_error_convert(cache_content_status);
-      V_w(&pentry->lock);
-
       /* stats */
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RELEASE_DATA_CACHE] += 1;
 
@@ -114,7 +107,7 @@ cache_inode_status_t cache_inode_release_data_cache(cache_entry_t * pentry,
   /* Detache the entry from the cache inode */
   pentry->object.file.pentry_content = NULL;
 
-  V_w(&pentry->lock);
+  pthread_rwlock_unlock(&pentry->content_lock);
   *pstatus = CACHE_INODE_SUCCESS;
 
   /* stats */

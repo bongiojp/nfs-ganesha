@@ -261,18 +261,11 @@ int nfs_Symlink(nfs_arg_t * parg /* IN  */ ,
 
             case NFS_V3:
               /* Build file handle */
-              if((pfsal_handle = cache_inode_get_fsal_handle(symlink_pentry,
-                                                             &cache_status)) == NULL)
-                {
-                  pres->res_symlink3.status = NFS3ERR_IO;
-                  rc = NFS_REQ_OK;
-                  goto out;
-                }
+              pfsal_handle = &symlink_pentry->handle;
 
               /* Some clients (like the Spec NFS benchmark) set attributes with the NFSPROC3_SYMLINK request */
               if(nfs3_Sattr_To_FSALattr(&attributes_symlink,
-                                        &parg->arg_symlink3.symlink.symlink_attributes) ==
-                 0)
+                                        &parg->arg_symlink3.symlink.symlink_attributes) == 0)
                 {
                   pres->res_create3.status = NFS3ERR_INVAL;
                   rc = NFS_REQ_OK;

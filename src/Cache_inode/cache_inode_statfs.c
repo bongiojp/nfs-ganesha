@@ -69,7 +69,6 @@ cache_inode_status_t cache_inode_statfs(cache_entry_t * pentry,
                                         fsal_op_context_t * pcontext,
                                         cache_inode_status_t * pstatus)
 {
-  fsal_handle_t *pfsal_handle;
   fsal_status_t fsal_status;
 
   /* Sanity check */
@@ -82,13 +81,11 @@ cache_inode_status_t cache_inode_statfs(cache_entry_t * pentry,
   /* Default return value */
   *pstatus = CACHE_INODE_SUCCESS;
 
-  /* Get the handle for this entry */
-  if((pfsal_handle = cache_inode_get_fsal_handle(pentry, pstatus)) == NULL)
-    return *pstatus;
-
   /* Get FSAL to get dynamic info */
   if(FSAL_IS_ERROR
-     ((fsal_status = FSAL_dynamic_fsinfo(pfsal_handle, pcontext, pdynamicinfo))))
+     ((fsal_status = FSAL_dynamic_fsinfo(&pentry->handle,
+                                         pcontext,
+                                         pdynamicinfo))))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
       return *pstatus;

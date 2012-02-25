@@ -179,21 +179,16 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
   name = FSAL_DOT_DOT;
 
   /* BUGAZOMEU: Faire la gestion des cross junction traverse */
-  if((file_pentry = cache_inode_lookup(dir_pentry,
-                                       &name,
-                                       data->pexport->cache_inode_policy,
-                                       &attrlookup,
-                                       data->pclient,
-                                       data->pcontext, &cache_status,
-                                       CACHE_INODE_FLAG_NONE)) != NULL)
+  if((file_pentry
+      = cache_inode_lookup(dir_pentry,
+                           &name,
+                           data->pexport->cache_inode_policy,
+                           &attrlookup,
+                           data->pclient,
+                           data->pcontext, &cache_status)) != NULL)
     {
       /* Extract the fsal attributes from the cache inode pentry */
-      pfsal_handle = cache_inode_get_fsal_handle(file_pentry, &cache_status);
-      if(cache_status != CACHE_INODE_SUCCESS)
-        {
-          res_LOOKUPP4.status = NFS4ERR_SERVERFAULT;
-          return res_LOOKUPP4.status;
-        }
+      pfsal_handle = &file_pentry->handle;
 
       /* Convert it to a file handle */
       if(!nfs4_FSALToFhandle(&data->currentFH, pfsal_handle, data))
@@ -216,7 +211,7 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
 
       /* Keep the pointer within the compound data */
       data->current_entry = file_pentry;
-      data->current_filetype = file_pentry->internal_md.type;
+      data->current_filetype = file_pentry->type;
 
       /* Return successfully */
       res_LOOKUPP4.status = NFS4_OK;
@@ -230,7 +225,7 @@ int nfs4_op_lookupp(struct nfs_argop4 *op,
 
   /* If NFS4ERR_SYMLINK should be returned for a symlink instead of ENOTDIR */
   if((cache_status == CACHE_INODE_NOT_A_DIRECTORY) &&
-     (dir_pentry->internal_md.type == SYMBOLIC_LINK))
+     (dir_pentry->type == SYMBOLIC_LINK))
     res_LOOKUPP4.status = NFS4ERR_SYMLINK;
   else
     res_LOOKUPP4.status = nfs4_Errno(cache_status);

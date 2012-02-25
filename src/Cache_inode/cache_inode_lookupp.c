@@ -107,8 +107,8 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
      if (!parent) {
           /* If we didn't find it, drop the read lock, get a write
              lock, and make sure nobody filled it in while we waited. */
-          pthread_rwlock_unlock(&entry->object.dir.dir_lock);
-          pthread_rwlock_wrlock(&entry->object.dir.dir_lock);
+          pthread_rwlock_unlock(&entry->content_lock);
+          pthread_rwlock_wrlock(&entry->content_lock);
           parent = cache_inode_weakref_get(&entry->object.dir.parent,
                                            client,
                                            LRU_REQ_INITIAL);

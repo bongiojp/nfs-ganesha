@@ -46,6 +46,7 @@
 #include "nfs_core.h"
 #include "log_macros.h"
 #include "cache_inode.h"
+#include "cache_inode_lru.h"
 #include "cache_inode_weakref.h"
 #include "generic_weakref.h"
 
@@ -123,6 +124,7 @@ cache_entry_t *cache_inode_weakref_get(gweakref_t *ref,
             != CACHE_INODE_SUCCESS) {
             return NULL;
         }
+        pthread_rwlock_unlock(lock);
     }
 
     return (entry);

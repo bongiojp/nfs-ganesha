@@ -75,24 +75,22 @@ cache_inode_add_data_cache(cache_entry_t * pentry,
     pclient->stat.nb_call_total += 1;
     inc_func_call(pclient, CACHE_INODE_ADD_DATA_CACHE);
 
-    P_w(&pentry->lock);
     /* Operate only on a regular file */
-    if(pentry->internal_md.type != REGULAR_FILE)
+    if(pentry->type != REGULAR_FILE)
         {
             *pstatus = CACHE_INODE_BAD_TYPE;
-            V_w(&pentry->lock);
-
             /* stats */
             inc_func_err_unrecover(pclient,
                                    CACHE_INODE_ADD_DATA_CACHE);
             return *pstatus;
         }
+
+    pthread_rwlock_wrlock(&pentry->content_lock);
     if(pentry->object.file.pentry_content != NULL)
         {
             /* The object is already cached */
             *pstatus = CACHE_INODE_CACHE_CONTENT_EXISTS;
-            V_w(&pentry->lock);
-
+            pthread_rwlock_unlock(&pentry->content_lock);
             /* stats */
             inc_func_err_retryable(pclient,
                                    CACHE_INODE_ADD_DATA_CACHE);
@@ -105,7 +103,7 @@ cache_inode_add_data_cache(cache_entry_t * pentry,
     if(pentry_content == NULL)
         {
             *pstatus = cache_content_error_convert(cache_content_status);
-            V_w(&pentry->lock);
+            pthread_rwlock_unlock(&pentry->content_lock);
 
             /* stats */
             inc_func_err_unrecover(pclient,
@@ -116,11 +114,8 @@ cache_inode_add_data_cache(cache_entry_t * pentry,
     /* Attached the entry to the cache inode */
     pentry->object.file.pentry_content = pentry_content;
 
-    V_w(&pentry->lock);
+    pthread_rwlock_unlock(&pentry->content_lock);
     *pstatus = CACHE_INODE_SUCCESS;
 
-    /* stats */
-    inc_func_err_unrecover(pclient,
-                           CACHE_INODE_ADD_DATA_CACHE);
     return *pstatus;
 }

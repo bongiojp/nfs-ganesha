@@ -277,13 +277,11 @@ int nfs_Create(nfs_arg_t * parg,
                                            &attr,
                                            pclient,
                                            pcontext,
-                                           &cache_status_lookup,
-                                           CACHE_INODE_FLAG_NONE);
+                                           &cache_status_lookup);
 
           if((cache_status_lookup == CACHE_INODE_NOT_FOUND) ||
              ((cache_status_lookup == CACHE_INODE_SUCCESS)
               && (parg->arg_create3.how.mode == UNCHECKED)))
-
             {
               /* Create the file */
               if((parg->arg_create3.how.mode == UNCHECKED)
@@ -413,7 +411,7 @@ int nfs_Create(nfs_arg_t * parg,
                     }
 
                   /*
-                   * Get the FSAL handle for this entry 
+                   * Get the FSAL handle for this entry
                    */
                   pfsal_handle = cache_inode_get_fsal_handle(file_pentry, &cache_status);
                   if(cache_status == CACHE_INODE_SUCCESS)

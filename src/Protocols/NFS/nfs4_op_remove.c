@@ -188,8 +188,8 @@ int nfs4_op_remove(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
       return res_REMOVE4.status;
     }
 
-  res_REMOVE4.REMOVE4res_u.resok4.cinfo.after =
-       parent_entry->internal_md.mod_time;
+  res_REMOVE4.REMOVE4res_u.resok4.cinfo.after
+       = cache_inode_get_changeid4(parent_entry);
 
   res_REMOVE4.REMOVE4res_u.resok4.cinfo.atomic = FALSE;
 

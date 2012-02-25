@@ -95,7 +95,7 @@ int cache_inode_avl_qp_insert(
             return (0);
         }
     }
-    
+
     LogCrit(COMPONENT_CACHE_INODE,
             "cache_inode_avl_qp_insert_s: could not insert at j=%d (%s)\n",
             j, v->name.name);

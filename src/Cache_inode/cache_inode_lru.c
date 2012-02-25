@@ -356,9 +356,19 @@ void cache_inode_lru_pkgshutdown(void)
 static inline void cache_inode_lru_clean(cache_entry_t *entry,
                                          cache_inode_client_t *client)
 {
+    fsal_status_t fsal_status = {0, 0};
     /* Clean an LRU entry re-use.  */
     assert((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) ||
            (entry->lru.refcount == (LRU_SENTINEL_REFCOUNT - 1)));
+
+    /* Clean up the associated ressources in the FSAL */
+    if (FSAL_IS_ERROR(fsal_status
+                      = FSAL_CleanObjectResources(&entry->handle))) {
+        LogCrit(COMPONENT_CACHE_INODE,
+                "cache_inode_lru_clean: Couldn't free FSAL ressources "
+                "fsal_status.major=%u", fsal_status.major);
+    }
+
     cache_inode_clean_internal(entry, client);
     entry->lru.refcount = 0;
     cache_inode_clean_entry(entry);
@@ -614,7 +624,7 @@ cache_inode_lru_ref(cache_entry_t *entry,
 
 cache_inode_status_t
 cache_inode_lru_unref(cache_entry_t *entry,
-                      cache_inode_client_t *pclient,
+                      cache_inode_client_t *client,
                       uint32_t flags)
 {
     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
@@ -625,12 +635,11 @@ cache_inode_lru_unref(cache_entry_t *entry,
 
     if (--(entry->lru.refcount) == 0) {
         /* entry is UNREACHABLE -- the call path is recycling entry */
-        lru_remove_entry(&entry->lru, flags, pclient->lru_lane);
+        cache_inode_lru_clean(entry, client);
+        lru_remove_entry(&entry->lru, flags, client->lru_lane);
 
         pthread_mutex_unlock(&entry->lru.mtx);
-        if (entry->internal_md.type == SYMBOLIC_LINK)
-            cache_inode_release_symlink(entry, &pclient->pool_entry_symlink);
-        ReleaseToPool(entry, &pclient->pool_entry);
+        ReleaseToPool(entry, &client->pool_entry);
         goto unlock;
     }
 
@@ -640,12 +649,12 @@ cache_inode_lru_unref(cache_entry_t *entry,
         !(entry->lru.flags & LRU_ENTRY_PINNED)) {
         cache_inode_lru_pin(entry,
                             flags | LRU_HAVE_LOCKED_ENTRY,
-                            pclient->lru_lane);
+                            client->lru_lane);
     } else if (!cache_inode_file_holds_state(entry) &&
                (entry->lru.flags & LRU_ENTRY_PINNED)) {
         cache_inode_lru_unpin(entry,
                               flags | LRU_HAVE_LOCKED_ENTRY,
-                              pclient->lru_lane);
+                              client->lru_lane);
     }
 
 unlock:

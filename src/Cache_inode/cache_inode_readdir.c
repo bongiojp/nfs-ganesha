@@ -566,7 +566,7 @@ cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
   cache_inode_release_dirents(pentry, pclient);
 
   /* Reinit the fields */
-  pentry->flags |= CACHE_INODE_DIR_POPULATED;
+  pentry->flags &= ~CACHE_INODE_DIR_POPULATED;
   *pstatus = CACHE_INODE_SUCCESS;
 
   return *pstatus;
@@ -757,8 +757,8 @@ cache_inode_status_t cache_inode_readdir_populate(
                    "cache_inode_readdir: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                    pentry_dir, fsal_status.major, fsal_status.minor);
 
-          if(cache_inode_kill_entry(pentry_dir, WT_LOCK, pclient, &kill_status) !=
-             CACHE_INODE_SUCCESS)
+          if(cache_inode_kill_entry(pentry_dir, pclient, &kill_status,
+                                    0) != CACHE_INODE_SUCCESS)
             LogCrit(COMPONENT_CACHE_INODE,
                     "cache_inode_readdir: Could not kill entry %p, status = %u",
                     pentry_dir, kill_status);
@@ -854,8 +854,9 @@ cache_inode_status_t cache_inode_readdir_populate(
                                "cache_inode_readdir: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
                                pentry_dir, fsal_status.major, fsal_status.minor );
 
-                      if(cache_inode_kill_entry(pentry_dir, WT_LOCK, pclient, &kill_status) !=
-                         CACHE_INODE_SUCCESS)
+                      if(cache_inode_kill_entry(pentry_dir, pclient,
+                                                &kill_status, 0)
+                         != CACHE_INODE_SUCCESS)
                         LogCrit(COMPONENT_CACHE_INODE,
                                 "cache_inode_readdir: Could not kill entry %p, status = %u",
                                 pentry_dir, kill_status);
@@ -876,18 +877,17 @@ cache_inode_status_t cache_inode_readdir_populate(
                                    &new_entry_fsdata.fh_desc);
 
           if((pentry
-              = cache_inode_new_entry( &new_entry_fsdata,
-                                       &array_dirent[iter].attributes,
-                                       type,
-                                       policy,
-                                       &create_arg,
-                                       NULL,
-                                       pclient,
-                                       pcontext,
-                                       /* cache_inode_add_cached_dirent
-                                          takes an extra reference */
-                                       CACHE_INODE_FLAG_NONE,
-                                       pstatus)) == NULL)
+              = cache_inode_new_entry(&new_entry_fsdata,
+                                      &array_dirent[iter].attributes,
+                                      type,
+                                      policy,
+                                      &create_arg,
+                                      pclient,
+                                      pcontext,
+                                      /* cache_inode_add_cached_dirent
+                                         takes an extra reference */
+                                      CACHE_INODE_FLAG_NONE,
+                                      pstatus)) == NULL)
             return *pstatus;
 
           cache_status
@@ -1086,7 +1086,7 @@ cache_inode_readdir(cache_entry_t * dir_pentry,
 
      if (!(dir_pentry->flags & (CACHE_INODE_TRUST_CONTENT |
                                 CACHE_INODE_DIR_POPULATED))) {
-          pthread_rwlock_wrlock(&dir_pentry->object.dir.dir_lock);
+          pthread_rwlock_wrlock(&dir_pentry->content_lock);
           pthread_rwlock_unlock(&dir_pentry->attr_lock);
           if (cache_inode_readdir_populate(dir_pentry,
                                            policy,
@@ -1100,7 +1100,7 @@ cache_inode_readdir(cache_entry_t * dir_pentry,
                goto unlock_dir;
           }
      } else {
-          pthread_rwlock_rdlock(&dir_pentry->object.dir.dir_lock);
+          pthread_rwlock_rdlock(&dir_pentry->content_lock);
           pthread_rwlock_unlock(&dir_pentry->attr_lock);
      }
 
@@ -1195,7 +1195,7 @@ unlock_dir:
      /* stats */
      if(*pstatus != CACHE_INODE_SUCCESS) {
           (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
-          pthread_rwlock_unlock(&dir_pentry->object.dir.dir_lock);
+          pthread_rwlock_unlock(&dir_pentry->content_lock);
      } else {
           (pclient->stat.func_stats.nb_success[CACHE_INODE_READDIR])++;
           *unlock = TRUE;

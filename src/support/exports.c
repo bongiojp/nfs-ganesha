@@ -170,16 +170,6 @@ cache_content_client_t recover_datacache_client;
 #define EXPORT_MAX_CLIENTS   EXPORTS_NB_MAX_CLIENTS     /* number of clients */
 #define EXPORT_MAX_CLIENTLEN 256        /* client name len */
 
-static int local_lru_inode_entry_to_str(LRU_data_t data, char *str)
-{
-  return sprintf(str, "N/A ");
-}                               /* local_lru_inode_entry_to_str */
-
-static int local_lru_inode_clean_entry(LRU_entry_t * entry, void *adddata)
-{
-  return 0;
-}                               /* lru_clean_entry */
-
 /**
  * nfs_ParseConfLine: parse a line with a settable separator and  end of line
  *
@@ -2924,11 +2914,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
 #endif
 
       /* setting the 'small_client' structure */
-      small_client_param.lru_param.nb_entry_prealloc = 10;
-      small_client_param.lru_param.entry_to_str = local_lru_inode_entry_to_str;
-      small_client_param.lru_param.clean_entry = local_lru_inode_clean_entry;
       small_client_param.nb_prealloc_entry = 10;
-      small_client_param.nb_pre_parent = 10;
       small_client_param.nb_pre_state_v4 = 10;
       small_client_param.grace_period_link = 0;
       small_client_param.grace_period_attr = 0;

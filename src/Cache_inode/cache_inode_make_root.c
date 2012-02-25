@@ -74,8 +74,6 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
                                      cache_inode_status_t * pstatus)
 {
   cache_entry_t *pentry = NULL;
-  cache_inode_parent_entry_t *next_parent_entry = NULL;
-
   /* sanity check */
   if(pstatus == NULL)
     return NULL;
@@ -83,33 +81,24 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
 
-  /* BUGAZOMEU: gestion de junctions, : peut etre pas correct de faire pointer root sur lui meme */
-  if((pentry = cache_inode_new_entry( pfsdata,
-                                      NULL,
-                                      DIRECTORY,
-                                      policy,
-                                      NULL,
-                                      NULL,
-                                      pclient,
-                                      pcontext,
-                                      CACHE_INODE_FLAG_EXREF, /* no create flag */
-                                      pstatus)) != NULL)
+  /* BUGAZOMEU: gestion de junctions, : peut etre pas correct de faire
+     pointer root sur lui meme */
+  if((pentry = cache_inode_new_entry(pfsdata,
+                                     NULL,
+                                     DIRECTORY,
+                                     policy,
+                                     NULL,
+                                     pclient,
+                                     pcontext,
+                                     CACHE_INODE_FLAG_EXREF,
+                                     pstatus)) != NULL)
     {
-      GetFromPool(next_parent_entry, &pclient->pool_parent,
-                  cache_inode_parent_entry_t);
-
-      if(next_parent_entry == NULL)
-        {
-          *pstatus = CACHE_INODE_MALLOC_ERROR;
-          pentry = NULL;
-          return pentry;
-        }
-
-      pentry->parent_list = next_parent_entry;
-
-      /* /!\ root is it own ".." */
-      pentry->parent_list->parent = pentry;
-      pentry->parent_list->next_parent = NULL;
+      /* The root directory is its own parent.  (Even though this is a
+         weakref, it's never actually going to be broken in
+         practice.) */
+      pthread_rwlock_wrlock(&pentry->content_lock);
+      pentry->object.dir.parent = pentry->weakref;
+      pthread_rwlock_unlock(&pentry->content_lock);
     }
 
   return pentry;

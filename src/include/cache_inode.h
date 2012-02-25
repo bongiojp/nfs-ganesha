@@ -46,7 +46,6 @@
 
 
 #include "stuff_alloc.h"
-#include "RW_Lock.h"
 #include "LRU_List.h"
 #include "HashData.h"
 #include "HashTable.h"
@@ -289,17 +288,6 @@ typedef enum cache_inode_file_type__
 } cache_inode_file_type_t;
 
 /**
- * Enumeration indicating requested lock type
- */
-
-typedef enum cache_inode_lock_how__
-{
-  NO_LOCK = 0, /*< No lock */
-  RD_LOCK  = 1, /*< Read (shared) lock */
-  WT_LOCK  = 2 /*< Write (exclusive) lock */
-} cache_inode_lock_how_t;
-
-/**
  * Type for eod flag in cache_inode_readdir.
  */
 
@@ -337,12 +325,12 @@ typedef enum cache_inode_dirent_op__
 
 /* Flags set on cache_entry_t::flags*/
 
-const uint32_t CACHE_INODE_TRUST_ATTRS
+static const uint32_t CACHE_INODE_TRUST_ATTRS
   = 0x00000001; /*< Trust stored attributes */
-const uint32_t CACHE_INODE_TRUST_CONTENT
+static const uint32_t CACHE_INODE_TRUST_CONTENT
   = 0x00000002; /*< Trust inode content (for the moment, directory and
                     symlink) */
-const uint32_t CACHE_INODE_DIR_POPULATED
+static const uint32_t CACHE_INODE_DIR_POPULATED
   = 0x00000004; /*< The directory has been populated (negative lookups
                   are meaningful) */
 
@@ -352,7 +340,6 @@ const uint32_t CACHE_INODE_DIR_POPULATED
 
 struct cache_inode_symlink__
 {
-  pthread_rwlock_t sym_lock; /*< Reader-writer lock for symlink content */
   fsal_path_t content; /*< Content of the link */
 };
 
@@ -388,34 +375,77 @@ typedef struct cache_inode_dir_entry__
 } cache_inode_dir_entry_t;
 
 /**
- * \brief Represents a cached inode
+ * @brief Represents a cached inode
  *
  * Information representing a cached file (inode) including metadata,
  * and for directories and symlinks, pointers to cached content.  This
  * is also the anchor for state held on a file.
+ *
+ * Regarding the locking discipline:
+ *
+ * (1) The attributes field is protected by attr_lock.
+ *
+ * (2) content_lock must be held for WRITE when modifying the AVL tree
+ *     of a directory or any dirent contained therein.  It must be
+ *     held for READ when accessing any of this information.
+ *
+ * (3) content_lock must be held for WRITE when caching or disposing
+ *     of a file descriptor and when writing data into the Ganesha
+ *     data cache.  It must be held for READ when accessing the cached
+ *     descriptor or reading data out of the data cache.
+ *
+ * (4) content_lock must be held for WRITE when updating the cached
+ *     content of a symlink or when NULLing the object.symlink pointer
+ *     preparatory to freeing the link structure.  It must be held for
+ *     READ when dereferencing the object.symlink pointer or reading
+ *     cached content.
+ *
+ * The handle, weakref, and type fields are unprotected, as they are
+ * considered to be immutable throughout the life of the object.
+ *
+ * The flags field is unprotected, however it should be modified only
+ * through the functions atomic_set_it_bits and
+ * atomic_clear_int_bits.
+ *
+ * The policy field is unprotected.  ACE: When is the policy field
+ * expected to change?  Does it last the lifetime of the cache entry?
+ * Even if it can change, setting or equality testing a word is
+ * atomic.
+ *
+ * The change_time and attr_time fields are unprotected and must only
+ * be used for simple comparisons or servicing requests returning
+ * change_info4.
+ *
+ * The lru field as its own mutex to protect it.
  */
 
 struct cache_entry_t
 {
-  cache_inode_policy_t policy; /*< The current cache policy for this entry */
   fsal_handle_t handle; /*< The FSAL Handle */
+<<<<<<< HEAD
   struct fsal_handle_desc fh_desc; /*< Points to handle.  Adds size,
                                        len for hash table etc. */
   fsal_attrib_list_t attributes; /*< The FSAL Attributes */
   pthread_rwlock_t attr_lock; /*< Reader-writer lock for attributes */
+  gweakref_t weakref; /*< A weakref for this entry (pointer and generation
+                          number.)  The generation number is the only
+                          interesting part, but this way the weakref
+                          can be easily stashed somewhere. */
   cache_inode_file_type_t type; /*< The type of the entry */
   uint32_t flags; /*< Flags for this entry */
+  cache_inode_policy_t policy; /*< The current cache policy for this entry */
   time_t change_time; /*< The time of the last operation ganesha knows
                           about.  We can ue this for change_info4, but
                           atomic MUST BE SET TO FALSE.  Don't use it
                           for anything else (servicing getattr,
                           etc.) */
   time_t attr_time; /*< Time at which we last refreshed attributes. */
-  gweakref_t weakref; /*< A weakref for this entry (pointer and generation
-                          number.)  The generation number is the only
-                          interesting part, but this way the weakref
-                          can be easily stashed somewhere. */
   cache_inode_lru_t lru; /*< New style LRU link */
+  pthread_rwlock_t attr_lock; /*< Reader-writer lock for attributes */
+  fsal_attrib_list_t attributes; /*< The FSAL Attributes */
+  pthread_rwlock_t content_lock; /*< Lock on type-specific cached
+                                     content.  See locking discipline
+                                     for details. */
   union cache_inode_fsobj__
   {
     struct cache_inode_file__
@@ -423,8 +453,8 @@ struct cache_entry_t
       cache_inode_opened_file_t open_fd;/*< Cached fsal_file_t for
                                             optimized access */
       fsal_name_t *pname; /*< Pointer to filename, for PROXY only */
-      cache_entry_t *pentry_parent_open;/*< Parent associated with
-                                            pname, for PROXY only  */
+      cache_entry_t *pentry_parent_open; /*< Parent associated with
+                                             pname, for PROXY only  */
       void *pentry_content; /*< Entry in file content cache (NULL if
                                 not cached)  */
       struct glist_head state_list; /*< Pointers for state list */
@@ -445,7 +475,6 @@ struct cache_entry_t
                              ('..') */
       struct avltree avl; /*< Children */
       unsigned int collisions; /*< For future heuristics. Expect 0. */
-      pthread_rwlock_t dir_lock; /*< Lock to protect dirents */
     } dir; /*< DIRECTORY data */
   } object; /*< Filetype specific data, discriminated by the type
                 field.  Note that data for special files is in
@@ -580,10 +609,17 @@ typedef union cache_inode_create_arg__
                                             do not release the
                                             attribute lock before
                                             returning. */
-#define CACHE_INODE_FLAG_DIR_HOLD 0x08 /*< For a function called with
-                                           the directory lock held, do
-                                           not release the directory
-                                           lock before returning. */
+#define CACHE_INODE_FLAG_CONTENT_HOLD 0x08 /*< For a function called
+                                               with the content lock
+                                               held, do not release
+                                               the content lock before
+                                               returning. */
+#define CACHE_INODE_FLAG_ATTR_HAVE 0x10 /*< For a function, indicates
+                                            that the attribute lock is
+                                            held. */
+#define CACHE_INODE_FLAG_CONTENT_HAVE 0x10 /*< For a function, indicates
+                                               that the content lock is
+                                               held. */
 #define CACHE_INODE_FLAG_EXREF 0x00004 /*< Take an additional
                                            reference. */
 
@@ -851,20 +887,13 @@ cache_inode_status_t cache_inode_setattr(cache_entry_t *pentry,
                                          fsal_op_context_t *pcontext,
                                          cache_inode_status_t *pstatus);
 
-cache_inode_status_t cache_inode_truncate_sw(cache_entry_t *pentry,
-                                             fsal_size_t length,
-                                             fsal_attrib_list_t *pattr,
-                                             cache_inode_client_t *pclient,
-                                             fsal_op_context_t *pcontext,
-                                             cache_inode_status_t *pstatus,
-                                             int use_mutex);
-cache_inode_status_t cache_inode_truncate_no_mutex(
-     cache_entry_t *pentry,
-     fsal_size_t length,
-     fsal_attrib_list_t *pattr,
-     cache_inode_client_t *pclient,
-     fsal_op_context_t *pcontext,
-     cache_inode_status_t *pstatus);
+cache_inode_status_t
+cache_inode_truncate_impl(cache_entry_t *pentry,
+                          fsal_size_t length,
+                          fsal_attrib_list_t *pattr,
+                          cache_inode_client_t *pclient,
+                          fsal_op_context_t *pcontext,
+                          cache_inode_status_t *pstatus);
 cache_inode_status_t cache_inode_truncate(
      cache_entry_t *pentry,
      fsal_size_t length,
@@ -875,16 +904,16 @@ cache_inode_status_t cache_inode_truncate(
 
 cache_inode_status_t cache_inode_error_convert(fsal_status_t fsal_status);
 
-cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t *pfsdata,
-                                     fsal_attrib_list_t *pfsal_attr,
+cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
+                                     fsal_attrib_list_t *attr,
                                      cache_inode_file_type_t type,
                                      cache_inode_policy_t policy,
-                                     cache_inode_create_arg_t *pcreate_arg,
-                                     cache_entry_t *pentry_dir_prev,
-                                     cache_inode_client_t *pclient,
-                                     fsal_op_context_t *pcontext,
+                                     cache_inode_create_arg_t *create_arg,
+                                     cache_inode_client_t *client,
+                                     fsal_op_context_t *context,
                                      unsigned int flags,
-                                     cache_inode_status_t *pstatus);
+                                     cache_inode_status_t *status);
+
 cache_inode_status_t cache_inode_add_data_cache(cache_entry_t *pentry,
                                                 cache_inode_client_t *pclient,
                                                 fsal_op_context_t *pcontext,
@@ -965,7 +994,6 @@ cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
 cache_inode_file_type_t cache_inode_fsal_type_convert(fsal_nodetype_t type);
 int cache_inode_type_are_rename_compatible(cache_entry_t *pentry_src,
                                            cache_entry_t *pentry2);
-void cache_inode_mutex_destroy(cache_entry_t *pentry);
 void cache_inode_print_dir(cache_entry_t *cache_entry_root);
 
 cache_inode_status_t cache_inode_statfs(cache_entry_t *pentry,
@@ -983,15 +1011,14 @@ cache_inode_status_t cache_inode_add_avl(cache_entry_t *pentry,
 void cache_inode_release_dirents(cache_entry_t *pentry,
                                  cache_inode_client_t *pclient);
 
-cache_inode_status_t cache_inode_kill_entry(cache_entry_t *pentry,
-                                            cache_inode_lock_how_t lock_how,
-                                            cache_inode_client_t *pclient,
-                                            cache_inode_status_t *pstatus);
+cache_inode_status_t cache_inode_kill_entry(cache_entry_t *entry,
+                                            cache_inode_client_t *client,
+                                            cache_inode_status_t *status,
+                                            uint32_t flags);
 
-cache_inode_status_t cache_inode_invalidate(fsal_handle_t *pfsal_handle,
-                                            fsal_attrib_list_t *pattr,
-                                            cache_inode_client_t *pclient,
-                                            cache_inode_status_t *pstatus);
+cache_inode_status_t cache_inode_invalidate(fsal_handle_t *handle,
+                                            cache_inode_client_t *client,
+                                            cache_inode_status_t *status);
 
 cache_inode_gc_policy_t cache_inode_get_gc_policy(void);
 void cache_inode_set_gc_policy(cache_inode_gc_policy_t policy);
@@ -1219,5 +1246,73 @@ cache_inode_lock_trust_attrs(cache_entry_t *entry,
      }
 
      return cache_status;
+}
+
+/**
+ * \brief Atomically clear bits in a 32-bit integer
+ *
+ * This function is a wrapper around a GCC atomic primitive and
+ * clears bits in a thirty-two bit integer.
+ *
+ * @param var [in,out] Pointer to the integer to modify
+ * @param bits [in] Bits to clear, or'd together
+ */
+
+static inline void
+atomic_clear_int_bits(uint32_t *var,
+                      uint32_t bits)
+{
+     __sync_fetch_and_and(var, ~bits);
+}
+
+/**
+ * \brief Atomically set bits in a 32-bit integer
+ *
+ * This function is a wrapper around a GCC atomic primitive and
+ * sets bits in a thirty-two bit integer.
+ *
+ * @param var [in,out] Pointer to the integer to modify
+ * @param bits [in] Bits to set, or'd together
+ */
+
+static inline void
+atomic_set_int_bits(uint32_t *var,
+                    uint32_t bits)
+{
+     __sync_fetch_and_or(var, bits);
+}
+
+/**
+ * \brief Atomically clear bits in a 64-bit integer
+ *
+ * This function is a wrapper around a GCC atomic primitive and
+ * clears bits in a sixty-four bit integer.
+ *
+ * @param var [in,out] Pointer to the integer to modify
+ * @param bits [in] Bits to clear, or'd together
+ */
+
+static inline void
+atomic_clear_hyper_bits(uint64_t *var,
+                        uint64_t bits)
+{
+     __sync_fetch_and_and(var, ~bits);
+}
+
+/**
+ * \brief Atomically set bits in a 64-bit integer
+ *
+ * This function is a wrapper around a GCC atomic primitive and
+ * sets bits in a sixty-four bit integer.
+ *
+ * @param var [in,out] Pointer to the integer to modify
+ * @param bits [in] Bits to set, or'd together
+ */
+
+static inline void
+atomic_set_hyper_bits(uint64_t *var,
+                      uint64_t bits)
+{
+     __sync_fetch_and_or(var, bits);
 }
 #endif                          /*  _CACHE_INODE_H */

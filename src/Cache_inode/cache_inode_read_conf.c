@@ -253,21 +253,9 @@ cache_inode_status_t cache_inode_read_conf_client_parameter(config_file_t in_con
           return CACHE_INODE_INVALID_ARGUMENT;
         }
 
-      if(!strcasecmp(key_name, "LRU_Prealloc_PoolSize"))
-        {
-          pparam->lru_param.nb_entry_prealloc = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "LRU_Nb_Call_Gc_invalid"))
-        {
-          pparam->lru_param.nb_call_gc_invalid = atoi(key_value);
-        }
       else if(!strcasecmp(key_name, "Entry_Prealloc_PoolSize"))
         {
           pparam->nb_prealloc_entry = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "ParentData_Prealloc_PoolSize"))
-        {
-          pparam->nb_pre_parent = atoi(key_value);
         }
       else if(!strcasecmp(key_name, "State_v4_Prealloc_PoolSize"))
         {
@@ -418,14 +406,6 @@ cache_inode_status_t cache_inode_read_conf_gc_policy(config_file_t in_config,
           return CACHE_INODE_INVALID_ARGUMENT;
         }
 
-      if(!strcasecmp(key_name, "File_Lifetime"))
-        {
-          ppolicy->file_expiration_delay = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "Directory_Lifetime"))
-        {
-          ppolicy->directory_expiration_delay = atoi(key_value);
-        }
       else if(!strcasecmp(key_name, "NbEntries_HighWater"))
         {
           ppolicy->hwmark_nb_entries = atoi(key_value);
@@ -433,14 +413,6 @@ cache_inode_status_t cache_inode_read_conf_gc_policy(config_file_t in_config,
       else if(!strcasecmp(key_name, "NbEntries_LowWater"))
         {
           ppolicy->lwmark_nb_entries = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "Runtime_Interval"))
-        {
-          ppolicy->run_interval = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "Nb_Call_Before_GC"))
-        {
-          ppolicy->nb_call_before_gc = atoi(key_value);
         }
       else
         {
@@ -492,14 +464,8 @@ void cache_inode_print_conf_hash_parameter(FILE * output, cache_inode_parameter_
 void cache_inode_print_conf_client_parameter(FILE * output,
                                              cache_inode_client_parameter_t param)
 {
-  fprintf(output, "CacheInode Client: LRU_Prealloc_PoolSize        = %d\n",
-          param.lru_param.nb_entry_prealloc);
-  fprintf(output, "CacheInode Client: LRU_Nb_Call_Gc_invalid       = %d\n",
-          param.lru_param.nb_call_gc_invalid);
   fprintf(output, "CacheInode Client: Entry_Prealloc_PoolSize      = %d\n",
           param.nb_prealloc_entry);
-  fprintf(output, "CacheInode Client: ParentData_Prealloc_PoolSize = %d\n",
-          param.nb_pre_parent);
   fprintf(output, "CacheInode Client: Attr_Expiration_Time         = %d\n",
           (int)param.grace_period_attr);
   fprintf(output, "CacheInode Client: Symlink_Expiration_Time      = %d\n",
@@ -524,15 +490,8 @@ void cache_inode_print_conf_client_parameter(FILE * output,
  */
 void cache_inode_print_conf_gc_policy(FILE * output, cache_inode_gc_policy_t gcpolicy)
 {
-  fprintf(output, "Garbage Policy: File_Lifetime       = %d\n",
-          gcpolicy.file_expiration_delay);
-  fprintf(output, "Garbage Policy: Directory_Lifetime  = %d\n",
-          gcpolicy.directory_expiration_delay);
   fprintf(output, "Garbage Policy: NbEntries_HighWater = %d\n",
           gcpolicy.hwmark_nb_entries);
   fprintf(output, "Garbage Policy: NbEntries_LowWater  = %d\n",
           gcpolicy.lwmark_nb_entries);
-  fprintf(output, "Garbage Policy: Nb_Call_Before_GC   = %d\n",
-          gcpolicy.nb_call_before_gc);
-  fprintf(output, "Garbage Policy: Runtime_Interval    = %d\n", gcpolicy.run_interval);
 }                               /* cache_inode_print_gc_pol */

@@ -405,10 +405,10 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
       pentry_parent = data->current_entry;
 
       /* Parent must be a directory */
-      if((pentry_parent->internal_md.type != DIRECTORY))
+      if((pentry_parent->type != DIRECTORY))
         {
           /* Parent object is not a directory... */
-          if(pentry_parent->internal_md.type == SYMBOLIC_LINK)
+          if(pentry_parent->type == SYMBOLIC_LINK)
             res_OPEN4.status = NFS4ERR_SYMLINK;
           else
             res_OPEN4.status = NFS4ERR_NOTDIR;
@@ -485,8 +485,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                              &attr_newfile,
                                              data->pclient,
                                              data->pcontext,
-                                             &cache_status,
-                                             CACHE_INODE_FLAG_NONE);
+                                             &cache_status);
           if(cache_status != CACHE_INODE_NOT_FOUND)
             {
               /* if open is UNCHECKED, return NFS4_OK (RFC3530 page 172) */
@@ -582,12 +581,10 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
               if(arg_OPEN4.openhow.openflag4_u.how.mode == EXCLUSIVE4)
                 {
                   if((pentry_lookup != NULL)
-                     && (pentry_lookup->internal_md.type == REGULAR_FILE))
+                     && (pentry_lookup->type == REGULAR_FILE))
                     {
                       /* Acquire lock to enter critical section on
                          this entry */
-                      P_r(&pentry_lookup->lock);
-
                       glist_for_each(glist,
                                      &pentry_lookup->object.file.state_list)
                         {
@@ -645,7 +642,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                               if(status4 != NFS4_OK)
                                 {
                                   cause2 = text;
-                                  V_r(&pentry_lookup->lock);
                                   res_OPEN4.status = status4;
                                   goto out;
                                 }
@@ -663,14 +659,10 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                               pfile_state = pstate_iterate;
 
                               /* regular exit */
-                              V_r(&pentry_lookup->lock);
-                              ReuseState  = TRUE;
-                              pfile_state = pstate_iterate;
                               goto out_success;
                             }
                         }
 
-                      V_r(&pentry_lookup->lock);
                     }
                 }
 
@@ -772,8 +764,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                    &attr_newfile,
                                    data->pclient,
                                    data->pcontext,
-                                   &cache_status,
-                                   CACHE_INODE_FLAG_NONE)) == NULL)
+                                   &cache_status)) == NULL)
             {
                res_OPEN4.status = nfs4_Errno(cache_status);
                cause2 = " cache_inode_lookup";
@@ -781,14 +772,14 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
             }
 
           /* OPEN4 is to be done on a file */
-          if(pentry_newfile->internal_md.type != REGULAR_FILE)
+          if(pentry_newfile->type != REGULAR_FILE)
             {
-              if(pentry_newfile->internal_md.type == DIRECTORY)
+              if(pentry_newfile->type == DIRECTORY)
                 {
                   res_OPEN4.status = NFS4ERR_ISDIR;
                   goto out;
                 }
-              else if(pentry_newfile->internal_md.type == SYMBOLIC_LINK)
+              else if(pentry_newfile->type == SYMBOLIC_LINK)
                 {
                   res_OPEN4.status = NFS4ERR_SYMLINK;
                   goto out;
@@ -821,9 +812,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
             }
 #endif
 
-          /* Acquire lock to enter critical section on this entry */
-          P_r(&pentry_newfile->lock);
-
           /* Try to find if the same open_owner already has acquired a
              stateid for this file */
           glist_for_each(glist, &pentry_newfile->object.file.state_list)
@@ -853,7 +841,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                   if((pstate_iterate->state_data.share.share_access & OPEN4_SHARE_ACCESS_WRITE)
                      && (arg_OPEN4.share_deny & OPEN4_SHARE_DENY_WRITE))
                     {
-                      V_r(&pentry_newfile->lock);
                       res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                       cause2 = " (OPEN4_SHARE_DENY_WRITE)";
                       goto out;
@@ -871,7 +858,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                   OPEN4_SHARE_DENY_READ)
                  && (arg_OPEN4.share_access & OPEN4_SHARE_ACCESS_READ))
                 {
-                  V_r(&pentry_newfile->lock);
                   res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                   cause2 = " (OPEN4_SHARE_ACCESS_READ)";
                   goto out;
@@ -882,14 +868,11 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                   OPEN4_SHARE_DENY_WRITE)
                  && (arg_OPEN4.share_access & OPEN4_SHARE_ACCESS_WRITE))
                 {
-                  V_r(&pentry_newfile->lock);
                   res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                   cause2 = " (OPEN4_SHARE_ACCESS_WRITE)";
                   goto out;
                 }
             }
-
-          V_r(&pentry_newfile->lock);
 
           status4 = nfs4_do_open(op, data, pentry_newfile, pentry_parent,
               powner, &pfile_state, &filename, openflags, &text);
@@ -1276,14 +1259,10 @@ nfs4_create_fh(compound_data_t *data, cache_entry_t *pentry, char **cause2)
         cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
 
         newfh4.nfs_fh4_val = (caddr_t) &new_handle;
-	newfh4.nfs_fh4_len = sizeof(struct alloc_file_handle_v4);
+        newfh4.nfs_fh4_len = sizeof(struct alloc_file_handle_v4);
 
         /* Now produce the filehandle to this file */
-        if((pnewfsal_handle =
-            cache_inode_get_fsal_handle(pentry, &cache_status)) == NULL) {
-                *cause2 = " cache_inode_get_fsal_handle";
-                return nfs4_Errno(cache_status);
-        }
+        pnewfsal_handle = &pentry->handle;
 
         /* Building a new fh */
         if(!nfs4_FSALToFhandle(&newfh4, pnewfsal_handle, data)) {

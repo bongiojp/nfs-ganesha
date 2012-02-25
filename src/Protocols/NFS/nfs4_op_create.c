@@ -442,11 +442,7 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
     }                           /* switch( arg_CREATE4.objtype.type ) */
 
   /* Now produce the filehandle to this file */
-  if((pnewfsal_handle = cache_inode_get_fsal_handle(pentry_new, &cache_status)) == NULL)
-    {
-      res_CREATE4.status = nfs4_Errno(cache_status);
-      return res_CREATE4.status;
-    }
+  pnewfsal_handle = &pentry_new->handle;
 
   /* Allocation of a new file handle */
   if(nfs4_AllocateFH(&newfh4) != NFS4_OK)
@@ -536,7 +532,7 @@ int nfs4_op_create(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
       cache_inode_put(data->current_entry, data->pclient);
   }
   data->current_entry = pentry_new;
-  data->current_filetype = pentry_new->internal_md.type;
+  data->current_filetype = pentry_new->type;
 
   /* If you reach this point, then no error occured */
   res_CREATE4.status = NFS4_OK;

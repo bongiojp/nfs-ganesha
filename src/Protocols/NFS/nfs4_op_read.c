@@ -268,9 +268,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       /* Special stateid, no open state, check to see if any share conflicts */
       pstate_open = NULL;
 
-      /* Acquire lock to enter critical section on this entry */
-      P_r(&pentry->lock);
-
       /* Iterate through file's state to look for conflicts */
       glist_for_each(glist, &pentry->object.file.state_list)
         {
@@ -282,7 +279,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                 if(pstate_iterate->state_data.share.share_deny & OPEN4_SHARE_DENY_READ)
                   {
                     /* Reading from this file is prohibited, file is read-denied */
-                    V_r(&pentry->lock);
                     res_READ4.status = NFS4ERR_LOCKED;
                     LogDebug(COMPONENT_NFS_V4_LOCK,
                              "READ is denied by state %p",
@@ -308,8 +304,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                 break;
             }
         }
-      // TODO FSF: need to check against existing locks
-      V_r(&pentry->lock);
     }
 
   if (pstate_open == NULL)

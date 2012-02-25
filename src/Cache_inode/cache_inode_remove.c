@@ -82,71 +82,88 @@ cache_inode_status_t cache_inode_is_dir_empty_WithLock(cache_entry_t * pentry)
 {
      cache_inode_status_t status;
 
-     pthread_rwlock_rdlock(&pentry->object.dir.dir_lock);
+     pthread_rwlock_rdlock(&pentry->content_lock);
      status = cache_inode_is_dir_empty(pentry);
-     pthread_rwlock_unlock(&pentry->object.dir.dir_lock);
+     pthread_rwlock_unlock(&pentry->content_lock);
 
      return status;
 }                               /* cache_inode_is_dir_empty_WithLock */
 
 /**
- * cache_inode_clean_internal: remove a pentry from cache and all LRUs,
- *                             and release related resources.
+ * @brief Clean resources associated with entry
  *
- * @param pentry [IN] entry to be deleted from cache
- * @param hash_table_t [IN] The cache hash table
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
+ * This function frees the various resources associated wiith a cache
+ * entry.
+ *
+ * @param entry [in] Entry to be cleaned
+ * @param client [in,out] Structure for per-thread resource management
+ *
+ * @return CACHE_INODE_SUCCESS or various errors
  */
-cache_inode_status_t cache_inode_clean_internal(cache_entry_t * to_remove_entry,
-                                                cache_inode_client_t * pclient)
+cache_inode_status_t
+cache_inode_clean_internal(cache_entry_t *entry,
+                           cache_inode_client_t *client)
 {
-  fsal_handle_t *pfsal_handle_remove;
-  cache_inode_fsal_data_t fsaldata;
-  hash_buffer_t key, old_key, old_value;
-  int rc;
+     cache_inode_fsal_data_t fsaldata;
+     hash_buffer_t key, old_key, old_value;
+     int rc = 0;
 
-  memset((char *)&fsaldata, 0, sizeof( fsaldata ) ) ;
+     memset(&fsaldata, 0, sizeof(fsaldata));
 
-  pfsal_handle_remove = &to_remove_entry->handle;
+     /* delete the entry from the cache */
+     key.pdata = to_remove_entry->fh_desc.start;
+     key.len = to_remove_entry->fh_desc.len;
 
-  /* delete the entry from the cache */
-  key.pdata = to_remove_entry->fh_desc.start;
-  key.len = to_remove_entry->fh_desc.len;
-
-  /* use the key to delete the entry */
-  rc = HashTable_Del(fh_to_cache_entry_ht, &key, &old_key, &old_value);
-
-  if(rc)
-    LogCrit(COMPONENT_CACHE_INODE,
-            "HashTable_Del error %d in cache_inode_clean_internal", rc);
-
-  if((rc != HASHTABLE_SUCCESS) && (rc != HASHTABLE_ERROR_NO_SUCH_KEY))
-    {
-      return CACHE_INODE_INCONSISTENT_ENTRY;
-    }
-
-  /* release the key that was stored in hash table */
-  if(rc != HASHTABLE_ERROR_NO_SUCH_KEY)
-    {
-      /* return Hashtable (sentinel) reference */
-      cache_inode_lru_unref(to_remove_entry, pclient, LRU_FLAG_NONE);
-
-      /* Sanity check: old_value.pdata is expected to be equal to pentry,
-       * and is released later in this function */
-      if((cache_entry_t *) old_value.pdata != to_remove_entry ||
-	 ((cache_entry_t *)old_value.pdata)->fh_desc.start != (caddr_t)&(to_remove_entry->handle))
-        {
+     /* Nonexistence is as good as success. */
+     if ((rc != HASHTABLE_SUCCESS) &&
+         (rc != HASHTABLE_ERROR_NO_SUCH_KEY)) {
+          /* XXX this seems to logically prevent relcaiming the HashTable LRU
+           * reference, and it seems to indicate a very serious problem */
           LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_remove: unexpected pdata %p from hash table (pentry=%p)",
-                  old_value.pdata, to_remove_entry);
-        }
-    }
+                  "HashTable_Del error %d in cache_inode_clean_internal", rc);
+          cache_inode_release_fsaldata_key(&key, NULL);
+          return CACHE_INODE_INCONSISTENT_ENTRY;
+     }
 
-  /* Delete from the weakref table */
-  cache_inode_weakref_delete(&to_remove_entry->weakref);
+     /* Release the key that was stored in hash table */
+     if (rc != HASHTABLE_ERROR_NO_SUCH_KEY) {
+          cache_inode_release_fsaldata_key(&old_key, client);
+          assert((cache_entry_t*) old_value.pdata == entry);
+     }
 
-  return CACHE_INODE_SUCCESS;
-}                               /* cache_inode_clean_internal */
+     /* Delete from the weakref table */
+     cache_inode_weakref_delete(&entry->weakref);
+
+     /* If entry is datacached, remove it from the cache */
+     if (entry->type == REGULAR_FILE) {
+          cache_content_status_t cache_content_status = 0;
+
+          pthread_rwlock_wrlock(&entry->content_lock);
+
+          if (entry->object.file.pentry_content != NULL) {
+               if (cache_content_release_entry(
+                        (cache_content_entry_t *)
+                        entry->object.file.pentry_content,
+                        (cache_content_client_t *) client->pcontent_client,
+                        &cache_content_status)
+                   != CACHE_CONTENT_SUCCESS) {
+                    LogCrit(COMPONENT_CACHE_INODE,
+                            "Could not removed datacached entry for "
+                            "pentry %p", entry);
+               }
+          }
+          pthread_rwlock_unlock(&entry->content_lock);
+     }
+
+
+     if (entry->type == SYMBOLIC_LINK) {
+          pthread_rwlock_wrlock(&entry->content_lock);
+          cache_inode_release_symlink(entry, &client->pool_entry_symlink);
+          pthread_rwlock_unlock(&entry->content_lock);
+     }
+
+     return CACHE_INODE_SUCCESS;
+} /* cache_inode_clean_internal */
 
 /**
  *
@@ -200,7 +217,7 @@ cache_inode_status_t cache_inode_remove(cache_entry_t *pentry,
 
      /* Acquire the directory lock and remove the entry */
 
-     pthread_rwlock_wrlock(&pentry->object.dir.dir_lock);
+     pthread_rwlock_wrlock(&pentry->content_lock);
 
      cache_inode_remove_impl(pentry,
                              pnode_name,
@@ -312,8 +329,8 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
 
      /* Remove the entry from parent dir_entries avl */
      cache_inode_remove_cached_dirent(entry, name, client, status);
-     if (!(flags & CACHE_INODE_FLAG_DIR_HOLD)) {
-          pthread_rwlock_unlock(&entry->object.dir.dir_lock);
+     if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
+          pthread_rwlock_unlock(&entry->content_lock);
      }
 
      LogFullDebug(COMPONENT_CACHE_INODE,

@@ -175,7 +175,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
      }
 
      /* Acquire the directory entry lock */
-     pthread_rwlock_wrlock(&pentry_dir_dest->object.dir.dir_lock);
+     pthread_rwlock_wrlock(&pentry_dir_dest->content_lock);
      destdirlock = TRUE;
 
      /* Do the link at FSAL level */
@@ -225,7 +225,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
           goto out;
      }
 
-     pthread_rwlock_unlock(&pentry_dir_dest->object.dir.dir_lock);
+     pthread_rwlock_unlock(&pentry_dir_dest->content_lock);
      destdirlock = FALSE;
 
 out:
@@ -239,7 +239,7 @@ out:
      }
 
      if (destdirlock) {
-          pthread_rwlock_unlock(&pentry_dir_dest->object.dir.dir_lock);
+          pthread_rwlock_unlock(&pentry_dir_dest->content_lock);
      }
 
      /* stats */

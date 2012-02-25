@@ -48,6 +48,7 @@
 #include "cache_inode.h"
 #include "cache_inode_avl.h"
 #include "cache_inode_lru.h"
+#include "cache_inode_weakref.h"
 #include "cache_content.h"
 #include "stuff_alloc.h"
 #include "nfs4_acls.h"
@@ -189,514 +190,476 @@ int cache_inode_compare_key_fsal(hash_buffer_t * buff1, hash_buffer_t * buff2)
 
 /**
  *
- * cache_inode_set_time_current: set the fsal_time in a pentry struct to the current time.
+ * @brief Set the fsal_time in a pentry struct to the current time.
  *
- * Sets the fsal_time in a pentry struct to the current time. This function is using gettimeofday.
+ * Sets the fsal_time in a pentry struct to the current time. This
+ * function is using gettimeofday.
  *
- * @param ptime [OUT] pointer to time to be set 
+ * @param ptime [OUT] pointer to time to be set
  *
  * @return 0 if keys if successfully build, -1 otherwise
  *
- */ 
-int cache_inode_set_time_current( fsal_time_t * ptime )
+ */
+int cache_inode_set_time_current(fsal_time_t *ptime)
 {
   struct timeval t ;
 
-  if( ptime == NULL )
-    return -1 ;
+  if (ptime == NULL)
+    return -1;
 
-  if( gettimeofday( &t, NULL ) != 0 )
-    return -1 ;
+  if (gettimeofday(&t, NULL) != 0)
+    return -1;
 
-  ptime->seconds  = t.tv_sec ;
-  ptime->nseconds = 1000*t.tv_usec ;
+  ptime->seconds  = t.tv_sec;
+  ptime->nseconds = 1000*t.tv_usec;
 
-  return 0 ;
+  return 0;
 } /* cache_inode_set_time_current */
 
 
 /**
  *
- * cache_inode_new_entry: adds a new entry to the cache_inode.
+ * @brief Adds a new entry to the cache
  *
- * adds a new entry to the cache_inode. These function os used to allocate entries of any kind. Some
- * parameter are meaningless for some types or used for others.
+ * This funcion adds a new entry to the cache.  It will allocate
+ * entries of any kind.
  *
- * @param pfsdata [IN] FSAL data for the entry to be created (used to build the key)
- * @param pfsal_attr [in] attributes for the entry (unused if value == NULL). Used for caching.
- * @param type [IN] type of the entry to be created.
- * @param link_content [IN] if type == SYMBOLIC_LINK, this is the content of the link. Unused otherwise
- * @param pentry_dir_prev [IN] if type == DIR_CONTINUE, this is the previous entry in the dir_chain. Unused otherwise.
- * @param pclient [INOUT]ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials for the operation.
- * @param create_flag [IN] flags, eg, if the entry is newly created or not, require "extra" ref
- * @param pstatus [OUT] returned status.
+ * @param fsdata [IN] FSAL data for the entry to be created
+ * @param attr [IN] Attributes to be stored in the cache entry
+ *                  (may be NULL)
+ * @param type [IN] Type of entry to create
+ * @param polic [IN] Caching policy for this entry
+ * @param create_arg [IN] Type specific creation data
+ * @param client [IN,OUT] Structure for per-thread resource management
+ * @param context [IN] FSAL credentials
+ * @param flags [IN] Vary the function's operation (newly created
+ *                   object, extra ref, etc.)
+ * @param status [OUT] Returned status.
  *
- * @return the same as *pstatus
+ * @return the same as *status
  *
  */
-cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
-                                     fsal_attrib_list_t        * pfsal_attr,
-                                     cache_inode_file_type_t     type,
-                                     cache_inode_policy_t        policy,
-                                     cache_inode_create_arg_t  * pcreate_arg,
-                                     cache_entry_t             * pentry_dir_prev,
-                                     cache_inode_client_t      * pclient,
-                                     fsal_op_context_t         * pcontext,
-                                     unsigned int                flags,
-                                     cache_inode_status_t      * pstatus)
+cache_entry_t *
+cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
+                      fsal_attrib_list_t *attr,
+                      cache_inode_file_type_t type,
+                      cache_inode_policy_t policy,
+                      cache_inode_create_arg_t *create_arg,
+                      cache_inode_client_t *client,
+                      fsal_op_context_t *context,
+                      unsigned int flags,
+                      cache_inode_status_t *status)
 {
-  cache_entry_t *pentry = NULL;
-  hash_buffer_t probe_key, key, value;
-  fsal_attrib_list_t fsal_attributes;
-  fsal_status_t fsal_status;
-  int rc = 0;
-  off_t size_in_cache;
-  cache_content_status_t cache_content_status ;
-  fsal_handle_t file_handle;  /* biggest handle we will ever see. note: temp */
-  cache_inode_create_arg_t zero_create_arg;
-  void *htoken;
 
-  memset(&zero_create_arg, 0, sizeof(zero_create_arg));
+     cache_entry_t *entry = NULL;
+     hash_buffer_t key, value;
+     fsal_status_t fsal_status = {0, 0};
+     int rc = 0;
+     off_t size_in_cache = 0;
+     cache_content_status_t cache_content_status
+          = CACHE_CONTENT_SUCCESS;
+     void *htoken = NULL;
+     bool_t lrurefed = FALSE;
+     bool_t weakrefed = FALSE;
+     bool_t locksinited = FALSE;
+     bool_t typespec = FALSE;
 
-  if (pcreate_arg == NULL)
-    pcreate_arg = &zero_create_arg;
+     /* stats */
+     client->stat.nb_call_total++;
+     (client->stat.func_stats.nb_call[CACHE_INODE_NEW_ENTRY])++;
 
-  /* Set the return default to CACHE_INODE_SUCCESS */
-  *pstatus = CACHE_INODE_SUCCESS;
+     key.pdata = fsdata->fh_desc.start;
+     key.len = fsdata->fh_desc.len;
 
-  /* stats */
-  pclient->stat.nb_call_total++;
-  (pclient->stat.func_stats.nb_call[CACHE_INODE_NEW_ENTRY])++;
+     /* Check if the entry doesn't already exists */
+     if (HashTable_GetEx(fh_to_cache_entry_ht, &key, &value, &htoken)
+         == HASHTABLE_SUCCESS) {
+          /* Entry is already in the cache, do not add it */
+          entry = value.pdata;
+          *status = CACHE_INODE_ENTRY_EXISTS;
+          LogDebug(COMPONENT_CACHE_INODE,
+                   "cache_inode_new_entry: Trying to add an already existing "
+                   "entry. Found entry %p type: %d, New type: %d",
+                   entry, entry->type, type);
+          /* Conditionally take an extra reference */
+          if (flags & CACHE_INODE_FLAG_EXREF)
+               cache_inode_lru_ref(entry, client, LRU_FLAG_NONE);
+          /* Release the subtree hash table mutex acquired in
+             HashTable_GetEx */
+          HashTable_Release(fh_to_cache_entry_ht, htoken);
+          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+          goto out;
+     }
 
-  /* Turn the input to a hash key for probing */
-  probe_key.pdata = pfsdata->fh_desc.start;
-  probe_key.len = pfsdata->fh_desc.len;
+     /* Pull an entry off the LRU */
+     entry = cache_inode_lru_get(client, status, LRU_REQ_FLAG_REF);
+     if (entry == NULL) {
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "cache_inode_new_entry: cache_inode_lru_get failed");
+          *status = CACHE_INODE_MALLOC_ERROR;
+          (client->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
+          goto out;
+     }
+     assert(entry->lru.refcount == LRU_SENTINEL_REFCOUNT);
+     lrurefed = TRUE;
 
-/* cobble up a "handle" for the getattrs for now
- */
-  memset((caddr_t)&file_handle, 0, sizeof(file_handle));
-  memcpy((caddr_t)&file_handle, pfsdata->fh_desc.start, pfsdata->fh_desc.len);
+     memcpy(&entry->handle,
+            fsdata->fh_desc.start,
+            fsdata->fh_desc.len);
+#ifdef _USE_MFSL
+     entry->mobject.handle = entry->handle;
+#endif /* _USE_MFSL */
 
-  /* Check if the entry doesn't already exists */
-  if(HashTable_GetEx(fh_to_cache_entry_ht, &key, &value, &htoken)
-     == HASHTABLE_SUCCESS)
-    {
-      /* Entry is already in the cache, do not add it */
-      pentry = (cache_entry_t *) value.pdata;
-      *pstatus = CACHE_INODE_ENTRY_EXISTS;
+     /* Enroll the object in the weakref table */
 
-      LogDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Trying to add an already existing entry."
-               " Found entry %p type: %d, New type: %d",
-               pentry, pentry->internal_md.type, type);
+     entry->weakref =
+          cache_inode_weakref_insert(entry);
+     assert(entry->weakref.ptr != 0); /* A NULL pointer here would
+                                         indicate a programming
+                                         error, such as an old entry
+                                         not being unenrolled from
+                                         the table. */
+     weakrefed = TRUE;
 
-       /* conditionally take an extra reference */
-       if (flags & CACHE_INODE_FLAG_EXREF)
-            (void) cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
+     /* Initialize the entry locks */
+     if (((rc = pthread_rwlock_init(&entry->attr_lock, NULL)) != 0) ||
+         ((rc = pthread_rwlock_init(&entry->content_lock, NULL)) != 0)) {
+          /* Recycle */
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "cache_inode_new_entry: pthread_rwlock_init "
+                  "returned %d (%s)", rc, strerror(rc));
+          *status = CACHE_INODE_INIT_ENTRY_FAILED;
+          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+          goto out;
+     }
+     locksinited = TRUE;
 
-       /* Release the subtree hash table mutex acquired in
-          HashTable_GetEx */
-       HashTable_Release(fh_to_cache_entry_ht, htoken);
+     /* Initialize common fields */
 
-      /* stats */
-      (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+     entry->type = type;
+     entry->flags = 0;
+     entry->policy = policy;
 
-      return pentry;
-    }
+     /* Set the attributes*/
+     if(attr == NULL) {
+          /* This sets the two times and the trust flag, too. */
+          if (cache_inode_refresh_attrs(entry,
+                                        context,
+                                        client) !=
+              CACHE_INODE_SUCCESS) {
 
-  pentry = cache_inode_lru_get(pclient, pstatus, LRU_REQ_FLAG_REF);
-  if(pentry == NULL)
-    {
-      LogCrit(COMPONENT_CACHE_INODE,
-              "cache_inode_new_entry: cache inode get failed");
-      *pstatus = CACHE_INODE_MALLOC_ERROR;
+               /* Deconstruct the entry */
+               (client->stat.func_stats.
+                nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
+               goto out;
+          }
+     } else {
+          /* Use the supplied attributes and fix up metadata */
+          entry->attributes = *attr;
+          cache_inode_fixup_md(entry);
+     }
 
-      /* stats */
-      (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
+     switch (type) {
+     case REGULAR_FILE:
+          LogDebug(COMPONENT_CACHE_INODE,
+                   "cache_inode_new_entry: Adding a REGULAR_FILE, entry=%p "
+                   "policy=%u", entry, policy);
 
-      return NULL;
-    }
-  assert(pentry->lru.refcount == LRU_SENTINEL_REFCOUNT);
+          /* There is no File Content entry associated with this
+             cache entry */
+          entry->object.file.pentry_content = NULL;
+          /* No state.  This should be moved out of the union (for
+             directory delegations or similar.) */
+          init_glist(&entry->object.file.state_list);
+          /* No locks, yet. */
+          init_glist(&entry->object.file.lock_list);
+          if ((pthread_mutex_init(&entry->object.file.lock_list_mutex,
+                                  NULL)) != 0) {
+               LogCrit(COMPONENT_CACHE_INODE,
+                       "cache_inode_new_entry: pthread_mutex_init of "
+                       "lock_list_mutex returned %d (%s)", errno,
+                       strerror(errno));
+               *status = CACHE_INODE_INIT_ENTRY_FAILED;
+               /* stat */
+               (client->stat.func_stats
+                .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+               goto out;
+          }
 
-  memset(pentry, 0, sizeof(cache_entry_t));
+          entry->object.file.open_fd.fileno = 0; /* This is going away. */
+          entry->object.file.open_fd.openflags = 0;
+#ifdef _USE_MFSL
+          memset(&(pentry->object.file.open_fd.mfsl_fd), 0,
+                 sizeof(mfsl_file_t));
+#else /* !_USE_MFSL */
+          memset(&(entry->object.file.open_fd.fd), 0, sizeof(fsal_file_t));
+#endif /* !_USE_MFSL */
+          memset(&(entry->object.file.unstable_data), 0,
+                 sizeof(cache_inode_unstable_data_t));
+#ifdef _USE_PROXY
+          entry->object.file.pname = NULL;
+          entry->object.file.pentry_parent_open = NULL;
+#endif /* _USE_PROXY */
+          break;
 
-  if(rw_lock_init(&(pentry->lock)) != 0)
-    {
-      /* recycle */
-      cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+     case DIRECTORY:
+          LogDebug(COMPONENT_CACHE_INODE,
+                   "cache_inode_new_entry: Adding a DIRECTORY, entry=%p "
+                   "policy=%u", entry, policy);
 
-      LogCrit(COMPONENT_CACHE_INODE,
-              "cache_inode_new_entry: rw_lock_init returned %d (%s)",
-              errno, strerror(errno));
-      *pstatus = CACHE_INODE_INIT_ENTRY_FAILED;
+          /* If the directory is newly created, it is empty.  Because
+             we know its content, we consider it read. */
+          if (create_arg != NULL)
+               if (create_arg->dir_hint.newly_created != FALSE) {
+                    atomic_set_int_bits(&entry->flags,
+                                        CACHE_INODE_TRUST_CONTENT |
+                                        CACHE_INODE_DIR_POPULATED);
+               }
 
-      /* stats */
-      (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+          entry->object.dir.nbactive = 0;
+          entry->object.dir.referral = NULL;
+          /* init avl tree */
+          cache_inode_avl_init(entry);
+          break;
+     case SYMBOLIC_LINK:
+          LogDebug(COMPONENT_CACHE_INODE,
+                   "cache_inode_new_entry: Adding a SYMBOLIC_LINK pentry=%p "
+                   "policy=%u", entry, policy);
+          if (CACHE_INODE_KEEP_CONTENT(policy)) {
+               GetFromPool(entry->object.symlink, &client->pool_entry_symlink,
+                           cache_inode_symlink_t);
+               if (entry->object.symlink == NULL) {
+                    LogDebug(COMPONENT_CACHE_INODE,
+                             "Can't allocate entry symlink from symlink pool");
 
-      return NULL;
-    }
+                    *status = CACHE_INODE_MALLOC_ERROR;
+                    (client->stat.func_stats
+                     .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+                    goto out;
+               }
+               FSAL_pathcpy(&entry->object.symlink->content,
+                            &create_arg->link_content);
+          }
+          break;
 
-  /* Call FSAL to get information about the object if not provided.  If
-   * attributes are provided as pfsal_attr parameter, use them. Call
-   * FSAL_getattrs otherwise. */
-  if(pfsal_attr == NULL)
-    {
-       fsal_attributes.asked_attributes = pclient->attrmask;
-       fsal_status = FSAL_getattrs(&file_handle, pcontext, &fsal_attributes);
+     case SOCKET_FILE:
+     case FIFO_FILE:
+     case BLOCK_FILE:
+     case CHARACTER_FILE:
+          LogDebug(COMPONENT_CACHE_INODE,
+                   "cache_inode_new_entry: Adding a special file of type %d "
+                   "entry=%p policy=%u", type, entry, policy);
+          break;
 
-       if(FSAL_IS_ERROR(fsal_status))
-         {
-           cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+          /* Does this actually work/get called from anywhere? */
+     case FS_JUNCTION:
+          LogDebug(COMPONENT_CACHE_INODE,
+                   "cache_inode_new_entry: Adding a FS_JUNCTION pentry=%p "
+                   "policy=%u", entry, policy);
 
-           LogCrit(COMPONENT_CACHE_INODE,
-                   "cache_inode_new_entry: FSAL_getattrs failed for pentry "
-                   "= %p",
-                   pentry);
-           *pstatus = cache_inode_error_convert(fsal_status);
+          fsal_status = FSAL_lookupJunction(&fsdata->handle, context,
+                                            &entry->handle, NULL);
+          if (FSAL_IS_ERROR(fsal_status)) {
+               *status = cache_inode_error_convert(fsal_status);
+               LogMajor(COMPONENT_CACHE_INODE,
+                        "cache_inode_new_entry: FSAL_lookupJunction failed");
+               *status = CACHE_INODE_INIT_ENTRY_FAILED;
+               /* stat */
+               (client->stat.func_stats
+                .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+               goto out;
+          }
 
-           if(fsal_status.major == ERR_FSAL_STALE)
-             {
-                cache_inode_status_t kill_status;
+          /* Refresh again, since we may have a new handle now. */
+          if (cache_inode_refresh_attrs(entry,
+                                        context,
+                                        client) !=
+              CACHE_INODE_SUCCESS) {
 
-                LogCrit(COMPONENT_CACHE_INODE,
-                        "cache_inode_new_entry: Stale FSAL File Handle "
-                        "detected for pentry = %p",
-                        pentry);
+               LogMajor(COMPONENT_CACHE_INODE,
+                        "cache_inode_new_entry: Unable to get junction "
+                        "attributes ");
+               *status = CACHE_INODE_INIT_ENTRY_FAILED;
+               /* stat */
+               (client->stat.func_stats
+                .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
+               goto out;
+          }
 
-                /* XXXX fix LRU handling in kill_entry */
-                if(cache_inode_kill_entry(pentry,
-                                          NO_LOCK,
-                                          pclient,
-                                          &kill_status) != CACHE_INODE_SUCCESS)
-                    LogCrit(COMPONENT_CACHE_INODE,
-                            "cache_inode_new_entry: Could not kill entry %p, "
-                            "status = %u",
-                            pentry,
-                            kill_status);
-
-              }
-              /* stats */
-              (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
-
-              return NULL;
-         }
-    }
-  else
-    {
-      /* Use the provided attributes */
-      fsal_attributes = *pfsal_attr;
-    }
-
-  /* Init the internal metadata */
-#ifdef _USE_FSAL_UP
-  pentry->deleted = FALSE;
-#endif
-  pentry->internal_md.type = type;
-  pentry->policy = policy ;
-  memcpy(&pentry->handle,
-         pfsdata->fh_desc.start,
-         pfsdata->fh_desc.len);
-  pentry->fh_desc.start = (caddr_t)&pentry->handle;
-  pentry->fh_desc.len = pfsdata->fh_desc.len;
+          /* XXX Fake FS_JUNCTION into directory */
+          entry->type = DIRECTORY;
 
 #ifdef _USE_MFSL
-  pentry->mobject.handle = pentry->handle;
-#ifdef _USE_MFSL_PROXY
-  pentry->mobject.plock = &pentry->lock;
-#endif
+          pentry->mobject.handle = pentry->handle;
 #endif
 
-  switch (type)
-    {
-    case REGULAR_FILE:
-      LogMidDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Adding a REGULAR_FILE pentry=%p policy=%u",
-               pentry, policy );
-
-      init_glist(&pentry->object.file.state_list);  /* No associated states yet */
-      init_glist(&pentry->object.file.lock_list);   /* No associated locks yet */
-      if(pthread_mutex_init(&pentry->object.file.lock_list_mutex, NULL) != 0)
-        {
-          ReleaseToPool(pentry, &pclient->pool_entry);
-
-          LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_new_entry: pthread_mutex_init of lock_list_mutex returned %d (%s)",
-                  errno, strerror(errno));
-
-          *pstatus = CACHE_INODE_INIT_ENTRY_FAILED;
-
-          /* stat */
-          (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
-          return NULL;
-        }
-
-      break;
-
-    case DIRECTORY:
-      LogMidDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Adding a DIRECTORY pentry=%p policy=%u",
-               pentry, policy);
-
-      /* If directory is newly created, it is empty
-       * because we know its content, we consider it read */ 
-      pentry->object.dir.has_been_readdir = CACHE_INODE_NO;  /* default value */
-      if( pcreate_arg != NULL )
-        if( pcreate_arg->dir_hint.newly_created != FALSE )
-          pentry->object.dir.has_been_readdir = CACHE_INODE_YES ;
-
-      pentry->object.dir.nbactive = 0;
-      pentry->object.dir.referral = NULL;
-      /* init avl tree */
-      cache_inode_avl_init(pentry);
-      break;
-
-    case SYMBOLIC_LINK:
-      LogMidDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Adding a SYMBOLIC_LINK pentry=%p policy=%u",
-               pentry, policy );
-      GetFromPool(pentry->object.symlink, &pclient->pool_entry_symlink,
-                  cache_inode_symlink_t);
-      if(pentry->object.symlink == NULL)
-        {
-          LogDebug(COMPONENT_CACHE_INODE,
-                   "Can't allocate entry symlink from symlink pool");
+          atomic_clear_int_bits(&entry->flags,
+                                CACHE_INODE_TRUST_CONTENT |
+                                CACHE_INODE_DIR_POPULATED);
+          entry->object.dir.nbactive = 0;
+          entry->object.dir.referral = NULL;
+          /* Initalize AVL tree */
+          cache_inode_avl_init(entry);
           break;
-        }
-     if( CACHE_INODE_KEEP_CONTENT( policy ) )
-      {
-        fsal_status =
-            FSAL_pathcpy(&pentry->object.symlink->content, &pcreate_arg->link_content);
-        if(FSAL_IS_ERROR(fsal_status))
-         {
-             *pstatus = cache_inode_error_convert(fsal_status);
-             LogDebug(COMPONENT_CACHE_INODE,
-                      "cache_inode_new_entry: FSAL_pathcpy failed");
-             cache_inode_release_symlink(pentry, &pclient->pool_entry_symlink);
-             ReleaseToPool(pentry, &pclient->pool_entry);
-         }
-       }
-      break;
 
-    case SOCKET_FILE:
-      LogMidDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Adding a SOCKET_FILE pentry = %p",
-               pentry);
+     default:
+          /* Should never happen */
+          *status = CACHE_INODE_INCONSISTENT_ENTRY;
+          LogMajor(COMPONENT_CACHE_INODE,
+                   "cache_inode_new_entry: unknown type %u provided",
+                   type);
+          (client->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
+          goto out;
+     }
+     typespec = TRUE;
 
-      break;
+     /* Adding the entry in the cache */
+     value.pdata = (caddr_t) entry;
+     value.len = sizeof(cache_entry_t);
 
-    case FIFO_FILE:
-      LogMidDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Adding a FIFO_FILE pentry = %p",
-               pentry);
+     if((rc =
+         HashTable_Test_And_Set(fh_to_cache_entry_ht, &key, &value,
+                                HASHTABLE_SET_HOW_SET_NO_OVERWRITE))
+        != HASHTABLE_SUCCESS) {
+          LogWarn(COMPONENT_CACHE_INODE,
+                  "cache_inode_new_entry: entry could not be added to hash, "
+                  "rc=%d", rc);
+          if (rc != HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
+               *status = CACHE_INODE_HASH_SET_ERROR;
+               (client->stat.func_stats
+                .nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
+               goto out;
+          } else {
+               LogDebug(COMPONENT_CACHE_INODE,
+                        "cache_inode_new_entry: concurrency detected "
+                        "during cache insertion");
+               /* This situation occurs when several threads try to
+                * init the same uncached entry at the same time. The
+                * first creates the entry and the others got
+                * HASHTABLE_ERROR_KEY_ALREADY_EXISTS In this case, the
+                * already created entry (by the very first thread) is
+                * returned */
+               if ((rc = HashTable_Get(fh_to_cache_entry_ht, &key, &value))
+                   != HASHTABLE_SUCCESS ) {
+                    *status = CACHE_INODE_HASH_SET_ERROR;
+                    (client->stat.func_stats.
+                     nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
+                    goto out;
+               }
 
-      break;
+               /* conditionally take an extra reference */
+               if (flags & CACHE_INODE_FLAG_EXREF)
+                    cache_inode_lru_ref(entry, client, LRU_REQ_INITIAL);
 
-    case BLOCK_FILE:
-      LogMidDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Adding a BLOCK_FILE pentry=%p policy=%u",
-               pentry, policy);
+               entry = (cache_entry_t *) value.pdata;
+               *status = CACHE_INODE_SUCCESS;
+               goto out;
+          }
+     }
 
-      break;
-
-    case CHARACTER_FILE:
-      LogMidDebug(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: Adding a CHARACTER_FILE pentry=%p policy=%u",
-               pentry, policy);
-
-      break;
-
-    case FS_JUNCTION:
-        LogMidDebug(COMPONENT_CACHE_INODE,
-                 "cache_inode_new_entry: Adding a FS_JUNCTION pentry=%p policy=%u",
-                 pentry, policy);
-
-        fsal_status = FSAL_lookupJunction( &file_handle, pcontext,
-                                           &pentry->handle,
-                                           NULL);
-        fsal_status = FSAL_lookupJunction( &pfsdata->handle, pcontext,
-                                           &pentry->handle,
-                                           NULL);
-        if( FSAL_IS_ERROR( fsal_status ) )
-         {
-           *pstatus = cache_inode_error_convert(fsal_status);
-           LogDebug(COMPONENT_CACHE_INODE,
-                    "cache_inode_new_entry: FSAL_lookupJunction failed");
-           ReleaseToPool(pentry, &pclient->pool_entry);
-         }
-
-      fsal_attributes.asked_attributes = pclient->attrmask;
-      fsal_status = FSAL_getattrs( &pentry->handle, pcontext,
-                                   &fsal_attributes);
-      if( FSAL_IS_ERROR( fsal_status ) )
-         {
-           *pstatus = cache_inode_error_convert(fsal_status);
-           LogDebug(COMPONENT_CACHE_INODE,
-                    "cache_inode_new_entry: FSAL_getattrs on junction fh failed");
-           ReleaseToPool(pentry, &pclient->pool_entry);
-         }
-
-
-      /* XXX Fake FS_JUNCTION into directory */
-      pentry->internal_md.type = DIRECTORY;
-
-      pentry->object.dir.has_been_readdir = CACHE_INODE_NO;
-      pentry->object.dir.nbactive = 0;
-      pentry->object.dir.referral = NULL;
-      /* init avl tree */
-      cache_inode_avl_init(pentry);
-      break ;
-
-    default:
-      /* Should never happen */
-      *pstatus = CACHE_INODE_INCONSISTENT_ENTRY;
-      LogMajor(COMPONENT_CACHE_INODE,
-               "cache_inode_new_entry: unknown type %u provided",
-               type);
-      ReleaseToPool(pentry, &pclient->pool_entry);
-
-      /* stats */
-      (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
-
-      return NULL;
-    }
-
-
-  /* Adding the entry in the cache
-   * note we have the key point to the handle within the cache entry
-   * rather than allocating a cache_inode_data_t. the copy from the caller
-   * is done above in the init of the cache entry.
-   */
-  value.pdata = (caddr_t) pentry;
-  value.len = sizeof(cache_entry_t);
-  key.pdata = pentry->fh_desc.start;
-  key.len = pentry->fh_desc.len;
-
-  if((rc =
-      HashTable_Test_And_Set(fh_to_cache_entry_ht, &key, &value,
-                             HASHTABLE_SET_HOW_SET_NO_OVERWRITE))
-     != HASHTABLE_SUCCESS)
-    {
-      /* Put the entry back in its pool */
-      if (pentry->object.symlink)
-         cache_inode_release_symlink(pentry, &pclient->pool_entry_symlink);
-      ReleaseToPool(pentry, &pclient->pool_entry);
-      LogWarn(COMPONENT_CACHE_INODE,
-              "cache_inode_new_entry: entry could not be added to hash, rc=%d",
-              rc);
-
-      if( rc != HASHTABLE_ERROR_KEY_ALREADY_EXISTS )
-       {
-         *pstatus = CACHE_INODE_HASH_SET_ERROR;
-
-         /* stats */
-         (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
-
-         return NULL;
-       }
-     else
-      {
-        LogDebug(COMPONENT_CACHE_INODE,
-                 "cache_inode_new_entry: concurrency detected during cache insertion");
-
-        /* This situation occurs when several threads try to init the
-         * same uncached entry at the same time. The first creates the
-         * entry and the others got HASHTABLE_ERROR_KEY_ALREADY_EXISTS
-         * In this case, the already created entry (by the very first
-         * thread) is returned */
-        if( ( rc = HashTable_Get(fh_to_cache_entry_ht, &key, &value )
-        )
-            != HASHTABLE_SUCCESS )
-         {
-            *pstatus = CACHE_INODE_HASH_SET_ERROR ;
-            (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
-            return NULL ;
-         }
-
-        /* conditionally take an extra reference */
-        if (flags & CACHE_INODE_FLAG_EXREF)
-          cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
-
-        pentry = (cache_entry_t *) value.pdata ;
-        *pstatus = CACHE_INODE_SUCCESS ;
-        return pentry ;
-      }
-    }
-  /* Now that added as a new entry, init attribute. */
-  pentry->attributes = fsal_attributes;
-  /* conditionally take an extra reference */
-  if (flags & CACHE_INODE_FLAG_EXREF)
-    cache_inode_lru_ref(pentry, pclient, LRU_FLAG_NONE);
+     /* conditionally take an extra reference */
+     if (flags & CACHE_INODE_FLAG_EXREF)
+          cache_inode_lru_ref(entry, client, LRU_FLAG_NONE);
 
 
 #ifdef _USE_NFS4_ACL
-  LogDebug(COMPONENT_CACHE_INODE, "init_attributes: md_type=%d, acl=%p",
-           pentry->internal_md.type, pentry->attributes.acl);
+     LogDebug(COMPONENT_CACHE_INODE, "init_attributes: md_type=%d, acl=%p",
+              entry->internal_md.type, attr->acl);
 
   /* Bump up reference counter of new acl. */
-  if(pentry->attributes.acl)
-    nfs4_acl_entry_inc_ref(pentry->attributes.acl);
-#endif                          /* _USE_NFS4_ACL */
+     if(entry->attributes.acl)
+          nfs4_acl_entry_inc_ref(pentry->attributes.acl);
+#endif /* _USE_NFS4_ACL */
+     /* if entry is a REGULAR_FILE and has a related data cache entry
+        from a previous server instance that crashed, recover it */
 
-  /* if entry is a REGULAR_FILE and has a related data cache entry from a previous server instance that crashed, recover it */
-  /* This is done only when this is not a creation (when creating a new file, it is impossible to have it cached)           */
-  if(type == REGULAR_FILE && (! (flags & CACHE_INODE_FLAG_CREATE)))
-    {
-      cache_content_test_cached(pentry,
-                                (cache_content_client_t *) pclient->pcontent_client,
-                                pcontext, &cache_content_status);
+     /* This is done only when this is not a creation (when creating a
+        new file, it is impossible to have it cached)  */
+     if (type == REGULAR_FILE && (!(flags & CACHE_INODE_FLAG_CREATE))) {
+          cache_content_test_cached(entry,
+                                    (cache_content_client_t *)
+                                    client->pcontent_client,
+                                    context, &cache_content_status);
 
-      if(cache_content_status == CACHE_CONTENT_SUCCESS)
-        {
-          LogMidDebug(COMPONENT_CACHE_INODE,
-                   "cache_inode_new_entry: Entry %p is already datacached, recovering...",
-                   pentry);
+          if (cache_content_status == CACHE_CONTENT_SUCCESS) {
+               LogDebug(COMPONENT_CACHE_INODE,
+                        "cache_inode_new_entry: Entry %p is already "
+                        "datacached, recovering...", entry);
 
-          /* Adding the cached entry to the data cache */
-          if((pentry->object.file.pentry_content = cache_content_new_entry(pentry,
-                                                                           NULL,
-                                                                           (cache_content_client_t
-                                                                            *)
-                                                                           pclient->
-                                                                           pcontent_client,
-                                                                           RECOVER_ENTRY,
-                                                                           pcontext,
-                                                                           &cache_content_status))
-             == NULL)
-            {
-              LogCrit(COMPONENT_CACHE_INODE,
-                      "Error recovering cached data for pentry %p",
-                      pentry);
-            }
-          else
-            LogMidDebug(COMPONENT_CACHE_INODE,
-                     "Cached data added successfully for pentry %p",
-                     pentry);
+               /* Adding the cached entry to the data cache */
+               if ((entry->object.file.pentry_content
+                    = cache_content_new_entry(
+                         entry,
+                         NULL,
+                         (cache_content_client_t *) client->pcontent_client,
+                         RECOVER_ENTRY,
+                         context,
+                         &cache_content_status))
+                   == NULL) {
+                    LogCrit(COMPONENT_CACHE_INODE,
+                            "Error recovering cached data for pentry %p",
+                            entry);
+               } else {
+                    LogDebug(COMPONENT_CACHE_INODE,
+                             "Cached data added successfully for pentry %p",
+                             entry);
 
-          /* Recover the size from the data cache too... */
-          if((size_in_cache =
-              cache_content_get_cached_size((cache_content_entry_t *) pentry->object.
-                                            file.pentry_content)) == -1)
-            {
-              LogCrit(COMPONENT_CACHE_INODE,
-                      "Error when recovering size in cache for pentry %p",
-                      pentry);
-            }
-          else
-            pentry->attributes.filesize = (fsal_size_t) size_in_cache;
+                    /* Recover the size from the data cache too... */
+                    if ((size_in_cache =
+                         cache_content_get_cached_size(
+                              (cache_content_entry_t *)
+                              entry->object.file.pentry_content)) == -1) {
+                         LogCrit(COMPONENT_CACHE_INODE,
+                                 "Error when recovering size in cache "
+                                 "for entry %p", entry);
+                    } else {
+                         pthread_rwlock_wrlock(&entry->attr_lock);
+                         entry->attributes.filesize
+                              = (fsal_size_t) size_in_cache;
+                         pthread_rwlock_unlock(&entry->attr_lock);
+                    }
+               }
+          }
+     }
 
-        }
-    }
+     LogDebug(COMPONENT_CACHE_INODE,
+              "cache_inode_new_entry: New entry %p added", entry);
+     *status = CACHE_INODE_SUCCESS;
+     (client->stat.func_stats.nb_success[CACHE_INODE_NEW_ENTRY])++;
 
-  LogDebug(COMPONENT_CACHE_INODE,
-           "cache_inode_new_entry: New entry %p added",
-           pentry);
-  *pstatus = CACHE_INODE_SUCCESS;
+out:
+     if (status != CACHE_INODE_SUCCESS) {
+          /* Deconstruct the object */
+          if (typespec) {
+               switch (type) {
+               case REGULAR_FILE:
+                    pthread_mutex_destroy(&entry->object.file.lock_list_mutex);
+                    break;
+               case SYMBOLIC_LINK:
+                    cache_inode_release_symlink(entry,
+                                                &client->pool_entry_symlink);
+                    break;
 
-  /* stats */
-  (pclient->stat.func_stats.nb_success[CACHE_INODE_NEW_ENTRY])++;
+               default:
+                    break;
+               }
+          }
+          if (locksinited) {
+               pthread_rwlock_destroy(&entry->attr_lock);
+               pthread_rwlock_destroy(&entry->content_lock);
+          }
+          if (weakrefed) {
+               cache_inode_weakref_delete(&entry->weakref);
+          }
+          if (lrurefed) {
+               cache_inode_lru_unref(entry, client, LRU_FLAG_NONE);
+          }
+          if (*status != CACHE_INODE_ENTRY_EXISTS) {
+               entry = NULL;
+          }
+     }
 
-  return pentry;
+     return entry;
 }                               /* cache_inode_new_entry */
 
 /**
@@ -712,7 +675,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t   * pfsdata,
  */
 cache_inode_status_t cache_inode_clean_entry(cache_entry_t * pentry)
 {
-  pentry->internal_md.type = RECYCLED;
+  pentry->type = RECYCLED;
   return CACHE_INODE_SUCCESS;
 }
 
@@ -906,9 +869,9 @@ int cache_inode_type_are_rename_compatible(cache_entry_t * pentry_src,
                                            cache_entry_t * pentry_dest)
 {
   /* TRUE is both entries are non directories or to directories and the second is empty */
-  if(pentry_src->internal_md.type == DIRECTORY)
+  if(pentry_src->type == DIRECTORY)
     {
-      if(pentry_dest->internal_md.type == DIRECTORY)
+      if(pentry_dest->type == DIRECTORY)
         {
           if(cache_inode_is_dir_empty(pentry_dest) == CACHE_INODE_SUCCESS)
             return TRUE;
@@ -921,28 +884,12 @@ int cache_inode_type_are_rename_compatible(cache_entry_t * pentry_src,
   else
     {
       /* pentry_src is not a directory */
-      if(pentry_dest->internal_md.type == DIRECTORY)
+      if(pentry_dest->type == DIRECTORY)
         return FALSE;
       else
         return TRUE;
     }
 }                               /* cache_inode_type_are_rename_compatible */
-
-/**
- *
- * cache_inode_mutex_destroy: destroys the pthread_mutex associated with a pentry when it is put back to the spool.
- *
- * Destroys the pthread_mutex associated with a pentry when it is put back to the spool
- *
- * @param pentry [INOUT] the input pentry.
- *
- * @return nothing (void function)
- *
- */
-void cache_inode_mutex_destroy(cache_entry_t * pentry)
-{
-  rw_lock_destroy(&pentry->lock);
-}                               /* cache_inode_mutex_destroy */
 
 /**
  *
@@ -962,7 +909,7 @@ void cache_inode_print_dir(cache_entry_t * cache_entry_root)/* release internal 
   cache_inode_dir_entry_t *dirent;
   int i = 0;
 
-  if(cache_entry_root->internal_md.type != DIRECTORY)
+  if(cache_entry_root->type != DIRECTORY)
     {
       LogDebug(COMPONENT_CACHE_INODE,
                    "This entry is not a directory");
@@ -972,12 +919,13 @@ void cache_inode_print_dir(cache_entry_t * cache_entry_root)/* release internal 
   dirent_node = avltree_first(&cache_entry_root->object.dir.avl);
   do {
       dirent = avltree_container_of(dirent_node, cache_inode_dir_entry_t,
-				    node_hk);
+                                    node_hk);
       LogFullDebug(COMPONENT_CACHE_INODE,
-		   "Name = %s, DIRECTORY entry = %p, i=%d",
-		   dirent->name.name,
-		   dirent->pentry,
-		   i);
+                   "Name = %s, DIRECTORY entry = (%p, %"PRIu64") i=%d",
+                   dirent->name.name,
+                   dirent->entry.ptr,
+                   dirent->entry.gen,
+                   i);
       i++;
   } while ((dirent_node = avltree_next(dirent_node)));
 
@@ -1006,7 +954,7 @@ cache_inode_status_t cache_inode_dump_content(char *path, cache_entry_t * pentry
 
   char buff[CACHE_INODE_DUMP_LEN];
 
-  if(pentry->internal_md.type != REGULAR_FILE)
+  if(pentry->type != REGULAR_FILE)
     return CACHE_INODE_BAD_TYPE;
 
   /* Open the index file */
@@ -1049,7 +997,7 @@ cache_inode_status_t cache_inode_reload_content(char *path, cache_entry_t * pent
     return CACHE_INODE_INVALID_ARGUMENT;
 
   /* The entry is a file (only file inode are dumped), in state VALID for the gc (not garbageable) */
-  pentry->internal_md.type = REGULAR_FILE;
+  pentry->type = REGULAR_FILE;
 
   /* BUG: what happens if the fscanf's fail? */
   /* Read the information */
@@ -1111,7 +1059,7 @@ void cache_inode_release_symlink(cache_entry_t * pentry,
                                  struct prealloc_pool *pool)
 {
     assert(pentry);
-    assert(pentry->internal_md.type == SYMBOLIC_LINK);
+    assert(pentry->type == SYMBOLIC_LINK);
     if (pentry->object.symlink)
      {
         ReleaseToPool(pentry->object.symlink, pool);
@@ -1134,9 +1082,8 @@ void cache_inode_release_symlink(cache_entry_t * pentry,
  * @return  (void)
  *
  */
-void cache_inode_release_dirents( cache_entry_t           * pentry,
-                                  cache_inode_client_t    * pclient,
-                                  cache_inode_avl_which_t   which)
+void cache_inode_release_dirents(cache_entry_t           * pentry,
+                                 cache_inode_client_t    * pclient)
 {
     struct avltree_node     * dirent_node      = NULL ;
     struct avltree_node     * next_dirent_node = NULL ;
@@ -1144,41 +1091,24 @@ void cache_inode_release_dirents( cache_entry_t           * pentry,
     cache_inode_dir_entry_t * dirent           = NULL ;
 
     /* Won't see this */
-    if( pentry->internal_md.type != DIRECTORY )
+    if (pentry->type != DIRECTORY)
         return;
 
-    switch( which )
-    {
-       case CACHE_INODE_AVL_NAMES:
-         tree = &pentry->object.dir.avl;
-         dirent_node = avltree_first(tree);
+    tree = &pentry->object.dir.avl;
+    dirent_node = avltree_first(tree);
 
-         while( dirent_node )
-           {
-             next_dirent_node = avltree_next(dirent_node);
-             dirent = avltree_container_of( dirent_node,
-                                            cache_inode_dir_entry_t,
-                                            node_hk);
-             avltree_remove(dirent_node, tree);
-             cache_inode_lru_unref(dirent->pentry,
-                                   pclient,
-                                   LRU_FLAG_NONE); /* internal ref */
-             ReleaseToPool(dirent, &pclient->pool_dir_entry);
-             dirent_node = next_dirent_node;
-           }
-
-        pentry->object.dir.nbactive = 0;
-        break;
-
-    case CACHE_INODE_AVL_BOTH:
-      cache_inode_release_dirents(pentry, pclient, CACHE_INODE_AVL_NAMES);
-      /* tree == NULL */
-      break;
-
-    default:
-      /* tree == NULL */
-      break;
+    while(dirent_node) {
+        next_dirent_node = avltree_next(dirent_node);
+        dirent = avltree_container_of(dirent_node,
+                                      cache_inode_dir_entry_t,
+                                      node_hk);
+        avltree_remove(dirent_node, tree);
+        ReleaseToPool(dirent, &pclient->pool_dir_entry);
+        dirent_node = next_dirent_node;
     }
+
+    pentry->object.dir.nbactive = 0;
+    atomic_clear_int_bits(&pentry->flags, CACHE_INODE_DIR_POPULATED);
 }
 
 /**
@@ -1199,7 +1129,7 @@ inline unsigned int cache_inode_file_holds_state( cache_entry_t * pentry )
   if( pentry == NULL )
    return FALSE ;
 
-  if( pentry->internal_md.type != REGULAR_FILE )
+  if( pentry->type != REGULAR_FILE )
    return FALSE ;
 
    /* if locks are held in the file, do not close */
@@ -1355,17 +1285,16 @@ cache_inode_check_trust(cache_entry_t *entry,
                         cache_inode_client_t *client)
 {
      time_t current_time = 0;
-     cache_inode_status_t pstatus = CACHE_INODE_SUCCESS;
-     time_t attr_time = entry->attr_time;
-     time_t change_time = entry->change_time;
+     cache_inode_status_t status = CACHE_INODE_SUCCESS;
      time_t oldmtime = 0;
+     fsal_status_t fsal_status = {0, 0};
 
-     if ((type == FS_JUNCTION) ||
-         (type == UNASSIGNED) ||
-         (type == RECYCLED)) {
+     if ((entry->type == FS_JUNCTION) ||
+         (entry->type == UNASSIGNED) ||
+         (entry->type == RECYCLED)) {
           LogCrit(COMPONENT_CACHE_INODE,
                   "cache_inode_check_attrs called on file %p of bad type %d",
-                  entry, entry->internal_md.type);
+                  entry, entry->type);
 
           status = CACHE_INODE_BAD_TYPE;
           goto out;
@@ -1378,22 +1307,22 @@ cache_inode_check_trust(cache_entry_t *entry,
 
      /* Do we need a refresh? */
      if (((client->expire_type_attr == CACHE_INODE_EXPIRE_NEVER) ||
-          (attr_time - entry_time < client->grace_period_attr)) &&
+          (current_time - entry->attr_time < client->grace_period_attr)) &&
          (entry->flags & CACHE_INODE_TRUST_ATTRS) &&
          !((client->getattr_dir_invalidation) && (entry->type == DIRECTORY))) {
           goto unlock;
      }
 
-     pthread_rwlock_unlock(&entry->interior_md.attr_lock);
+     pthread_rwlock_unlock(&entry->attr_lock);
 
      /* Update the atributes */
-     pthread_rwlock_wrlock(&entry->interior_md.attr_lock);
+     pthread_rwlock_wrlock(&entry->attr_lock);
      current_time = time(NULL);
 
      /* Make sure no one else has first */
      if (((client->expire_type_attr == CACHE_INODE_EXPIRE_NEVER) ||
-          (attr_time - entry_time < client->grace_period_attr)) &&
-         (entry->flags & CACHE_INODE_TRUST_ATTRS)
+          (current_time - entry->attr_time < client->grace_period_attr)) &&
+         (entry->flags & CACHE_INODE_TRUST_ATTRS) &&
          !((client->getattr_dir_invalidation) && (entry->type == DIRECTORY))) {
           goto unlock;
      }
@@ -1403,36 +1332,33 @@ cache_inode_check_trust(cache_entry_t *entry,
           goto unlock;
      }
 
-     attrtime = entry->attr_time;
-     change_time = entry->change_time;
-     type = entry->internal_md.type;
-
      if ((entry->type == SYMBOLIC_LINK &&
-          pclient->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
-          ((current_time - entry_time >= pclient->grace_period_link))) ||
-         !(entry->internal_md.flag & CACHE_INODE_TRUST_CONTENT)) {
-          pthread_rwlock_wrlock(pentry->object.symlink->sym_lock);
-          pthread_rwlock_unlock(pentry->object.attrlock);
+          client->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
+          ((current_time - entry->change_time >=
+            client->grace_period_link))) ||
+         !(entry->flags & CACHE_INODE_TRUST_CONTENT)) {
+          pthread_rwlock_wrlock(&entry->content_lock);
+          pthread_rwlock_unlock(&entry->attr_lock);
 
-          assert(pentry->object.symlink);
+          assert(entry->object.symlink);
 
           fsal_status = FSAL_readlink(&entry->handle,
                                       context,
                                       &entry->object.symlink->content,
                                       NULL);
-          if (FSAL_IS_ERROR) {
-               cache_status = cache_inode_error_convert(fsal_status);
+
+          if (FSAL_IS_ERROR(fsal_status)) {
+              status = cache_inode_error_convert(fsal_status);
           }
-
-          pthread_rwlock(unlock(pentry->object.symlink->sym_lock));
+          pthread_rwlock_unlock(&entry->content_lock);
           goto out;
-     } else if ((type == DIRECTORY) &&
+     } else if ((entry->type == DIRECTORY) &&
                 (oldmtime < entry->attributes.mtime.seconds)) {
-          pthread_rwlock_wrlock(pentry->object.dir.dir_lock);
-          pthread_rwlock_unlock(pentry->object.attr_lock);
+          pthread_rwlock_wrlock(&entry->content_lock);
+          pthread_rwlock_unlock(&entry->attr_lock);
 
-          entry->flags &= ~(CACHE_INODE_TRUST_CONTENT |
-                            CACHE_INODE_DIR_POPULATED);
+          atomic_clear_int_bits(&entry->flags, CACHE_INODE_TRUST_CONTENT |
+                                CACHE_INODE_DIR_POPULATED);
 
           if (cache_inode_invalidate_all_cached_dirent(entry, client,
                                                        &status)
@@ -1443,13 +1369,13 @@ cache_inode_check_trust(cache_entry_t *entry,
                        cache_inode_err_str(status));
           }
 
-          pthread_rwlock_unlock(pentry->object.dir.dir_lock);
+          pthread_rwlock_unlock(&entry->content_lock);
           goto out;
      }
 
 unlock:
 
-     pthread_rwlock_unlock(entry->attr_lock);
+     pthread_rwlock_unlock(&entry->attr_lock);
 
 out:
      return status;

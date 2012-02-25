@@ -179,16 +179,17 @@ int nfs_Lookup(nfs_arg_t * parg,
      CACHE_INODE_SUCCESS)
     {
       /* BUGAZOMEU: Faire la gestion des cross junction traverse */
-      if((pentry_file = cache_inode_valid_lookup( pentry_dir,
-                                                  &name,
-                                                  pexport->cache_inode_policy,
-                                                  &attr,
-                                                  pclient,
-                                                  pcontext,
-                                                  &cache_status)) != NULL)
+      if((pentry_file
+          = cache_inode_lookup(pentry_dir,
+                               &name,
+                               pexport->cache_inode_policy,
+                               &attr,
+                               pclient,
+                               pcontext,
+                               &cache_status)) != NULL)
         {
           /* Do not forget cross junction management */
-          pfsal_handle = cache_inode_get_fsal_handle(pentry_file, &cache_status);
+          pfsal_handle = &pentry_file->handle;
           if(cache_status == CACHE_INODE_SUCCESS)
             {
               switch (preq->rq_vers)
@@ -263,8 +264,6 @@ int nfs_Lookup(nfs_arg_t * parg,
             }                   /* if( cache_status == CACHE_INODE_SUCCESS ) */
         }                       /* if( ( pentry_file = cache_inode_lookup... */
     }
-
-  /* if( ( cache_status = cache_inode_error_convert... */
 
   if(cache_status != CACHE_INODE_SUCCESS)
     {

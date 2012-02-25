@@ -59,33 +59,32 @@
 #include <assert.h>
 
 /**
+ * @brief Set the attributes for an entry located in the cache by its address.
  *
- * cache_inode_setattrs: set the attributes for an entry located in the cache by its address. 
- * 
- * Sets the attributes for an entry located in the cache by its address. Attributes are provided 
- * with compliance to the underlying FSAL semantics. Attributes that are set are returned in "*pattr".
+ * Sets the attributes for an entry located in the cache by its
+ * address. Attributes are provided with compliance to the underlying
+ * FSAL semantics. Attributes that are set are returned in "*pattr".
  *
- * @param pentry_parent [IN] entry for the parent directory to be managed.
- * @param pattr [INOUT] attributes for the entry that we have found. Out: attributes set.
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials
- * @param pstatus [OUT] returned status.
+ * @param pentry [in] Entry whose attributes are to be set
+ * @param pattr [in,out] Attributes to set/result of set
+ * @param pclient [in,out] Structure for per-thread resource
+ *                         management
+ * @param pcontext [in] FSAL credentials
+ * @param pstatus [out] returned status
  *
  * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when validating the entry
- *
+ * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ *         validating the entry
  */
-cache_inode_status_t cache_inode_setattr(cache_entry_t * pentry,
-                                         fsal_attrib_list_t * pattr,
-                                         cache_inode_client_t * pclient,
-                                         fsal_op_context_t * pcontext,
-                                         cache_inode_status_t * pstatus)
+
+cache_inode_status_t
+cache_inode_setattr(cache_entry_t *pentry,
+                    fsal_attrib_list_t *pattr,
+                    cache_inode_client_t *pclient,
+                    fsal_op_context_t *pcontext,
+                    cache_inode_status_t *pstatus)
 {
-  fsal_handle_t *pfsal_handle = NULL;
-  fsal_status_t fsal_status;
-  fsal_attrib_list_t *p_object_attributes = NULL;
-  fsal_attrib_list_t result_attributes;
-  fsal_attrib_list_t truncate_attributes;
+  fsal_status_t fsal_status = {0, 0};
 
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
@@ -94,200 +93,62 @@ cache_inode_status_t cache_inode_setattr(cache_entry_t * pentry,
   pclient->stat.nb_call_total += 1;
   pclient->stat.func_stats.nb_call[CACHE_INODE_SETATTR] += 1;
 
-  /* Lock the entry */
-  P_w(&pentry->lock);
-
-  if((pentry->internal_md.type == UNASSIGNED) ||
-     (pentry->internal_md.type == RECYCLED))
+  if ((pentry->type == UNASSIGNED) ||
+      (pentry->type == RECYCLED))
     {
       LogCrit(COMPONENT_CACHE_INODE,
-              "WARNING: unknown source pentry type: internal_md.type=%d, line %d in file %s",
-              pentry->internal_md.type, __LINE__, __FILE__);
-      V_w(&pentry->lock);
+              "WARNING: unknown source pentry type: type=%d, "
+              "line %d in file %s", pentry->type, __LINE__, __FILE__);
       *pstatus = CACHE_INODE_BAD_TYPE;
       return *pstatus;
     }
-  pfsal_handle = &pentry->handle;
 
-  /* Call FSAL to set the attributes */
-  /* result_attributes.asked_attributes = pattr->asked_attributes ; */
+  if ((pattr->asked_attributes & FSAL_ATTR_SIZE) &&
+      (pentry->type != REGULAR_FILE)) {
+    LogMajor(COMPONENT_CACHE_INODE,
+             "Attempt to truncate non-regular file: type=%d",
+             pentry->type);
+    *pstatus = CACHE_INODE_BAD_TYPE;
+  }
 
-  /* mod Th.Leibovici on 2006/02/13
-   * We ask back all standard attributes, in case they have been modified
-   * by another program (pftp, rcpd...)
-   */
+  pthread_rwlock_wrlock(&pentry->attr_lock);
+  if(pattr->asked_attributes & FSAL_ATTR_SIZE)
+    {
+      fsal_status = FSAL_truncate(&pentry->handle,
+                                  pcontext, pattr->filesize,
+                                  NULL, NULL);
+      if(FSAL_IS_ERROR(fsal_status))
+        {
+          *pstatus = cache_inode_error_convert(fsal_status);
+          pthread_rwlock_wrlock(&pentry->attr_lock);
 
-  memset(&result_attributes, 0, sizeof(fsal_attrib_list_t));
-  result_attributes.asked_attributes = pclient->attrmask;
-  /* end of mod */
+          /* stat */
+          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR] += 1;
+          return *pstatus;
+        }
+    }
 
+  cache_inode_prep_attrs(pentry, pclient);
 #ifdef _USE_MFSL
   fsal_status =
       MFSL_setattrs(&pentry->mobject, pcontext, &pclient->mfsl_context, pattr,
-                    &result_attributes, NULL);
+                    &pentry->attributes, NULL);
 #else
-  fsal_status = FSAL_setattrs(pfsal_handle, pcontext, pattr, &result_attributes);
+  fsal_status = FSAL_setattrs(&pentry->handle, pcontext, pattr,
+                              &pentry->attributes);
 #endif
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
-      V_w(&pentry->lock);
-
+      pthread_rwlock_unlock(&pentry->attr_lock);
       /* stat */
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR] += 1;
-
-      if(fsal_status.major == ERR_FSAL_STALE)
-        {
-          cache_inode_status_t kill_status;
-
-          LogEvent(COMPONENT_CACHE_INODE,
-                   "cache_inode_setattr: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                   pentry, fsal_status.major, fsal_status.minor);
-
-          if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
-             CACHE_INODE_SUCCESS)
-            LogCrit(COMPONENT_CACHE_INODE,
-                    "cache_inode_setattr: Could not kill entry %p, status = %u",
-                    pentry, kill_status);
-
-          *pstatus = CACHE_INODE_FSAL_ESTALE;
-        }
-
       return *pstatus;
     }
-
-  if(pattr->asked_attributes & FSAL_ATTR_SIZE)
-    {
-      truncate_attributes.asked_attributes = pclient->attrmask;
-
-      fsal_status = FSAL_truncate(pfsal_handle,
-                                  pcontext, pattr->filesize, NULL, &truncate_attributes);
-      if(FSAL_IS_ERROR(fsal_status))
-        {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          V_w(&pentry->lock);
-
-          /* stat */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR] += 1;
-
-          if(fsal_status.major == ERR_FSAL_STALE)
-            {
-              cache_inode_status_t kill_status;
-
-              LogEvent(COMPONENT_CACHE_INODE,
-                       "cache_inode_setattr: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                       pentry,fsal_status.major, fsal_status.minor );
-
-              if(cache_inode_kill_entry(pentry, NO_LOCK, pclient, &kill_status) !=
-                 CACHE_INODE_SUCCESS)
-                LogCrit(COMPONENT_CACHE_INODE,
-                        "cache_inode_setattr: Could not kill entry %p, status = %u",
-                        pentry, kill_status);
-
-              *pstatus = CACHE_INODE_FSAL_ESTALE;
-            }
-
-          return *pstatus;
-        }
-
-    }
-
-  /* Keep the new attribute in cache */
-  p_object_attributes = &(pentry->attributes);
-
-  /* Update the cached attributes */
-  if((result_attributes.asked_attributes & FSAL_ATTR_SIZE) ||
-     (result_attributes.asked_attributes & FSAL_ATTR_SPACEUSED))
-    {
-
-      if(pentry->internal_md.type == REGULAR_FILE)
-        {
-          if(pentry->object.file.pentry_content == NULL)
-            {
-              /* Operation on a non data cached file */
-              /* we are always returning size now per change above */
-              /* if size is requested, use the truncate returned attribute */
-              /* otherwise, use the setattr returned attribute */
-              if(pattr->asked_attributes & FSAL_ATTR_SIZE)
-              {
-                 p_object_attributes->filesize = truncate_attributes.filesize;
-                 p_object_attributes->spaceused = truncate_attributes.filesize;
-              }
-              else
-              {
-                 p_object_attributes->filesize = result_attributes.filesize;
-                 p_object_attributes->spaceused = result_attributes.filesize;
-              }
-            }
-          else
-            {
-              /* Data cached file */
-              /* Do not set the p_object_attributes->filesize and p_object_attributes->spaceused  in this case 
-               * This will lead to a situation where (for example) untar-ing a file will produced invalid files 
-               * with a size of 0 despite the fact that they are not empty */
-
-              LogMidDebug(COMPONENT_CACHE_INODE,
-                           "cache_inode_setattr with FSAL_ATTR_SIZE on data cached entry");
-            }
-        }
-      else if(pattr->asked_attributes & FSAL_ATTR_SIZE)
-        LogCrit(COMPONENT_CACHE_INODE,
-                "WARNING !!! cache_inode_setattr tried to set size on a non REGULAR_FILE type=%d",
-                pentry->internal_md.type);
-    }
-
-  if(result_attributes.asked_attributes &
-     (FSAL_ATTR_MODE | FSAL_ATTR_OWNER | FSAL_ATTR_GROUP))
-    {
-      if(result_attributes.asked_attributes & FSAL_ATTR_MODE)
-        p_object_attributes->mode = result_attributes.mode;
-
-      if(result_attributes.asked_attributes & FSAL_ATTR_OWNER)
-        p_object_attributes->owner = result_attributes.owner;
-
-      if(result_attributes.asked_attributes & FSAL_ATTR_GROUP)
-        p_object_attributes->group = result_attributes.group;
-    }
-
-  if(result_attributes.asked_attributes &
-     (FSAL_ATTR_ATIME | FSAL_ATTR_CTIME | FSAL_ATTR_MTIME))
-    {
-      if(result_attributes.asked_attributes & FSAL_ATTR_ATIME)
-        p_object_attributes->atime = result_attributes.atime;
-
-      if(result_attributes.asked_attributes & FSAL_ATTR_CTIME)
-        p_object_attributes->ctime = result_attributes.ctime;
-
-      if(result_attributes.asked_attributes & FSAL_ATTR_MTIME)
-        p_object_attributes->mtime = result_attributes.mtime;
-    }
-  
-#ifdef _USE_NFS4_ACL
-  if(result_attributes.asked_attributes & FSAL_ATTR_ACL)
-    {
-      LogFullDebug(COMPONENT_CACHE_INODE, "cache_inode_setattr: old acl = %p, new acl = %p",
-               p_object_attributes->acl, result_attributes.acl);
-
-      /* Release previous acl entry. */
-      if(p_object_attributes->acl)
-        {
-          fsal_acl_status_t status;
-          nfs4_acl_release_entry(p_object_attributes->acl, &status);
-          if(status != NFS_V4_ACL_SUCCESS)
-            LogEvent(COMPONENT_CACHE_INODE, "cache_inode_setattr: Failed to release old acl:"
-                     " status = %d", status);
-        }
-
-      /* Update with new acl entry. */
-      p_object_attributes->acl = result_attributes.acl;
-    }
-#endif                          /* _USE_NFS4_ACL */
-
+  cache_inode_fixup_md(pentry);
   /* Return the attributes as set */
-  *pattr = *p_object_attributes;
-
-  /* Release the entry */
-  V_w(&pentry->lock);
+  *pattr = pentry->attributes;
+  pthread_rwlock_unlock(&pentry->attr_lock);
 
   /* stat */
   if(*pstatus != CACHE_INODE_SUCCESS)
