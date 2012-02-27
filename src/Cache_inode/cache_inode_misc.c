@@ -628,7 +628,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      (client->stat.func_stats.nb_success[CACHE_INODE_NEW_ENTRY])++;
 
 out:
-     if (status != CACHE_INODE_SUCCESS) {
+     if (*status != CACHE_INODE_SUCCESS) {
           /* Deconstruct the object */
           if (typespec) {
                switch (type) {
