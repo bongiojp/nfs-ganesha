@@ -355,8 +355,7 @@ int nfs3_Mknod(nfs_arg_t * parg,
                    * Build entry
                    * attributes
                    */
-                  nfs_SetPostOpAttr(pcontext, pexport,
-                                    node_pentry,
+                  nfs_SetPostOpAttr(pexport,
                                     &attr,
                                     &(pres->res_mknod3.MKNOD3res_u.resok.
                                       obj_attributes));

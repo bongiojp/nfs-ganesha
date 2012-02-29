@@ -285,24 +285,19 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
  * @return 0 in all cases (making it a void function maybe a good idea)
  *
  */
-int nfs_SetPostOpAttr(fsal_op_context_t * pcontext,
-                      exportlist_t * pexport,
-                      cache_entry_t * pentry,
-                      fsal_attrib_list_t * pfsal_attr, post_op_attr * presult)
+int nfs_SetPostOpAttr(exportlist_t *pexport,
+                      const fsal_attrib_list_t *pfsal_attr,
+                      post_op_attr *presult)
 {
-  if(pentry == NULL)
-    {
-      presult->attributes_follow = FALSE;
-      return 0;
-    }
-
   if(pfsal_attr == NULL)
     {
       presult->attributes_follow = FALSE;
       return 0;
     }
 
-  if(nfs3_FSALattr_To_Fattr(pexport, pfsal_attr, &(presult->post_op_attr_u.attributes))
+  if(nfs3_FSALattr_To_Fattr(pexport,
+                            pfsal_attr,
+                            &(presult->post_op_attr_u.attributes))
      == 0)
     presult->attributes_follow = FALSE;
   else
@@ -367,7 +362,7 @@ void nfs_SetWccData(fsal_op_context_t * pcontext,
   nfs_SetPreOpAttr(pbefore_attr, &(pwcc_data->before));
 
   /* Build directory post operation attributes */
-  nfs_SetPostOpAttr(pcontext, pexport, pentry, pafter_attr, &(pwcc_data->after));
+  nfs_SetPostOpAttr(pexport, pafter_attr, &(pwcc_data->after));
 
   return;
 }                               /* nfs_SetWccData */
@@ -512,7 +507,7 @@ void nfs_SetFailedStatus(fsal_op_context_t * pcontext,
         *pstatus3 = nfs3_Errno(status);
 
       if(ppost_op_attr != NULL)
-        nfs_SetPostOpAttr(pcontext, pexport, pentry0, NULL, ppost_op_attr);
+        nfs_SetPostOpAttr(pexport, NULL, ppost_op_attr);
 
       if(pwcc_data1 != NULL)
         nfs_SetWccData(pcontext, pexport, pentry1, ppre_vattr1, NULL, pwcc_data1);
@@ -744,16 +739,20 @@ static int nfs4_encode_acl(fsal_attrib_list_t * pattr, char *attrvalsBuffer, u_i
  * @param pattr   [IN]  pointer to FSAL attributes.
  * @param Fattr   [OUT] NFSv4 Fattr buffer
  * @param data    [IN]  NFSv4 compoud request's data.
- * @param Bitmap  [OUT] NFSv4 attributes bitmap to the Fattr buffer.
- * 
+ * @param objFH   [IN]  The NFSv4 filehandle of the object whose
+ *                      attributes are requested
+ * @param Bitmap  [IN]  Bitmap of attributes being requested
+ *
  * @return -1 if failed, 0 if successful.
  *
  */
 
-int nfs4_FSALattr_To_Fattr(exportlist_t * pexport,
-                           fsal_attrib_list_t * pattr,
-                           fattr4 * Fattr,
-                           compound_data_t * data, nfs_fh4 * objFH, bitmap4 * Bitmap)
+int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
+                           const fsal_attrib_list_t *pattr,
+                           fattr4 *Fattr,
+                           compound_data_t *data,
+                           nfs_fh4 *objFH,
+                           bitmap4 *Bitmap)
 {
   fattr4_type file_type = 0;
   fattr4_link_support link_support;
@@ -2412,7 +2411,7 @@ void nfs4_list_to_bitmap4(bitmap4 * b, uint_t * plen, uint32_t * pval)
  *
  */
 int nfs3_FSALattr_To_Fattr(exportlist_t * pexport,      /* In: the related export entry */
-                           fsal_attrib_list_t * FSAL_attr,      /* In: file attributes */
+                           const fsal_attrib_list_t * FSAL_attr,      /* In: file attributes */
                            fattr3 * Fattr)      /* Out: file attributes */
 {
   if(FSAL_attr == NULL || Fattr == NULL)

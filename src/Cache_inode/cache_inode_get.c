@@ -86,9 +86,11 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
 {
   hash_buffer_t key, value;
   cache_entry_t *pentry = NULL;
-  fsal_status_t fsal_status;
-  cache_inode_create_arg_t create_arg;
-  cache_inode_file_type_t type;
+  fsal_status_t fsal_status = {0, 0};
+  cache_inode_create_arg_t create_arg = {
+       .newly_created_dir = FALSE
+  };
+  cache_inode_file_type_t type = UNASSIGNED;
   int hrc = 0;
   fsal_attrib_list_t fsal_attributes;
   fsal_handle_t *pfile_handle;

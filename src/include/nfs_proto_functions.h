@@ -1399,7 +1399,7 @@ int nfs2_FSALattr_To_Fattr(exportlist_t * pexport,      /* In: the related expor
                            fattr2 * pFattr);    /* Out: file attributes */
 
 int nfs3_FSALattr_To_Fattr(exportlist_t * pexport,      /* In: the related export entry */
-                           fsal_attrib_list_t * pFSAL_attr,     /* In: file attributes  */
+                           const fsal_attrib_list_t * pFSAL_attr,     /* In: file attributes  */
                            fattr3 * pFattr);    /* Out: file attributes */
 
 int nfs3_Sattr_To_FSALattr(fsal_attrib_list_t * pFSAL_attr,     /* Out: file attributes */
@@ -1473,13 +1473,12 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr,    /* Out: File att
 
 int nfs4_attrmap_to_FSAL_attrmask(bitmap4 attrmap, fsal_attrib_mask_t* attrmask);
 
-int nfs4_FSALattr_To_Fattr(exportlist_t * pexport,
-                           fsal_attrib_list_t * pattr,
-                           fattr4 * Fattr,
-                           compound_data_t * data, nfs_fh4 * objFH, bitmap4 * Bitmap);
-
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                /* time_how4          * mtime_set, *//* Out: How to set mtime */
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        /* time_how4          * atimen_set ) ; *//* Out: How to set atime */
+int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
+                           const fsal_attrib_list_t *pattr,
+                           fattr4 *Fattr,
+                           compound_data_t *data,
+                           nfs_fh4 *objFH,
+                           bitmap4 *Bitmap);
 
 void nfs4_list_to_bitmap4(bitmap4 * b, uint_t * plen, uint32_t * pval);
 void nfs4_bitmap4_to_list(bitmap4 * b, uint_t * plen, uint32_t * pval);

@@ -404,8 +404,7 @@ int nfs_Read(nfs_arg_t * parg,
                 pres->res_read3.READ3res_u.resok.eof = TRUE;
 
               /* Build Post Op Attributes */
-              nfs_SetPostOpAttr(pcontext, pexport,
-                                pentry,
+              nfs_SetPostOpAttr(pexport,
                                 &attr,
                                 &(pres->res_read3.READ3res_u.resok.file_attributes));
 

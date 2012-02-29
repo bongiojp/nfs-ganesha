@@ -266,7 +266,7 @@ int nfs_Mkdir(nfs_arg_t * parg,
             {
               /* The create_arg structure contains the information "newly created directory"
                * to be passed to cache_inode_new_entry from cache_inode_create */
-              create_arg.dir_hint.newly_created = TRUE ;
+              create_arg.newly_created_dir = TRUE;
 
               /* Create the directory */
               if((dir_pentry = cache_inode_create(parent_pentry,
@@ -393,11 +393,11 @@ int nfs_Mkdir(nfs_arg_t * parg,
                            * Build entry
                            * attributes
                            */
-                          nfs_SetPostOpAttr(pcontext, pexport,
-                                            dir_pentry,
+                          nfs_SetPostOpAttr(pexport,
                                             &attr,
-                                            &(pres->res_mkdir3.MKDIR3res_u.resok.
-                                              obj_attributes));
+                                            &(pres->res_mkdir3
+                                              .MKDIR3res_u.resok
+                                              .obj_attributes));
 
                           /* Get the attributes of the parent after the operation */
                           attr_parent_after = parent_pentry->attributes;

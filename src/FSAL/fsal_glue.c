@@ -744,8 +744,8 @@ fsal_status_t FSAL_DigestHandle(fsal_export_context_t * p_expcontext,   /* IN */
                                 fsal_handle_t * p_in_fsal_handle,       /* IN */
                                 struct fsal_handle_desc *fh_desc /* OUT */ )
 {
-  return fsal_functions.fsal_digesthandle(p_expcontext, output_type, p_in_fsal_handle,
-                                          fh_desc);
+  return fsal_functions.fsal_digesthandle(p_expcontext, output_type,
+                                          p_in_fsal_handle, fh_desc);
 }
 
 fsal_status_t FSAL_ExpandHandle(fsal_export_context_t * p_expcontext,   /* IN */

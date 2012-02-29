@@ -178,10 +178,10 @@ int nfs3_Access(nfs_arg_t * parg,
             (parg->arg_access3.access & ~ACCESS3_DELETE);
 
       /* Build Post Op Attributes */
-      nfs_SetPostOpAttr(pcontext,
-                        pexport,
-                        pentry,
-                        &attr, &(pres->res_access3.ACCESS3res_u.resok.obj_attributes));
+      nfs_SetPostOpAttr(pexport,
+                        &attr,
+                        &(pres->res_access3.ACCESS3res_u
+                          .resok.obj_attributes));
 
       pres->res_access3.status = NFS3_OK;
       return NFS_REQ_OK;

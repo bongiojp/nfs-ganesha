@@ -51,6 +51,7 @@
 #include "cache_inode.h"
 #include "cache_inode_lru.h"
 #include "cache_inode_avl.h"
+#include "cache_inode_weakref.h"
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -59,221 +60,225 @@
 #include <pthread.h>
 
 /**
+ * @brief Invalidates all cached entries for a directory
  *
- * cache_inode_readdir_nonamecache: Reads a directory without populating the name cache (no dirents created).
+ * Invalidates all the entries for a cached directory.  The content
+ * lock must be held when this function is called.
  *
- * Reads a directory without populating the name cache (no dirents created).
+ * @param entry [in,out] The directory to be managed
+ * @param client [in,out] Structure for per-client resource management
+ * @param status [OUT] Returned status.
  *
- * @param pentry [IN] entry for the parent directory to be read.
- * @param cookie [IN] cookie for the readdir operation (basically the offset).
- * @param nbwanted [IN] Maximum number of directory entries wanted.
- * @param peod_met [OUT] A flag to know if end of directory was met during this call.
- * @param dirent_array [OUT] the resulting array of found directory entries.
- * @param unlock [OUT] the caller shall release read-lock on pentry when done
- * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials
- * @param pstatus [OUT] returned status.
- *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
+ * @return the same as *status
  *
  */
-static cache_inode_status_t cache_inode_readdir_nonamecache( cache_entry_t * pentry_dir,
-                                                             cache_inode_policy_t policy,
-                                                             uint64_t cookie,
-                                                             unsigned int nbwanted,
-                                                             unsigned int *pnbfound,
-                                                             uint64_t *pend_cookie,
-                                                             cache_inode_endofdir_t *peod_met,
-                                                             cache_inode_dir_entry_t **dirent_array,
-                                                             int *unlock,
-                                                             cache_inode_client_t *pclient,
-                                                             fsal_op_context_t *pcontext,
-                                                             cache_inode_status_t *pstatus)
-{
-     fsal_dir_t fsal_dirhandle;
-     fsal_status_t fsal_status;
-     fsal_attrib_list_t dir_attributes;
-     fsal_cookie_t begin_cookie;
-     fsal_cookie_t end_cookie;
-     fsal_count_t iter;
-     fsal_boolean_t fsal_eod;
-     fsal_dirent_t fsal_dirent_array[FSAL_READDIR_SIZE + 20];
-     cache_inode_fsal_data_t entry_fsdata;
-     cache_entry_t *entry = NULL;
 
+cache_inode_status_t
+cache_inode_invalidate_all_cached_dirent(cache_entry_t *entry,
+                                         cache_inode_client_t *client,
+                                         cache_inode_status_t *status)
+{
      /* Set the return default to CACHE_INODE_SUCCESS */
-     *pstatus = CACHE_INODE_SUCCESS;
+     *status = CACHE_INODE_SUCCESS;
 
      /* Only DIRECTORY entries are concerned */
-     if(pentry_dir->type != DIRECTORY) {
-          *pstatus = CACHE_INODE_BAD_TYPE;
-          return *pstatus;
+     if (entry->type != DIRECTORY) {
+          *status = CACHE_INODE_BAD_TYPE;
+          return *status;
      }
 
-     LogFullDebug(COMPONENT_CACHE_INODE,
-                  "About to readdir in  cache_inode_readdir_nonamecache: pentry=%p "
-                  "cookie=%"PRIu64, pentry_dir, cookie ) ;
+     /* Get ride of entries cached in the DIRECTORY */
+     cache_inode_release_dirents(entry, client);
 
-     /* Open the directory */
-     dir_attributes.asked_attributes = pclient->attrmask;
-#ifdef _USE_MFSL
-     fsal_status = MFSL_opendir(&pentry_dir->mobject,
-                                pcontext,
-                                &pclient->mfsl_context, &fsal_dirhandle, &dir_attributes, NULL);
-#else
-     fsal_status = FSAL_opendir(&pentry_dir->handle,
-                                pcontext, &fsal_dirhandle, &dir_attributes);
-#endif
+     /* Mark directory as not populated */
+     atomic_clear_int_bits(&entry->flags, CACHE_INODE_DIR_POPULATED);
+     *status = CACHE_INODE_SUCCESS;
 
-     if(FSAL_IS_ERROR(fsal_status)) {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          return *pstatus;
-     }
-
-     /* Loop for readding the directory */
-     // memcpy( &(begin_cookie.data), &cookie, sizeof( uint64_t ) ) ;
-     FSAL_SET_COOKIE_BY_OFFSET( begin_cookie, cookie ) ;
-     fsal_eod = FALSE;
-
-#ifdef _USE_MFSL
-     fsal_status = MFSL_readdir( &fsal_dirhandle,
-                                 begin_cookie,
-                                 pclient->attrmask,
-                                 nbwanted * sizeof(fsal_dirent_t),
-                                 fsal_dirent_array,
-                                 &end_cookie,
-                                 (fsal_count_t *)pnbfound,
-                                 &fsal_eod,
-                                 &pclient->mfsl_context,
-                                 NULL);
-#else
-     fsal_status = FSAL_readdir( &fsal_dirhandle,
-                                 begin_cookie,
-                                 pclient->attrmask,
-                                 nbwanted * sizeof(fsal_dirent_t),
-                                 fsal_dirent_array,
-                                 &end_cookie,
-                                 (fsal_count_t *)pnbfound,
-                                 &fsal_eod);
-#endif
-     if(FSAL_IS_ERROR(fsal_status)) {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          return *pstatus;
-     }
-
-     for( iter = 0 ; iter < *pnbfound ; iter ++ ) {
-          /* cache_inode_readdir does not return . or .. */
-          if(!FSAL_namecmp(&(fsal_dirent_array[iter].name), (fsal_name_t *) & FSAL_DOT) ||
-             !FSAL_namecmp(&(fsal_dirent_array[iter].name), (fsal_name_t *) & FSAL_DOT_DOT))
-               continue;
-
-          /* Get the related pentry without populating the name cache (but
-             eventually populating the attrs cache */
-          entry_fsdata.fh_desc.start = (caddr_t)(&fsal_dirent_array[iter].handle);
-          entry_fsdata.fh_desc.len = 0;
-          (void) FSAL_ExpandHandle(pcontext->export_context,
-                                   FSAL_DIGEST_SIZEOF,
-                                   &entry_fsdata.fh_desc);
-
-          /* Allocate a dirent to be returned to the client */
-          /** @todo Make sure this piece of memory once the data are used */
-          GetFromPool( dirent_array[iter], &pclient->pool_dir_entry, cache_inode_dir_entry_t);
-          if( dirent_array[iter] == NULL )
-          {
-               *pstatus = CACHE_INODE_MALLOC_ERROR;
-               return *pstatus;
-          }
-
-
-          if ((entry = cache_inode_get(&entry_fsdata,
-                                       policy,
-                                       &fsal_dirent_array[iter].attributes,
-                                       pclient,
-                                       pcontext,
-                                       pstatus)) == NULL) {
-               return *pstatus;
-          }
-
-          /* fills in the dirent_array */
-          dirent_array[iter]->entry = entry->weakref;
-
-          fsal_status = FSAL_namecpy(&dirent_array[iter]->name,
-                                     &fsal_dirent_array[iter].name);
-          if(FSAL_IS_ERROR(fsal_status))
-          {
-               *pstatus = cache_inode_error_convert(fsal_status);
-               return *pstatus;
-          }
-
-          (void) FSAL_cookie_to_uint64( &fsal_dirent_array[iter].handle,
-                                        pcontext,
-                                        &fsal_dirent_array[iter].cookie,
-                                        &dirent_array[iter]->fsal_cookie);
-
-          /* nonamecache ONLY */
-          dirent_array[iter]->hk.k = dirent_array[iter]->fsal_cookie;
-
-     } /* for( iter = 0 ; iter < nbfound ; iter ++ ) */
-
-     if( fsal_eod == TRUE )
-          *peod_met = END_OF_DIR ;
-     else
-          *peod_met = TO_BE_CONTINUED ;
-
-     /* Do not forget to set returned end cookie */
-     //memcpy( pend_cookie, &(end_cookie.data), sizeof( uint64_t ) ) ;
-     FSAL_SET_POFFSET_BY_COOKIE( end_cookie, pend_cookie ) ;
-
-     LogFullDebug(COMPONENT_CACHE_INODE,
-                  "End of readdir in  cache_inode_readdir_nonamecache: pentry=%p "
-                  "cookie=%"PRIu64, pentry_dir, *pend_cookie ) ;
-
-
-     /* Close the directory */
-#ifdef _USE_MFSL
-     fsal_status = MFSL_closedir(&fsal_dirhandle, &pclient->mfsl_context, NULL);
-#else
-     fsal_status = FSAL_closedir(&fsal_dirhandle);
-#endif
-     if(FSAL_IS_ERROR(fsal_status))
-     {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          return *pstatus;
-     }
-
-     return CACHE_INODE_SUCCESS ;
-} /* cache_inode_readdir_nomanecache */
+     return *status;
+}                               /* cache_inode_invalidate_all_cached_dirent */
 
 
 /**
  *
- * cache_inode_release_dirent: releases dirents allocated by cache_inode_readdir_nonamecache.
+ * @brief Reads a directory without populating the name cache
  *
- * Releases dirents allocated by cache_inode_readdir_nonamecache. This is to be called only if the 
- * related entry as a policy that prevents name to be cached.
+ * This function reads a directory without populating the name cache.
+ * No dirents are created.
  *
- * @param dirent_array [INOUT] array of pointers of dirents to be released
- * @param howmuch [IN] size of dirent_array
- * @param pclient [INOUT] resource allocated by the client for the nfs management.
+ * @param dir_entry [IN] Entry for the directory to be read
+ * @param cookie [IN] Cookie giving the starting point for the read
+ * @param nbwanted [IN] Maximum number of directory entries wanted
+ * @param eod_met [OUT] A flag indicating whether we encountered the
+ *                      directory end
+ * @param client [INOUT] Structure for per-client resource management
+ * @param context [IN] FSAL credentials
+ * @param cb [IN] Function called with information for each entry
+ * @param cb_opaque [IN] Pointer passed as first argument with each
+ *                       call of cb
+ * @param status [OUT] Returned status
  *
- * @ return nothing (void function)
+ * @return CACHE_INODE_SUCCESS if operation is a success
  *
  */
-void cache_inode_release_dirent(  cache_inode_dir_entry_t ** dirent_array,
-                                  unsigned int howmuch,
-                                  cache_inode_client_t * pclient )
+static cache_inode_status_t
+cache_inode_readdir_nonamecache(cache_entry_t *dir_entry,
+                                cache_inode_policy_t policy,
+                                uint64_t cookie,
+                                unsigned int nbwanted,
+                                unsigned int *nbfound,
+                                bool_t *eod_met,
+                                cache_inode_client_t *client,
+                                fsal_op_context_t *context,
+                                cache_inode_readdir_cb_t cb,
+                                void *cb_opaque,
+                                cache_inode_status_t *status)
 {
-  unsigned int i = 0 ;
+     fsal_dir_t fsal_dirhandle;
+     fsal_status_t fsal_status;
+     fsal_count_t fsal_found = 0;
+     fsal_cookie_t begin_cookie;
+     fsal_cookie_t end_cookie;
+     size_t iter = 0;
+     fsal_boolean_t fsal_eod = FALSE;
+     fsal_dirent_t *fsal_dirent_array = NULL;
+     cache_entry_t *entry = NULL;
+     bool_t diropen = FALSE;
 
-  for( i = 0 ; i < howmuch ; i++ )
-   {
-      if( dirent_array[i] != NULL )
-        ReleaseToPool( dirent_array[i],  &pclient->pool_dir_entry ) ;
-      else
-        break ;
-   }
+     /* Set the return default to CACHE_INODE_SUCCESS */
+     *status = CACHE_INODE_SUCCESS;
 
-} /* cache_inode_release_dirent */
+     /* Allocate two more than the requested number of entries, to
+        have room for . and .. (though I think no FSAL returns
+        either. - ACE) */
+     fsal_dirent_array
+          = (fsal_dirent_t*)Mem_Alloc((nbwanted + 2) *
+                                      sizeof(fsal_dirent_t));
+
+     if (fsal_dirent_array == NULL) {
+          *status = CACHE_INODE_MALLOC_ERROR;
+          goto out;
+     }
+
+     /* This function takes no content lock and needs no content
+        lock, since we aren't reading from or modifying a directory
+        cache. */
+
+     /* Only DIRECTORY entries are concerned */
+     if (dir_entry->type != DIRECTORY) {
+          *status = CACHE_INODE_BAD_TYPE;
+          goto out;
+     }
+
+     LogFullDebug(COMPONENT_CACHE_INODE,
+                  "About to readdir in cache_inode_readdir_nonamecache: "
+                  "dir_entry=entry=%p cookie=%"PRIu64, dir_entry, cookie);
+
+     /* Open the directory */
+#ifdef _USE_MFSL
+     fsal_status = MFSL_opendir(&entry_dir->mobject,
+                                context,
+                                &client->mfsl_context,
+                                &fsal_dirhandle,
+                                NULL,
+                                NULL);
+#else
+     fsal_status = FSAL_opendir(&dir_entry->handle,
+                                context, &fsal_dirhandle, NULL);
+#endif
+     if (FSAL_IS_ERROR(fsal_status)) {
+          *status = cache_inode_error_convert(fsal_status);
+          goto out;
+     }
+     diropen = TRUE;
+
+     /* Loop for readding the directory */
+     FSAL_SET_COOKIE_BY_OFFSET(begin_cookie, cookie);
+     fsal_eod = FALSE;
+
+#ifdef _USE_MFSL
+     fsal_status = MFSL_readdir(&fsal_dirhandle,
+                                begin_cookie,
+                                client->attrmask,
+                                nbwanted * sizeof(fsal_dirent_t),
+                                fsal_dirent_array,
+                                &end_cookie,
+                                &fsal_nbfound,
+                                &fsal_eod,
+                                &pclient->mfsl_context,
+                                NULL);
+#else
+     fsal_status = FSAL_readdir(&fsal_dirhandle,
+                                begin_cookie,
+                                client->attrmask,
+                                nbwanted * sizeof(fsal_dirent_t),
+                                fsal_dirent_array,
+                                &end_cookie,
+                                &fsal_found,
+                                &fsal_eod);
+#endif
+     if (FSAL_IS_ERROR(fsal_status)) {
+          *status = cache_inode_error_convert(fsal_status);
+          goto out;
+     }
+
+     for (iter = 0; iter < fsal_found; ++iter) {
+          uint64_t cur_cookie = 0;
+
+          ++(*nbfound);
+          /* cache_inode_readdir does not return . or .. */
+          if (!FSAL_namecmp(&(fsal_dirent_array[iter].name),
+                            &FSAL_DOT) ||
+              !FSAL_namecmp(&(fsal_dirent_array[iter].name),
+                            &FSAL_DOT_DOT)) {
+               continue;
+          }
+
+          FSAL_cookie_to_uint64(&entry->handle,
+                                context,
+                                &fsal_dirent_array[iter].cookie,
+                                &cur_cookie);
+>>>>>>> Callbackification of readdir and several other things.
+
+
+          if (!(cb(cb_opaque,
+                   fsal_dirent_array[iter].name.name,
+                   &fsal_dirent_array[iter].handle,
+                   &fsal_dirent_array[iter].attributes,
+                   cur_cookie))) {
+               /* Nothing to unlock or release, here. */
+               break;
+          }
+     }
+
+     /* Only signal EOD if the FSAL signaled EOD /and/ we returned
+        all entries. */
+     *eod_met = (fsal_eod && (*nbfound == fsal_found));
+
+     LogFullDebug(COMPONENT_CACHE_INODE,
+                  "End of readdir in cache_inode_readdir_nonamecache: "
+                  "entry=%p", entry);
+
+out:
+     /* Close the directory */
+     if (diropen) {
+#ifdef _USE_MFSL
+          fsal_status = MFSL_closedir(&fsal_dirhandle, &pclient->mfsl_context, NULL);
+#else
+          fsal_status = FSAL_closedir(&fsal_dirhandle);
+#endif
+          if(FSAL_IS_ERROR(fsal_status)) {
+               *status = cache_inode_error_convert(fsal_status);
+          }
+          diropen = FALSE;
+     }
+
+     if (fsal_dirent_array) {
+          Mem_Free(fsal_dirent_array);
+     }
+
+     return *status;
+} /* cache_inode_readdir_nomanecache */
+
 
 /**
  *
@@ -404,49 +409,6 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
      return pentry;
 }                               /* cache_inode_operate_cached_dirent */
 
-#ifdef _TOTO
-/**
- *
- * cache_inode_lookup_cached_dirent: looks up for an dirent in the cached
- * dirent.
- *
- * Looks up for an dirent in the cached dirent. Thus function searches only in
- * the entries listed in the dir_entries array. Some entries may be missing but
- * existing and not be cached (if no readdir was ever performed on the entry for
- * example.
- *
- * @param pentry_parent [IN] directory entry to be looked.
- * @param name [IN] name for the searched entry.
- * @param pclient [INOUT] resource allocated by the client for the nfs
- *        management.
- * @pstatus [OUT] returned status. CACHE_INODE_SUCCESS=entry found,
- *          CACHE_INODE_NOT_FOUND=entry is not in the dirent
- *
- * @return the found entry if its exists and NULL if it is not in the dirent
- * cache.
- *
- */
-cache_entry_t *cache_inode_lookup_cached_dirent(cache_entry_t * pentry_parent,
-                                                fsal_name_t * pname,
-                                                cache_inode_client_t * pclient,
-                                                cache_inode_status_t * pstatus)
-{
-  /* Set the return default to CACHE_INODE_SUCCESS */
-  *pstatus = CACHE_INODE_SUCCESS;
-
-  /* Sanity check */
-  if(pentry_parent->internal_md.type != DIRECTORY)
-    {
-      *pstatus = CACHE_INODE_BAD_TYPE;
-      return NULL;
-    }
-  return cache_inode_operate_cached_dirent(pentry_parent, *pname, NULL,
-					   pclient,
-                                           CACHE_INODE_DIRENT_OP_LOOKUP,
-					   pstatus);
-}                               /* cache_inode_lookup_cached_dirent */
-#endif
-
 /**
  *
  * cache_inode_add_cached_dirent: Adds a directory entry to a cached directory.
@@ -530,47 +492,6 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
 
   return *pstatus;
 }                               /* cache_inode_add_cached_dirent */
-
-/*
- * cache_inode_invalidate_all_cached_dirent: Invalidates all the entries for a
- * cached directory.
- *
- * Invalidates all the entries for a cached directory.  No MT Safety managed
- * here !!
- *
- * @param pentry_parent [INOUT] cache entry representing the directory to be
- * managed.
- * @param pclient [INOUT] ressource allocated by the client for the nfs
- * management.
- * @param pstatus [OUT] returned status.
- *
- * @return the same as *pstatus
- *
- */
-cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
-    cache_entry_t *pentry,
-    cache_inode_client_t *pclient,
-    cache_inode_status_t *pstatus)
-{
-  /* Set the return default to CACHE_INODE_SUCCESS */
-  *pstatus = CACHE_INODE_SUCCESS;
-
-  /* Only DIRECTORY entries are concerned */
-  if(pentry->type != DIRECTORY)
-    {
-      *pstatus = CACHE_INODE_BAD_TYPE;
-      return *pstatus;
-    }
-
-  /* Get ride of entries cached in the DIRECTORY */
-  cache_inode_release_dirents(pentry, pclient);
-
-  /* Reinit the fields */
-  pentry->flags &= ~CACHE_INODE_DIR_POPULATED;
-  *pstatus = CACHE_INODE_SUCCESS;
-
-  return *pstatus;
-}                               /* cache_inode_invalidate_all_cached_dirent */
 
 /**
  *
@@ -691,7 +612,9 @@ cache_inode_status_t cache_inode_readdir_populate(
   cache_entry_t *pentry_parent = pentry_dir;
   fsal_attrib_list_t object_attributes;
 
-  cache_inode_create_arg_t create_arg;
+  cache_inode_create_arg_t create_arg = {
+       .newly_created_dir = FALSE
+  };
   cache_inode_file_type_t type;
   cache_inode_status_t cache_status;
   fsal_dirent_t array_dirent[FSAL_READDIR_SIZE + 20];
@@ -919,7 +842,7 @@ cache_inode_status_t cache_inode_readdir_populate(
                                            pcontext, &array_dirent[iter].cookie,
                                            &new_dir_entry->fsal_cookie);
         } /* iter */
-      
+
       /* Get prepared for next step */
       begin_cookie = end_cookie;
 
@@ -950,52 +873,45 @@ cache_inode_status_t cache_inode_readdir_populate(
  *
  * cache_inode_readdir: Reads a directory.
  *
- * Looks up for a name in a directory indicated by a cached entry. The 
- * directory should have been cached before.
- *
- * NEW: pending new (C-language) callback based dirent unpacking into caller
- * structures, we eliminate copies by returning dir entries by pointer.  To
- * permit this, we introduce lock donation.  If new int pointer argument
- * unlock is 1 on return, the calling thread holds pentry read-locked and
- * must release this lock after dirent processing.
+ * If content caching is enabled, iterate over the cached directory
+ * entries (possibly after populating the cache) calling a callback
+ * function for each one.  Otherwise call the FSAL directly.
  *
  * This is the only function in the cache_inode_readdir.c file that manages MT
  * safety on a directory cache entry.
  *
- * @param dir_pentry [IN] Entry for the parent directory to be read.
+ * @param dir_entry [IN] Entry for the parent directory to be read.
  * @param policy [IN] Caching policy.
  * @param cookie [IN] Cookie for the readdir operation (basically the offset).
  * @param nbwanted [IN] Maximum number of directory entries wanted.
- * @param pnbfound [OUT] Number of entries returned.
- * @param pend_cookie [OUT] Cookie at end of returned entries
- * @param peod_met [OUT] A flag to know if end of directory was met
- *                       during this call.
- * @param dirent_array [OUT] The resulting array of found directory entries.
- * @param unlock [OUT] The caller shall release read-lock on pentry when done
- * @param pclient [INOUT] Ressource allocated by the client for the
+ * @param nbfound [OUT] Number of entries returned.
+ * @param eod_met [OUT] A flag to know if end of directory was met
+ *                      during this call.
+ * @param client [INOUT] Ressource allocated by the client for the
  *                        nfs management.
- * @param pcontext [IN] FSAL credentials
- * @param pstatus [OUT] returned status.
+ * @param context [IN] FSAL credentials
+ * @param cb [IN] The callback function to receive entries
+ * @param cb_opaque [IN] A pointerp assed as the first argument to cb
+ * @param status [OUT] returned status.
  *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_BAD_TYPE if entry is not related to a directory\n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ * @return The same value as *status
+ * @retval CACHE_INODE_SUCCESS if operation is a success
+ * @retval CACHE_INODE_BAD_TYPE if entry is not related to a directory
+ * @retval CACHE_INODE_LRU_ERROR if allocation error occured when
  *                               validating the entry
- *
  */
 cache_inode_status_t
-cache_inode_readdir(cache_entry_t * dir_pentry,
+cache_inode_readdir(cache_entry_t * dir_entry,
                     cache_inode_policy_t policy,
                     uint64_t cookie,
                     unsigned int nbwanted,
-                    unsigned int *pnbfound,
-                    uint64_t *pend_cookie,
-                    cache_inode_endofdir_t *peod_met,
-                    cache_inode_dir_entry_t **dirent_array,
-                    int *unlock,
-                    cache_inode_client_t *pclient,
-                    fsal_op_context_t *pcontext,
-                    cache_inode_status_t *pstatus)
+                    unsigned int *nbfound,
+                    bool_t *eod_met,
+                    cache_inode_client_t *client,
+                    fsal_op_context_t *context,
+                    cache_inode_readdir_cb_t cb,
+                    void *cb_opaque,
+                    cache_inode_status_t *status)
 {
      cache_inode_dir_entry_t dirent_key[1], *dirent;
      struct avltree_node *dirent_node;
@@ -1005,103 +921,89 @@ cache_inode_readdir(cache_entry_t * dir_pentry,
      /* Guide to parameters:
       * the first cookie is parameter 'cookie'
       * number of entries queried is set by parameter 'nbwanted'
-      * number of found entries before eod is return is '*pnbfound'
-      * '*peod_met' is set if end of directory is encountered */
+      * number of found entries before eod is return is '*nbfound'
+      * '*eod_met' is set if end of directory is encountered */
 
      /* Set the return default to CACHE_INODE_SUCCESS */
-     *pstatus = CACHE_INODE_SUCCESS;
+     *status = CACHE_INODE_SUCCESS;
      dirent = NULL;
 
-     /* Set initial value of unlock */
-     *unlock = FALSE;
-
-     /* end cookie initial value is the begin cookie */
-     LogFullDebug(COMPONENT_CACHE_INODE,
-                  "--> Cache_inode_readdir: setting pend_cookie to cookie=%"
-                  PRIu64,
-                  cookie);
-     *pend_cookie = cookie;
-
      /* stats */
-     pclient->stat.nb_call_total++;
-     (pclient->stat.func_stats.nb_call[CACHE_INODE_READDIR])++;
+     client->stat.nb_call_total++;
+     (client->stat.func_stats.nb_call[CACHE_INODE_READDIR])++;
 
      LogFullDebug(COMPONENT_CACHE_INODE,
                   "--> Cache_inode_readdir: parameters are cookie=%"PRIu64
-                  "nbwanted=%u",
-                  cookie, nbwanted);
+                  "nbwanted=%u", cookie, nbwanted);
 
      /* Sanity check */
-     if(nbwanted == 0) {
+     if (nbwanted == 0) {
           /* Asking for nothing is not a crime !!!!!
            * build a 'dummy' return in this case */
-          *pstatus = CACHE_INODE_SUCCESS;
-          *pnbfound = 0;
-          *peod_met = TO_BE_CONTINUED;
+          *status = CACHE_INODE_SUCCESS;
+          *nbfound = 0;
+          *eod_met = FALSE;
 
           /* stats */
-          (pclient->stat.func_stats.nb_success[CACHE_INODE_READDIR])++;
-          return *pstatus;
+          (client->stat.func_stats.nb_success[CACHE_INODE_READDIR])++;
+          return *status;
      }
 
-     /* Force dir content invalidation if policy enforced no name cache */
-     if(!CACHE_INODE_KEEP_CONTENT(dir_pentry->policy))
-          return  cache_inode_readdir_nonamecache(dir_pentry,
-                                                  policy,
-                                                  cookie,
-                                                  nbwanted,
-                                                  pnbfound,
-                                                  pend_cookie,
-                                                  peod_met,
-                                                  dirent_array,
-                                                  unlock,
-                                                  pclient,
-                                                  pcontext,
-                                                  pstatus);
-
-     cache_inode_lock_trust_attrs(dir_pentry, pcontext, pclient);
-
      /* readdir can be done only with a directory */
-     if(dir_pentry->type != DIRECTORY) {
-          *pstatus = CACHE_INODE_BAD_TYPE;
+     if (dir_entry->type != DIRECTORY) {
+          *status = CACHE_INODE_BAD_TYPE;
           /* stats */
-          (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_READDIR])++;
+          (client->stat.func_stats.nb_err_unrecover[CACHE_INODE_READDIR])++;
           goto unlock_attrs;
      }
 
+     /* Force dir content invalidation if policy enforced no name cache */
+     if (!CACHE_INODE_KEEP_CONTENT(dir_entry->policy))
+          return  cache_inode_readdir_nonamecache(dir_entry,
+                                                  policy,
+                                                  cookie,
+                                                  nbwanted,
+                                                  nbfound,
+                                                  eod_met,
+                                                  client,
+                                                  context,
+                                                  cb,
+                                                  cb_opaque,
+                                                  status);
+
+     cache_inode_lock_trust_attrs(dir_entry, context, client);
      /* Check if user (as specified by the credentials) is authorized to read
       * the directory or not */
      access_mask = (FSAL_MODE_MASK_SET(FSAL_R_OK) |
                     FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_LIST_DIR));
 
-     if (cache_inode_access_no_mutex(dir_pentry,
+     if (cache_inode_access_no_mutex(dir_entry,
                                      access_mask,
-                                     pclient,
-                                     pcontext,
-                                     pstatus)
+                                     client,
+                                     context,
+                                     status)
          != CACHE_INODE_SUCCESS) {
-          (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
+          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
           goto unlock_attrs;
      }
 
-     if (!(dir_pentry->flags & (CACHE_INODE_TRUST_CONTENT |
-                                CACHE_INODE_DIR_POPULATED))) {
-          pthread_rwlock_wrlock(&dir_pentry->content_lock);
-          pthread_rwlock_unlock(&dir_pentry->attr_lock);
-          if (cache_inode_readdir_populate(dir_pentry,
+     if (!(dir_entry->flags & (CACHE_INODE_TRUST_CONTENT |
+                               CACHE_INODE_DIR_POPULATED))) {
+          pthread_rwlock_wrlock(&dir_entry->content_lock);
+          pthread_rwlock_unlock(&dir_entry->attr_lock);
+          if (cache_inode_readdir_populate(dir_entry,
                                            policy,
-                                           pclient,
-                                           pcontext,
-                                           pstatus)
+                                           client,
+                                           context,
+                                           status)
               != CACHE_INODE_SUCCESS) {
-               /* stats */
-               (pclient->stat.func_stats.
+               (client->stat.func_stats.
                 nb_err_unrecover[CACHE_INODE_READDIR])++;
                goto unlock_dir;
           }
      } else {
-          pthread_rwlock_rdlock(&dir_pentry->content_lock);
-          pthread_rwlock_unlock(&dir_pentry->attr_lock);
+          pthread_rwlock_rdlock(&dir_entry->content_lock);
+          pthread_rwlock_unlock(&dir_entry->attr_lock);
      }
 
      /* deal with initial cookie value:
@@ -1113,21 +1015,20 @@ cache_inode_readdir(cache_entry_t * dir_pentry,
       * 5. cookie is in cached range -- ok */
 
      if (cookie > 0) {
-          /* Nb., cache_inode_avl_qp_insert_s ensures k > 2 */
+          /* N.B., cache_inode_avl_qp_insert_s ensures k > 2 */
           if (cookie < 3) {
-               *pstatus = CACHE_INODE_BAD_COOKIE;
+               *status = CACHE_INODE_BAD_COOKIE;
                goto unlock_dir;
           }
 
           /* we assert this can now succeed */
           dirent_key->hk.k = cookie;
-          dirent = cache_inode_avl_lookup_k(dir_pentry, dirent_key);
+          dirent = cache_inode_avl_lookup_k(dir_entry, dirent_key);
           if (!dirent) {
                LogFullDebug(COMPONENT_NFS_READDIR,
                             "%s: seek to cookie=%"PRIu64" fail",
-                            __func__,
-                            cookie);
-               *pstatus = CACHE_INODE_NOT_FOUND;
+                            __func__, cookie);
+               *status = CACHE_INODE_NOT_FOUND;
                goto unlock_dir;
           }
 
@@ -1139,22 +1040,26 @@ cache_inode_readdir(cache_entry_t * dir_pentry,
           dirent_node = avltree_next(dirent_node);
      } else {
           /* initial readdir */
-          dirent_node = avltree_first(&dir_pentry->object.dir.avl);
+          dirent_node = avltree_first(&dir_entry->object.dir.avl);
      }
 
      LogFullDebug(COMPONENT_NFS_READDIR,
                   "About to readdir in cache_inode_readdir: pentry=%p "
                   "cookie=%"PRIu64" collisions %d",
-                  dir_pentry,
+                  dir_entry,
                   cookie,
-                  dir_pentry->object.dir.collisions);
+                  dir_entry->object.dir.collisions);
 
      /* Now satisfy the request from the cached readdir--stop when either
       * the requested sequence or dirent sequence is exhausted */
-     *pnbfound = 0;
-     *peod_met = TO_BE_CONTINUED;
+     *nbfound = 0;
+     *eod_met = FALSE;
 
      for(i = 0; i < nbwanted; ++i) {
+          cache_entry_t *entry = NULL;
+          cache_inode_status_t lookup_status = 0;
+          bool_t more_wanted = TRUE;
+
           if (!dirent_node) {
                break;
           }
@@ -1163,48 +1068,81 @@ cache_inode_readdir(cache_entry_t * dir_pentry,
                                         cache_inode_dir_entry_t,
                                         node_hk);
 
+          if ((entry
+               = cache_inode_weakref_get(&dirent->entry,
+                                         client,
+                                         LRU_REQ_SCAN))
+              == NULL) {
+               /* Entry fell out of the cache, load it back in. */
+               if ((entry
+                    = cache_inode_lookup_impl(dir_entry,
+                                              &dirent->name,
+                                              policy,
+                                              client,
+                                              context,
+                                              &lookup_status))
+                   == NULL) {
+                    if (lookup_status == CACHE_INODE_NOT_FOUND) {
+                         /* Directory changed out from under us.
+                            Invalidate it, skip the name, and keep
+                            going. */
+                         atomic_clear_int_bits(&dir_entry->flags,
+                                               CACHE_INODE_TRUST_CONTENT);
+                         continue;
+                    } else {
+                         /* Something is more seriously wrong,
+                            probably an inconsistency. */
+                         *status = lookup_status;
+                         goto unlock_dir;
+                    }
+               }
+          }
+
           LogFullDebug(COMPONENT_NFS_READDIR,
                        "cache_inode_readdir: dirent=%p name=%s "
                        "cookie=%"PRIu64" (probes %d)",
-                       dirent,
-                       dirent->name.name,
-                       dirent->hk.k,
-                       dirent->hk.p);
+                       dirent, dirent->name.name,
+                       dirent->hk.k, dirent->hk.p);
 
-          dirent_array[i] = dirent;
-          (*pnbfound)++;
-
+          cache_inode_lock_trust_attrs(entry, context, client);
+          more_wanted = cb(cb_opaque,
+                           dirent->name.name,
+                           &entry->handle,
+                           &entry->attributes,
+                           dirent->hk.k);
+          (*nbfound)++;
+          pthread_rwlock_unlock(&entry->attr_lock);
+          cache_inode_lru_unref(entry, client, 0);
+          if (!more_wanted) {
+               break;
+          }
           dirent_node = avltree_next(dirent_node);
      }
 
-     if (*pnbfound > 0) {
-          if (!dirent) {
-               LogCrit(COMPONENT_CACHE_INODE, "cache_inode_readdir: "
-                       "UNEXPECTED CASE: dirent is NULL whereas nbfound > 0");
-               *pstatus = CACHE_INODE_INCONSISTENT_ENTRY;
-               goto unlock_dir;
-          }
-          *pend_cookie = dirent->hk.k;
+     if ((*nbfound > 0) && (!dirent)) {
+          LogCrit(COMPONENT_CACHE_INODE, "cache_inode_readdir: "
+                  "UNEXPECTED CASE: dirent is NULL whereas nbfound > 0");
+          *status = CACHE_INODE_INCONSISTENT_ENTRY;
+          goto unlock_dir;
      }
 
      if (!dirent_node)
-          *peod_met = END_OF_DIR;
+          *eod_met = TRUE;
 
 unlock_dir:
 
      /* stats */
-     if(*pstatus != CACHE_INODE_SUCCESS) {
-          (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
-          pthread_rwlock_unlock(&dir_pentry->content_lock);
+     if(*status != CACHE_INODE_SUCCESS) {
+          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_READDIR])++;
      } else {
-          (pclient->stat.func_stats.nb_success[CACHE_INODE_READDIR])++;
-          *unlock = TRUE;
+          (client->stat.func_stats.nb_success[CACHE_INODE_READDIR])++;
      }
 
-     return *pstatus;
+     pthread_rwlock_unlock(&dir_entry->content_lock);
+     return *status;
 
 unlock_attrs:
 
-     pthread_rwlock_unlock(&dir_pentry->attr_lock);
-     return *pstatus;
+     pthread_rwlock_unlock(&dir_entry->attr_lock);
+     return *status;
 } /* cache_inode_readdir */

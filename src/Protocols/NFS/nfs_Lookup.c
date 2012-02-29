@@ -243,18 +243,18 @@ int nfs_Lookup(nfs_arg_t * parg,
                           else
 #endif
                             /* Build entry attributes */
-                            nfs_SetPostOpAttr(pcontext, pexport,
-                                              pentry_file,
+                            nfs_SetPostOpAttr(pexport,
                                               &attr,
-                                              &(pres->res_lookup3.LOOKUP3res_u.resok.
-                                                obj_attributes));
+                                              &(pres->res_lookup3
+                                                .LOOKUP3res_u.resok
+                                                .obj_attributes));
 
                           /* Build directory attributes */
-                          nfs_SetPostOpAttr(pcontext, pexport,
-                                            pentry_dir,
+                          nfs_SetPostOpAttr(pexport,
                                             &attrdir,
-                                            &(pres->res_lookup3.LOOKUP3res_u.resok.
-                                              dir_attributes));
+                                            &(pres->res_lookup3
+                                              .LOOKUP3res_u.resok
+                                              .dir_attributes));
 
                           pres->res_lookup3.status = NFS3_OK;
                         }       /* if */

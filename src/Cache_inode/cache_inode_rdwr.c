@@ -404,7 +404,8 @@ cache_inode_status_t cache_inode_rdwr(cache_entry_t *pentry,
                          fsal_status.major);
 
               if((fsal_status.major != ERR_FSAL_NOT_OPENED)
-                 && (pentry->object.file.open_fd.fileno != 0))
+                 && (pentry->object.file.open_fd.openflags
+                     != FSAL_O_CLOSED))
                 {
 
                   LogDebug(COMPONENT_CACHE_INODE,

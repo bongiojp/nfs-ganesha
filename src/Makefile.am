@@ -34,7 +34,6 @@ SUBDIRS = include             \
           IdMapper            \
           snmp_adm            \
           MainNFSD            \
-          shell               \
           cmdline_tools       \
           Docs                \
           tools               \

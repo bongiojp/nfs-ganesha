@@ -123,7 +123,9 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   uint32_t tmp_attr[2];
   uint_t tmp_int = 2;
 
-  cache_inode_create_arg_t create_arg;
+  cache_inode_create_arg_t create_arg = {
+       .newly_created_dir = FALSE
+  };
 
   memset(&create_arg, 0, sizeof(create_arg));
 

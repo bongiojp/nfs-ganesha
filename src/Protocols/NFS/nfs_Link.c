@@ -267,11 +267,10 @@ int nfs_Link(nfs_arg_t * parg,
                         case NFS_V3:
                           /*
                            * Build post op file
-                           * attributes 
+                           * attributes
                            */
 
-                          nfs_SetPostOpAttr(pcontext, pexport,
-                                            target_pentry,
+                          nfs_SetPostOpAttr(pexport,
                                             &attr,
                                             &(pres->res_link3.LINK3res_u.resok.
                                               file_attributes));

@@ -1421,15 +1421,13 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
         fprintf(output, "-->cache_inode_readdir(path=%s,cookie=%"PRIu64")\n",
                 glob_path, begin_cookie);
 
-      if(cache_inode_readdir(pentry_tmp,
+      if (cache_inode_readdir(pentry_tmp,
                              cachepol,
                              begin_cookie,
                              CACHE_INODE_SHELL_READDIR_SIZE,
                              &nbfound,
-                             &end_cookie,
                              &eod_met,
                              dirent_array,
-                             &dir_pentry_unlock,
                              &context->client,
                              &context->context,
                              &context->cache_status) != CACHE_INODE_SUCCESS)

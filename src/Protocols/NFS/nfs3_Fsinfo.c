@@ -159,13 +159,14 @@ int nfs3_Fsinfo(nfs_arg_t * parg,
 
   /*
    * Allow all kinds of operations to be performed on the server
-   * through NFS v3 
+   * through NFS v3
    */
-  FSINFO_FIELD.properties = FSF3_LINK | FSF3_SYMLINK | FSF3_HOMOGENEOUS | FSF3_CANSETTIME;
+  FSINFO_FIELD.properties = FSF3_LINK | FSF3_SYMLINK |
+       FSF3_HOMOGENEOUS | FSF3_CANSETTIME;
 
-  nfs_SetPostOpAttr(pcontext, pexport,
-                    pentry,
-                    &attr, &(pres->res_fsinfo3.FSINFO3res_u.resok.obj_attributes));
+  nfs_SetPostOpAttr(pexport,
+                    &attr,
+                    &(pres->res_fsinfo3.FSINFO3res_u.resok.obj_attributes));
   pres->res_fsinfo3.status = NFS3_OK;
 
   return NFS_REQ_OK;
@@ -173,9 +174,9 @@ int nfs3_Fsinfo(nfs_arg_t * parg,
 
 /**
  * nfs3_Fsinfo_Free: Frees the result structure allocated for nfs3_Fsinfo.
- * 
+ *
  * Frees the result structure allocated for nfs3_Fsinfo.
- * 
+ *
  * @param pres        [INOUT]   Pointer to the result structure.
  *
  */

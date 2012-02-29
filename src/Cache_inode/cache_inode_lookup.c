@@ -104,9 +104,11 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
      fsal_handle_t object_handle;
 #endif
      fsal_attrib_list_t object_attributes;
-     cache_inode_create_arg_t create_arg;
-     cache_inode_file_type_t type;
-     cache_inode_status_t cache_status;
+     cache_inode_create_arg_t create_arg = {
+          .newly_created_dir = FALSE
+     };
+     cache_inode_file_type_t type = UNASSIGNED;
+     cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
      cache_inode_fsal_data_t new_entry_fsdata;
      cache_inode_dir_entry_t *broken_dirent = NULL;
 

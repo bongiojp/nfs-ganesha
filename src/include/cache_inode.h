@@ -261,10 +261,6 @@ typedef struct cache_inode_opened_file__
   fsal_file_t fd; /*< FSAL specific object representing a given file
                       open. */
 #endif
-  unsigned int fileno; /*< An integer corresponding to the file.
-                           Used to manage number of open files.  This
-                           doesn't actually work, so it's being
-                           removed by Jim. */
   fsal_openflags_t openflags; /*< Flags showing whether the file is
                                   open for reading, writing, or both. */
 } cache_inode_opened_file_t;
@@ -286,18 +282,6 @@ typedef enum cache_inode_file_type__
                        filesystem to another */
   RECYCLED = 10 /*< This entry has been recycled */
 } cache_inode_file_type_t;
-
-/**
- * Type for eod flag in cache_inode_readdir.
- */
-
-typedef enum cache_inode_endofdir__
-{
-  TO_BE_CONTINUED = 1, /*< More entries are available */
-  END_OF_DIR = 2, /*< All entries have been read */
-  UNASSIGNED_EOD = 3 /*< Used by some callers to initialize the
-                         variable */
-} cache_inode_endofdir_t;
 
 /**
  * Indicate whether this is a read or write operation, for
@@ -571,18 +555,6 @@ typedef struct cache_inode_gc_policy__
 } cache_inode_gc_policy_t;
 
 /**
- * Gives information to cache_inode_new_entry about directory inodes.
- */
-
-typedef struct cache_inode_dir_hint__
-{
-  unsigned int newly_created; /*< True if this directory has just
-                                  been created, rather than
-                                  pre-existing and loaded into the
-                                  cache. */
-} cache_inode_dir_hint_t;
-
-/**
  * Type-specific data passed to cache_inode_new_entry
  */
 
@@ -590,8 +562,9 @@ typedef union cache_inode_create_arg__
 {
   fsal_path_t link_content; /*< Content of a symbolic link */
   fsal_dev_t  dev_spec; /*< Major/minor numbers for a device file */
-  cache_inode_dir_hint_t dir_hint; /*< Whether a directory is newly
-                                       created */
+  bool_t newly_created_dir; /*< True if this directory has just been
+                                created, rather than pre-existing and
+                                loaded into the cache. */
 } cache_inode_create_arg_t;
 
 /*
@@ -675,6 +648,21 @@ typedef enum cache_inode_status_t
   CACHE_INODE_FILE_BIG              = 41,
   CACHE_INODE_KILLED                = 42,
 } cache_inode_status_t;
+
+/**
+ * \brief Type of callback for cache_inode_readdir
+ *
+ * This callback provides the upperl evel protocol handling function
+ * with one directory entry at a time.  It may use the opaque to keep
+ * track of the structure it is filling, space used, and so forth.
+ */
+
+typedef bool_t(*cache_inode_readdir_cb_t)(
+     void *opaque,
+     const char *name,
+     const fsal_handle_t *handle,
+     const fsal_attrib_list_t *attrs,
+     uint64_t cookie);
 
 const char *cache_inode_err_str(cache_inode_status_t err);
 
@@ -958,18 +946,17 @@ cache_inode_status_t cache_inode_readdir_populate(
      fsal_op_context_t *pcontext,
      cache_inode_status_t *pstatus);
 cache_inode_status_t cache_inode_readdir(
-     cache_entry_t *pentry,
+     cache_entry_t * dir_entry,
      cache_inode_policy_t policy,
      uint64_t cookie,
      unsigned int nbwanted,
-     unsigned int *pnbfound,
-     uint64_t *pend_cookie,
-     cache_inode_endofdir_t *peod_met,
-     cache_inode_dir_entry_t **dirent_array,
-     int *unlock,
-     cache_inode_client_t *pclient,
-     fsal_op_context_t *pcontext,
-     cache_inode_status_t *pstatus);
+     unsigned int *nbfound,
+     bool_t *eod_met,
+     cache_inode_client_t *client,
+     fsal_op_context_t *context,
+     cache_inode_readdir_cb_t cb,
+     void *cb_opaque,
+     cache_inode_status_t *status);
 cache_inode_status_t cache_inode_add_cached_dirent(
      cache_entry_t *pdir,
      fsal_name_t *pname,
@@ -978,18 +965,11 @@ cache_inode_status_t cache_inode_add_cached_dirent(
      cache_inode_client_t *pclient,
      fsal_op_context_t *pcontext,
      cache_inode_status_t *pstatus);
-void cache_inode_release_dirent(cache_inode_dir_entry_t **dirent_array,
-                                unsigned int howmuch,
-                                cache_inode_client_t *pclient);
 cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t *pfsdata,
                                      cache_inode_policy_t policy,
                                      cache_inode_client_t *pclient,
                                      fsal_op_context_t *pcontext,
                                      cache_inode_status_t *pstatus);
-cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
-     cache_entry_t *pentry_parent,
-     cache_inode_client_t *pclient,
-     cache_inode_status_t *pstatus);
 
 cache_inode_file_type_t cache_inode_fsal_type_convert(fsal_nodetype_t type);
 int cache_inode_type_are_rename_compatible(cache_entry_t *pentry_src,
@@ -1008,8 +988,12 @@ cache_inode_status_t cache_inode_add_avl(cache_entry_t *pentry,
                                          fsal_name_t *pname,
                                          fsal_name_t *newname);
 
-void cache_inode_release_dirents(cache_entry_t *pentry,
-                                 cache_inode_client_t *pclient);
+cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
+     cache_entry_t *entry,
+     cache_inode_client_t *client,
+     cache_inode_status_t *status);
+void cache_inode_release_dirents(cache_entry_t           * pentry,
+                                 cache_inode_client_t    * pclient);
 
 cache_inode_status_t cache_inode_kill_entry(cache_entry_t *entry,
                                             cache_inode_client_t *client,

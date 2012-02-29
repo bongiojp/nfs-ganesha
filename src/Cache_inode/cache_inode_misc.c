@@ -309,6 +309,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 #ifdef _USE_MFSL
      entry->mobject.handle = entry->handle;
 #endif /* _USE_MFSL */
+     entry->fh_data.start = &entry;
+     entry->fh_data.len = fsdata->fh_desc.len
 
      /* Enroll the object in the weakref table */
 
@@ -386,8 +388,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                goto out;
           }
 
-          entry->object.file.open_fd.fileno = 0; /* This is going away. */
-          entry->object.file.open_fd.openflags = 0;
+          entry->object.file.open_fd.openflags = FSAL_O_CLOSED;
 #ifdef _USE_MFSL
           memset(&(pentry->object.file.open_fd.mfsl_fd), 0,
                  sizeof(mfsl_file_t));
@@ -409,12 +410,16 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
           /* If the directory is newly created, it is empty.  Because
              we know its content, we consider it read. */
-          if (create_arg != NULL)
-               if (create_arg->dir_hint.newly_created != FALSE) {
-                    atomic_set_int_bits(&entry->flags,
-                                        CACHE_INODE_TRUST_CONTENT |
-                                        CACHE_INODE_DIR_POPULATED);
-               }
+          if ((create_arg != NULL) &&
+              (create_arg->newly_created_dir)) {
+               atomic_set_int_bits(&entry->flags,
+                                   CACHE_INODE_TRUST_CONTENT |
+                                   CACHE_INODE_DIR_POPULATED);
+          } else {
+               atomic_clear_int_bits(&entry->flags,
+                                     CACHE_INODE_TRUST_CONTENT |
+                                     CACHE_INODE_DIR_POPULATED);
+          }
 
           entry->object.dir.nbactive = 0;
           entry->object.dir.referral = NULL;

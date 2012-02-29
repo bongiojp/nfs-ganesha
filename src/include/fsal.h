@@ -291,7 +291,8 @@ fsal_status_t FSAL_name2str(fsal_name_t * p_name,       /* IN */
                             fsal_mdsize_t out_str_maxlen        /* IN */
     );
 
-int FSAL_namecmp(fsal_name_t * p_name1, fsal_name_t * p_name2);
+int FSAL_namecmp(const fsal_name_t *p_name1,
+                 const fsal_name_t *p_name2);
 
 fsal_status_t FSAL_namecpy(fsal_name_t * p_tgt_name, fsal_name_t * p_src_name);
 
