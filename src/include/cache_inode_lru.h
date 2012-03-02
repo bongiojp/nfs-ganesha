@@ -78,23 +78,23 @@
 /* Flags for functions in the LRU package */
 
 /* Take a reference on the created entry */
-#define LRU_REQ_FLAG_REF       0x0004
+static const uint32_t LRU_REQ_FLAG_REF = 0x0004;
 /* The caller holds mutex on source (queue from which entry is
    removed) */
-#define LRU_HAVE_LOCKED_SRC    0x0008
+static const uint32_t LRU_HAVE_LOCKED_SRC = 0x0008;
 /* The caller holds mutex on destination (queue to which entry is
    added) */
-#define LRU_HAVE_LOCKED_DST    0x0010
+static const uint32_t LRU_HAVE_LOCKED_DST = 0x0010;
 /* The caller holds mutex on entry */
-#define LRU_HAVE_LOCKED_ENTRY  0x0020
+static const uint32_t LRU_HAVE_LOCKED_ENTRY = 0x0020;
 /* The caller is fetching an initial reference */
-#define LRU_REQ_INITIAL        0x0040
+static const uint32_t LRU_REQ_INITIAL = 0x0040;
 /* The caller is scanning the entry (READDIR) */
-#define LRU_REQ_SCAN           0x0080
+static const uint32_t LRU_REQ_SCAN = 0x0080;
 
 /* The minimum reference count for a cache entry not being recycled. */
 
-#define LRU_SENTINEL_REFCOUNT  1
+static const int32_t LRU_SENTINEL_REFCOUNT = 1;
 
 /* The number of lanes comprising a logical queue.  This must be
    prime. */
@@ -104,12 +104,13 @@
 /* LRU_WORK_PER_WAKE * LRU_N_Q_LANES is the number of entries that
    the worker thread will process and move from L1 to L2. */
 
-#define LRU_WORK_PER_WAKE 10
-
-#define LRU_NO_LANE ~0L
+static const uint32_t LRU_WORK_PER_WAKE = 10;
+static const uint32_t LRU_NO_LANE = ~0;
 
 extern void cache_inode_lru_pkginit(void);
 extern void cache_inode_lru_pkgshutdown(void);
+
+extern size_t open_fd_count;
 
 /* Return an integral id associated with the thread.  Currently we
    just return the index, since it is known to be integral and unique
@@ -117,7 +118,7 @@ extern void cache_inode_lru_pkgshutdown(void);
 
 static inline uint64_t cache_inode_lru_thread_id(int index)
 {
-    return (uint64_t) index;
+     return (uint64_t) index;
 }
 
 /* For a given thread, this function returns a lane within the

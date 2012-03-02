@@ -127,11 +127,11 @@ int nfs3_Commit(nfs_arg_t * parg,
 
   if((pexport->use_commit == TRUE) &&
      (pexport->use_ganesha_write_buffer == FALSE))
-    typeofcommit = FSAL_UNSAFE_WRITE_TO_FS_BUFFER;
+    typeofcommit = CACHE_INODE_UNSAFE_WRITE_TO_FS_BUFFER;
   else if((pexport->use_commit == TRUE) &&
           (pexport->use_ganesha_write_buffer == TRUE))
-    typeofcommit = FSAL_UNSAFE_WRITE_TO_GANESHA_BUFFER;
-  else 
+    typeofcommit = CACHE_INODE_UNSAFE_WRITE_TO_GANESHA_BUFFER;
+  else
     /* We only do stable writes with this export so no need to execute a commit */
     return NFS_REQ_OK;
 
@@ -139,8 +139,10 @@ int nfs3_Commit(nfs_arg_t * parg,
   if(cache_inode_commit(pentry,
                         parg->arg_commit3.offset,
                         parg->arg_commit3.count,
-                        &pre_attr,
-                        pclient, pcontext, typeofcommit, &cache_status) != CACHE_INODE_SUCCESS)
+                        typeofcommit,
+                        pclient,
+                        pcontext,
+                        &cache_status) != CACHE_INODE_SUCCESS)
     {
       pres->res_commit3.status = NFS3ERR_IO;;
 

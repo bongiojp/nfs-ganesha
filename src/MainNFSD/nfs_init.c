@@ -620,6 +620,8 @@ void nfs_set_param_default()
   /* Cache inode parameters : Garbage collection policy */
   nfs_param.cache_layers_param.gcpol.hwmark_nb_entries = 10000;
   nfs_param.cache_layers_param.gcpol.lwmark_nb_entries = 10000;
+  nfs_param.cache_layers_param.gcpol.max_fd = 1000;
+  nfs_param.cache_layers_param.gcpol.use_fd_cache = TRUE;
   nfs_param.cache_layers_param.cache_inode_client_param.nb_prealloc_entry = 1024;
   nfs_param.cache_layers_param.cache_inode_client_param.nb_pre_state_v4 = 512;
   nfs_param.cache_layers_param.cache_inode_client_param.grace_period_attr   = 0;
@@ -635,17 +637,13 @@ void nfs_set_param_default()
 #else
   nfs_param.cache_layers_param.cache_inode_client_param.attrmask = FSAL_ATTR_MASK_V2_V3;
 #endif
-  nfs_param.cache_layers_param.cache_inode_client_param.max_fd = 20;
-  nfs_param.cache_layers_param.cache_inode_client_param.use_fd_cache = 0;
   nfs_param.cache_layers_param.cache_inode_client_param.use_fsal_hash = 1;
-  nfs_param.cache_layers_param.cache_inode_client_param.retention = 60;
 
   /* Data cache client parameters */
   nfs_param.cache_layers_param.cache_content_client_param.nb_prealloc_entry = 128;
   nfs_param.cache_layers_param.cache_content_client_param.flush_force_fsal = 1;
   nfs_param.cache_layers_param.cache_content_client_param.max_fd = 20;
   nfs_param.cache_layers_param.cache_content_client_param.use_fd_cache = 0;
-  nfs_param.cache_layers_param.cache_content_client_param.retention = 60;
 
   strcpy(nfs_param.cache_layers_param.cache_content_client_param.cache_dir,
          "/tmp/ganesha.datacache");

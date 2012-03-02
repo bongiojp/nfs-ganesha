@@ -188,7 +188,7 @@ cache_content_status_t cache_content_close(cache_content_entry_t * pentry,
  *
  * @param pentry          [IN] entry in file content layer whose content is to be accessed.
  * @param read_or_write   [IN] a flag of type cache_content_io_direction_t to tell if a read or write is to be done. 
- * @param seek_descriptor [IN] absolute position (in the FSAL file) where the IO will be done.
+ * @param offset          [IN] absolute position (in the FSAL file) where the IO will be done.
  * @param pio_size_in     [IN] requested io size
  * @param pio_size_out    [OUT] the size of the io that was successfully made.
  * @param pbuffstat       [OUT] the 'stat' of entry in the data cache after the operation
@@ -201,11 +201,11 @@ cache_content_status_t cache_content_close(cache_content_entry_t * pentry,
  *
  */
 cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
-                                          cache_content_io_direction_t read_or_write,
-                                          fsal_seek_t * seek_descriptor,
-                                          fsal_size_t * pio_size_in,
-                                          fsal_size_t * pio_size_out,
-                                          caddr_t buffer,
+                                          cache_inode_io_direction_t read_or_write,
+                                          uint64_t offset,
+                                          size_t * pio_size_in,
+                                          size_t * pio_size_out,
+                                          void *buffer,
                                           fsal_boolean_t * p_fsal_eof,
                                           struct stat * pbuffstat,
                                           cache_content_client_t * pclient,
@@ -215,7 +215,6 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
   fsal_status_t fsal_status;
   fsal_path_t local_path;
   int statindex;
-  off_t offset;
   size_t iosize_before;
   ssize_t iosize_after;
   struct stat buffstat;
@@ -224,27 +223,14 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
 
   *pstatus = CACHE_CONTENT_SUCCESS;
 
-  LogFullDebug(COMPONENT_CACHE_CONTENT,
-                    "---> DATA : IO Size IN = %llu fdsize=%zu seeksize=%zu",
-                    *pio_size_in, sizeof(fsal_file_t), sizeof(fsal_seek_t));
-
-  /* For now, only FSAL_SEEK_SET is supported */
-  if(seek_descriptor->whence != FSAL_SEEK_SET)
-    {
-      LogDebug(COMPONENT_CACHE_CONTENT,
-                   "Implementation trouble: seek_descriptor was not a 'FSAL_SEEK_SET' cursor");
-      *pstatus = CACHE_INODE_INVALID_ARGUMENT;
-      return *pstatus;
-    }
-
   /* Set the statindex variable */
   switch (read_or_write)
     {
-    case CACHE_CONTENT_READ:
+    case CACHE_INODE_READ:
       statindex = CACHE_CONTENT_READ_ENTRY;
       break;
 
-    case CACHE_CONTENT_WRITE:
+    case CACHE_INODE_WRITE:
       statindex = CACHE_CONTENT_WRITE_ENTRY;
       break;
 
@@ -272,15 +258,6 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
     }
 
   /* Parameters conversion */
-  offset = cache_content_fsal_seek_convert(*seek_descriptor, pstatus);
-  if(*pstatus != CACHE_CONTENT_SUCCESS)
-    {
-      /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[statindex] += 1;
-
-      return *pstatus;
-    }
-
   iosize_before = cache_content_fsal_size_convert(*pio_size_in, pstatus);
   if(*pstatus != CACHE_CONTENT_SUCCESS)
     {
@@ -297,7 +274,7 @@ cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
     }
 
   /* Perform the IO through the cache */
-  if(read_or_write == CACHE_CONTENT_READ)
+  if(read_or_write == CACHE_INODE_READ)
     {
       /* The file content was completely read before the IO. The read operation is fully done locally */
       if((iosize_after =

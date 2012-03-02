@@ -103,11 +103,6 @@ typedef enum cache_content_entry_valid_state__
   TO_BE_GARBAGGED = 2
 } cache_content_entry_valid_state_t;
 
-typedef enum cache_content_io_direction__
-{ CACHE_CONTENT_READ = 1,
-  CACHE_CONTENT_WRITE = 2
-} cache_content_io_direction_t;
-
 typedef enum cache_content_flush_behaviour__
 { CACHE_CONTENT_FLUSH_AND_DELETE = 1,
   CACHE_CONTENT_FLUSH_SYNC_ONLY = 2
@@ -118,7 +113,6 @@ typedef struct cache_content_client_parameter__
   char cache_dir[MAXPATHLEN];                 /**< Path to the directory where data are cached */
   unsigned int flush_force_fsal;              /**< Should the flush force the write to FSAL    */
   unsigned int max_fd;                        /**< Max fd open per client */
-  time_t retention;                           /**< Fd retention duration */
   unsigned int use_fd_cache;                  /** Do we cache fd or not ? */
 } cache_content_client_parameter_t;
 
@@ -288,11 +282,11 @@ cache_content_status_t cache_content_close(cache_content_entry_t * pentry,
                                            cache_content_status_t * pstatus);
 
 cache_content_status_t cache_content_rdwr(cache_content_entry_t * pentry,
-                                          cache_content_io_direction_t read_or_write,
-                                          fsal_seek_t * seek_descriptor,
-                                          fsal_size_t * pio_size_in,
-                                          fsal_size_t * pio_size_out,
-                                          caddr_t buffer,
+                                          cache_inode_io_direction_t read_or_write,
+                                          uint64_t offset,
+                                          size_t *pio_size_in,
+                                          size_t *pio_size_out,
+                                          void *buffer,
                                           fsal_boolean_t * p_fsal_eof,
                                           struct stat *pbuffstat,
                                           cache_content_client_t * pclient,

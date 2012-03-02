@@ -91,7 +91,7 @@ cache_inode_status_t cache_inode_statfs(cache_entry_t * pentry,
       return *pstatus;
     }
   LogFullDebug(COMPONENT_CACHE_INODE,
-      "-- cache_inode_statfs --> pdynamicinfo->total_bytes = %llu pdynamicinfo->free_bytes = %llu pdynamicinfo->avail_bytes = %llu",
+      "-- cache_inode_statfs --> pdynamicinfo->total_bytes = %zu pdynamicinfo->free_bytes = %zu pdynamicinfo->avail_bytes = %zu",
        pdynamicinfo->total_bytes, pdynamicinfo->free_bytes, pdynamicinfo->avail_bytes);
 
   LogFullDebug(COMPONENT_CACHE_INODE,

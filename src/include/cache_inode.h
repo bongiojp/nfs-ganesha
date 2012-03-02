@@ -164,6 +164,17 @@ typedef enum cache_inode_expire_type__
 } cache_inode_expire_type_t;
 
 /**
+ * Values to control the stability
+ */
+
+typedef enum cache_inode_stability__ {
+  CACHE_INODE_UNSAFE_WRITE_TO_FS_BUFFER = 0,
+  CACHE_INODE_SAFE_WRITE_TO_FS = 1,
+  CACHE_INODE_UNSAFE_WRITE_TO_GANESHA_BUFFER = 2
+} cache_inode_stability_t;
+
+
+/**
  * Data for tracking a cache entry's position the LRU.
  */
 
@@ -192,18 +203,16 @@ typedef struct cache_inode_stat__
 {
   struct func_inode_stats__
   {
-    unsigned int nb_call[CACHE_INODE_NB_COMMAND]; /*< Total number of
-                                                      calls per functions */
-    unsigned int nb_success[CACHE_INODE_NB_COMMAND]; /*< Succesfull calls per
-                                                         function  */
-    unsigned int
-      nb_err_retryable[CACHE_INODE_NB_COMMAND]; /*< Failed/retryable calls per
-                                                    function */
-    unsigned int
-      nb_err_unrecover[CACHE_INODE_NB_COMMAND]; /*< Failed/unrecoverable calls
-                                                    per function */
+    uint32_t nb_call[CACHE_INODE_NB_COMMAND]; /*< Total number of calls per
+                                                  functions */
+    uint32_t nb_success[CACHE_INODE_NB_COMMAND]; /*< Succesfull calls per
+                                                     function  */
+    uint32_t nb_err_retryable[CACHE_INODE_NB_COMMAND]; /*< Failed/retryable
+                                                         calls per function */
+    uint32_t nb_err_unrecover[CACHE_INODE_NB_COMMAND]; /*< Failed/unrecoverable
+                                                         calls per function */
   } func_stats;
-  unsigned int nb_call_total; /*< Total number of calls */
+  uint32_t nb_call_total; /*< Total number of calls */
 } cache_inode_stat_t;
 
 /**
@@ -227,9 +236,9 @@ typedef struct cache_inode_parameter__
 typedef struct cache_inode_client_parameter__
 {
   fsal_attrib_mask_t attrmask; /*< FSAL attributes to be used in FSAL */
-  unsigned int nb_prealloc_entry; /*< Number of preallocated pentries */
-  unsigned int nb_pre_state_v4; /*< Number of preallocated State_v4s */
-  unsigned int nb_pre_lock; /*< Number of preallocated file locks */
+  size_t nb_prealloc_entry; /*< Number of preallocated pentries */
+  size_t nb_pre_state_v4; /*< Number of preallocated State_v4s */
+  size_t nb_pre_lock; /*< Number of preallocated file locks */
   cache_inode_expire_type_t expire_type_attr; /*< Cache inode expiration type
                                                   for attributes */
   cache_inode_expire_type_t expire_type_link; /*< Cache inode expiration type
@@ -239,13 +248,10 @@ typedef struct cache_inode_client_parameter__
   time_t grace_period_attr; /*< Cached attributes grace period */
   time_t grace_period_link; /*< Cached link grace period */
   time_t grace_period_dirent; /*< Cached dirent grace period */
-  unsigned int getattr_dir_invalidation; /*< Use getattr as for directory
-                                             invalidation */
-  unsigned int use_test_access; /*< Is FSAL_test_access to be used? */
-  unsigned int max_fd; /*< Maximum number of open file descriptors */
-  time_t retention; /*< FD retention time */
-  unsigned int use_fd_cache; /*< Do we cache fd or not? */
-  unsigned int use_fsal_hash; /*< Do we rely on FSAL to hash handle or not? */
+  bool_t getattr_dir_invalidation; /*< Use getattr as for directory
+                                       invalidation */
+  bool_t use_test_access; /*< Is FSAL_test_access to be used? */
+  bool_t use_fsal_hash; /*< Do we rely on FSAL to hash handle or not? */
 } cache_inode_client_parameter_t;
 
 /**
@@ -285,10 +291,10 @@ typedef enum cache_inode_file_type__
 
 /**
  * Indicate whether this is a read or write operation, for
- * cache_inode_rdwr
+ * cache_inode_rdwr and cache_content functions.
  */
 
-typedef enum cache_inode_io_direction__
+typedef enum io_direction__
 {
   CACHE_INODE_READ = 1, /*< Reading */
   CACHE_INODE_WRITE = 2 /*< Writing */
@@ -452,13 +458,13 @@ struct cache_entry_t
 
     struct cache_inode_dir__
     {
-      unsigned int nbactive; /*< Number of known active children */
+      uint32_t nbactive; /*< Number of known active children */
       char *referral; /*< NULL is not a referral.  If not, this a
                           'referral string' */
       gweakref_t parent; /*< The parent of this directory
                              ('..') */
       struct avltree avl; /*< Children */
-      unsigned int collisions; /*< For future heuristics. Expect 0. */
+      uint32_t collisions; /*< For future heuristics. Expect 0. */
     } dir; /*< DIRECTORY data */
   } object; /*< Filetype specific data, discriminated by the type
                 field.  Note that data for special files is in
@@ -507,8 +513,8 @@ struct cache_inode_client_t
 #ifdef _USE_NFS4_1
   struct prealloc_pool pool_session; /*< Pool for NFSv4.1 session */
 #endif /* _USE_NFS4_1 */
-  unsigned int nb_prealloc; /*< Size of the preallocated cache_entry pool */
-  unsigned int nb_pre_state_v4; /*< Number of preallocated NFSv4 File States */
+  uint32_t nb_prealloc; /*< Size of the preallocated cache_entry pool */
+  uint32_t nb_pre_state_v4; /*< Number of preallocated NFSv4 File States */
   fsal_attrib_mask_t attrmask; /*< Mask of the supported attributes
                                    for the underlying FSAL */
   cache_inode_stat_t stat;/*< Cache inode statistics for this client */
@@ -522,16 +528,14 @@ struct cache_inode_client_t
   time_t grace_period_attr; /*< Cached attributes grace period */
   time_t grace_period_link; /*< Cached link grace period */
   time_t grace_period_dirent; /*< Cached directory entries grace period */
-  unsigned int use_test_access; /*< Is FSAL_test_access to be used
-                                    instead of FSAL_access  */
-  unsigned int
-    getattr_dir_invalidation; /*< Use getattr as cookie for directory
-                                  invalidation */
-  caddr_t pcontent_client; /*< Pointer to cache content client */
-  void *pworker; /*< Pointer to the information on the worker I belong to */
-  unsigned int max_fd; /*< Max file descriptors open */
-  time_t retention; /*< Fd retention duration */
-  unsigned int use_fd_cache; /*< Do we cache fd or not? */
+  bool_t use_test_access; /*< Is FSAL_test_access to be used instead
+                              of FSAL_access */
+  bool_t getattr_dir_invalidation; /*< Use getattr as cookie for directory
+                                       invalidation */
+  struct cache_content_client__ *pcontent_client; /*< Pointer to cache content
+                                                      client */
+  struct nfs_worker_data__ *pworker; /*< Pointer to the information on the
+                                         worker I belong to */
   uint64_t thread_id; /*< Integer identifier for the current thread */
   uint32_t lru_lane; /*< Lane in logical LRU queue on which we prefer
                          to operate */
@@ -546,12 +550,12 @@ struct cache_inode_client_t
 
 typedef struct cache_inode_gc_policy__
 {
-  unsigned int hwmark_nb_entries; /*< High water mark for cache
-                                      entries. */
-  unsigned int lwmark_nb_entries; /*< Low water mark for
-                                      cache_entries */
-  unsigned int lru_run_interval;  /*< Interval in seconds between runs
-                                      of the LRU cleaner thread */
+  uint32_t hwmark_nb_entries; /*< High water mark for cache entries */
+  uint32_t lwmark_nb_entries; /*< Low water mark for cache_entries */
+  uint32_t lru_run_interval;  /*< Interval in seconds between runs of
+                                  the LRU cleaner thread */
+  size_t max_fd; /*< Maximum number of open file descriptors */
+  bool_t use_fd_cache; /*< Do we cache fd or not? */
 } cache_inode_gc_policy_t;
 
 /**
@@ -576,31 +580,30 @@ typedef union cache_inode_create_arg__
                                          just being loaded into the
                                          cache */
 #define CACHE_INODE_FLAG_LOCK 0x02 /*< Instruct the called function to
-                                       take a lock on the entry. */
+                                       take a lock on the entry */
 #define CACHE_INODE_FLAG_ATTR_HOLD 0x04 /*< For a function called with
                                             the attribute lock held,
                                             do not release the
                                             attribute lock before
-                                            returning. */
+                                            returning */
 #define CACHE_INODE_FLAG_CONTENT_HOLD 0x08 /*< For a function called
                                                with the content lock
                                                held, do not release
                                                the content lock before
-                                               returning. */
+                                               returning */
 #define CACHE_INODE_FLAG_ATTR_HAVE 0x10 /*< For a function, indicates
                                             that the attribute lock is
-                                            held. */
-#define CACHE_INODE_FLAG_CONTENT_HAVE 0x10 /*< For a function, indicates
+                                            held */
+#define CACHE_INODE_FLAG_CONTENT_HAVE 0x20 /*< For a function, indicates
                                                that the content lock is
-                                               held. */
-#define CACHE_INODE_FLAG_EXREF 0x00004 /*< Take an additional
-                                           reference. */
+                                               held */
+#define CACHE_INODE_FLAG_EXREF 0x40 /*< Take an additional reference */
+#define CACHE_INODE_FLAG_REALLYCLOSE 0x80 /*< Close a file even with
+                                              caching enabled */
 
 /*
  * Prototypes for the functions
  */
-
-/* Misc function */
 
 /*
  * Possible errors
@@ -709,7 +712,7 @@ cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
 int cache_inode_client_init(cache_inode_client_t *pclient,
                             cache_inode_client_parameter_t param,
                             int thread_index,
-                            void *pworker_data);
+                            struct nfs_worker_data__ *pworker_data);
 
 cache_entry_t *cache_inode_get(cache_inode_fsal_data_t *pfsdata,
                                cache_inode_policy_t policy,
@@ -732,7 +735,7 @@ cache_inode_status_t cache_inode_access_sw(cache_entry_t * pentry,
                                            cache_inode_client_t * pclient,
                                            fsal_op_context_t * pcontext,
                                            cache_inode_status_t *pstatus,
-                                           int use_mutex);
+                                           bool_t use_mutex);
 cache_inode_status_t cache_inode_access_no_mutex(
     cache_entry_t *pentry,
     fsal_accessflags_t access_type,
@@ -750,21 +753,20 @@ mfsl_file_t *cache_inode_fd(cache_entry_t *pentry);
 #else
 fsal_file_t *cache_inode_fd(cache_entry_t *pentry);
 #endif
-cache_inode_status_t cache_inode_open(cache_entry_t *pentry,
-                                      cache_inode_client_t *pclient,
+
+bool_t is_open_for_read(cache_entry_t *entry);
+bool_t is_open_for_write(cache_entry_t *entry);
+
+cache_inode_status_t cache_inode_open(cache_entry_t *entry,
+                                      cache_inode_client_t *client,
                                       fsal_openflags_t openflags,
-                                      fsal_op_context_t *pcontext,
-                                      cache_inode_status_t *pstatus);
-cache_inode_status_t cache_inode_open_by_name(cache_entry_t *pentry,
-                                              fsal_name_t *pname,
-                                              cache_entry_t *pentry_file,
-                                              cache_inode_client_t *pclient,
-                                              fsal_openflags_t openflags,
-                                              fsal_op_context_t *pcontext,
-                                              cache_inode_status_t *pstatus);
-cache_inode_status_t cache_inode_close(cache_entry_t *pentry,
-                                       cache_inode_client_t *pclient,
-                                       cache_inode_status_t *pstatus);
+                                      fsal_op_context_t *context,
+                                      uint32_t flags,
+                                      cache_inode_status_t *status);
+cache_inode_status_t cache_inode_close(cache_entry_t *entry,
+                                       cache_inode_client_t *client,
+                                       uint32_t flags,
+                                       cache_inode_status_t *status);
 
 cache_entry_t *cache_inode_create(cache_entry_t *pentry_parent,
                                   fsal_name_t *pname,
@@ -899,7 +901,7 @@ cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                                      cache_inode_create_arg_t *create_arg,
                                      cache_inode_client_t *client,
                                      fsal_op_context_t *context,
-                                     unsigned int flags,
+                                     uint32_t flags,
                                      cache_inode_status_t *status);
 
 cache_inode_status_t cache_inode_add_data_cache(cache_entry_t *pentry,
@@ -912,32 +914,30 @@ cache_inode_status_t cache_inode_release_data_cache(
      fsal_op_context_t *pcontext,
      cache_inode_status_t *pstatus);
 
-cache_inode_status_t cache_inode_rdwr(cache_entry_t *pentry,
-                                      cache_inode_io_direction_t read_or_write,
-                                      fsal_seek_t *seek_descriptor,
-                                      fsal_size_t buffer_size,
-                                      fsal_size_t *pread_size,
-                                      fsal_attrib_list_t *pfsal_attr,
-                                      caddr_t buffer,
-                                      fsal_boolean_t *p_fsal_eof,
-                                      cache_inode_client_t *pclient,
-                                      fsal_op_context_t *pcontext,
-                                      uint64_t stable,
-                                      cache_inode_status_t *pstatus);
+cache_inode_status_t cache_inode_rdwr(cache_entry_t *entry,
+                                      cache_inode_io_direction_t io_direction,
+                                      uint64_t offset,
+                                      size_t io_size,
+                                      size_t *bytes_moved,
+                                      void *buffer,
+                                      bool_t *eof,
+                                      cache_inode_client_t *client,
+                                      fsal_op_context_t *context,
+                                      cache_inode_stability_t stable,
+                                      cache_inode_status_t *status);
 
 #define cache_inode_read( a, b, c, d, e, f, g, h, i, j, k ) \
      cache_inode_rdwr( a, CACHE_INODE_READ, b, c, d, e, f, g, h, i, j, k )
 #define cache_inode_write( a, b, c, d, e, f, g, h, i, j, k ) \
      cache_inode_rdwr( a, CACHE_INODE_WRITE, b, c, d, e, f, g, h, i, j. k )
 
-cache_inode_status_t cache_inode_commit(cache_entry_t *pentry,
+cache_inode_status_t cache_inode_commit(cache_entry_t *entry,
                                         uint64_t offset,
-                                        fsal_size_t count,
-                                        fsal_attrib_list_t *pfsal_attr,
-                                        cache_inode_client_t *pclient,
-                                        fsal_op_context_t *pcontext,
-                                        uint64_t typeofcommit,
-                                        cache_inode_status_t *pstatus);
+                                        size_t count,
+                                        cache_inode_stability_t stability,
+                                        cache_inode_client_t *client,
+                                        fsal_op_context_t *context,
+                                        cache_inode_status_t *status);
 
 cache_inode_status_t cache_inode_readdir_populate(
      cache_entry_t *pentry_dir,

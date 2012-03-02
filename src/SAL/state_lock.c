@@ -2002,7 +2002,7 @@ state_status_t state_test(cache_entry_t        * pentry,
           "TEST",
           pentry, pcontext, powner, plock);
 
-  if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, &cache_status) != CACHE_INODE_SUCCESS)
+  if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, 0, &cache_status) != CACHE_INODE_SUCCESS)
     {
       *pstatus = cache_inode_status_to_state_status(cache_status);
       LogFullDebug(COMPONENT_STATE,
@@ -2086,7 +2086,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
   fsal_staticfsinfo_t  * pstatic = pcontext->export_context->fe_static_fs_info;
   fsal_lock_op_t         lock_op;
 
-  if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, &cache_status) != CACHE_INODE_SUCCESS)
+  if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, 0, &cache_status) != CACHE_INODE_SUCCESS)
     {
       *pstatus = cache_inode_status_to_state_status(cache_status);
       LogFullDebug(COMPONENT_STATE,

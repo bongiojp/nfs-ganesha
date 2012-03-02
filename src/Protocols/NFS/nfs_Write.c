@@ -100,14 +100,13 @@ int nfs_Write(nfs_arg_t * parg,
   fsal_attrib_list_t *ppre_attr;
   cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   cache_content_status_t content_status;
-  fsal_seek_t seek_descriptor;
-  fsal_size_t size = 0;
-  fsal_size_t written_size=0;
+  size_t size = 0;
+  size_t written_size;
   fsal_off_t offset = 0;
   caddr_t data = NULL;
   cache_inode_file_type_t filetype;
-  fsal_boolean_t eof_met=FALSE;
-  uint64_t stable_flag = FSAL_SAFE_WRITE_TO_FS;
+  fsal_boolean_t eof_met;
+  cache_inode_stability_t stability = CACHE_INODE_SAFE_WRITE_TO_FS;
   int rc = NFS_REQ_OK;
 #ifdef _USE_QUOTA
   fsal_status_t fsal_status ;
@@ -348,7 +347,7 @@ int nfs_Write(nfs_arg_t * parg,
       size = parg->arg_write2.data.nfsdata2_len;        /* totalcount is obsolete  */
       data = parg->arg_write2.data.nfsdata2_val;
       if (pexport->use_commit == TRUE)
-        stable_flag = FSAL_SAFE_WRITE_TO_FS;
+        stability = CACHE_INODE_SAFE_WRITE_TO_FS;
       break;
 
     case NFS_V3:
@@ -367,17 +366,17 @@ int nfs_Write(nfs_arg_t * parg,
          (pexport->use_ganesha_write_buffer == FALSE) &&
          (parg->arg_write3.stable == UNSTABLE))
         {
-          stable_flag = FSAL_UNSAFE_WRITE_TO_FS_BUFFER;
+          stability = CACHE_INODE_UNSAFE_WRITE_TO_FS_BUFFER;
         }
       else if((pexport->use_commit == TRUE) &&
               (pexport->use_ganesha_write_buffer == TRUE) &&
               (parg->arg_write3.stable == UNSTABLE))
         {
-          stable_flag = FSAL_UNSAFE_WRITE_TO_GANESHA_BUFFER;
+          stability = CACHE_INODE_UNSAFE_WRITE_TO_GANESHA_BUFFER;
         }
       else
         {
-          stable_flag = FSAL_SAFE_WRITE_TO_FS;
+          stability = CACHE_INODE_SAFE_WRITE_TO_FS;
         }
       data = parg->arg_write3.data.data_val;
       break;
@@ -496,22 +495,19 @@ int nfs_Write(nfs_arg_t * parg,
             }
         }
 
-      /* only FILE_SYNC mode is supported */
-      /* Set up uio to define the transfer */
-      seek_descriptor.whence = FSAL_SEEK_SET;
-      seek_descriptor.offset = offset;
-
-      if(cache_inode_rdwr(pentry,
-                          CACHE_INODE_WRITE,
-                          &seek_descriptor,
-                          size,
-                          &written_size,
-                          &attr,
-                          data,
-                          &eof_met,
-                          pclient,
-                          pcontext, stable_flag, &cache_status) == CACHE_INODE_SUCCESS)
-        {
+      if((cache_inode_rdwr(pentry,
+                           CACHE_INODE_WRITE,
+                           offset,
+                           size,
+                           &written_size,
+                           data,
+                           &eof_met,
+                           pclient,
+                           pcontext,
+                           stability,
+                           &cache_status) == CACHE_INODE_SUCCESS) &&
+         (cache_inode_getattr(pentry, &attr, pclient, pcontext,
+                              &cache_status) == CACHE_INODE_SUCCESS)) {
 
 
           switch (preq->rq_vers)
@@ -536,7 +532,7 @@ int nfs_Write(nfs_arg_t * parg,
               pres->res_write3.WRITE3res_u.resok.count = written_size;
 
               /* How do we commit data ? */
-              if(stable_flag == FSAL_SAFE_WRITE_TO_FS)
+              if(stability == CACHE_INODE_SAFE_WRITE_TO_FS)
                 {
                   pres->res_write3.WRITE3res_u.resok.committed = FILE_SYNC;
                 }

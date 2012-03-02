@@ -1983,7 +1983,7 @@ void *worker_thread(void *IndexArg)
                "Cache Content client successfully initialized");
 
   /* Bind the data cache client to the inode cache client */
-  pmydata->cache_inode_client.pcontent_client = (caddr_t) & pmydata->cache_content_client;
+  pmydata->cache_inode_client.pcontent_client = & pmydata->cache_content_client;
 
   LogInfo(COMPONENT_DISPATCH, "Worker successfully initialized");
 

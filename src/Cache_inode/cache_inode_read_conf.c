@@ -293,18 +293,6 @@ cache_inode_status_t cache_inode_read_conf_client_parameter(config_file_t in_con
         {
           pparam->use_test_access = atoi(key_value);
         }
-      else if(!strcasecmp(key_name, "Max_Fd"))
-        {
-          pparam->max_fd = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "OpenFile_Retention"))
-        {
-          pparam->retention = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "Use_OpenClose_cache"))
-        {
-          pparam->use_fd_cache = StrToBoolean(key_value);
-        }
       else if(!strcasecmp( key_name, "Use_FSAL_Hash" ) )
         {
           pparam->use_fsal_hash = StrToBoolean(key_value);
@@ -414,6 +402,14 @@ cache_inode_status_t cache_inode_read_conf_gc_policy(config_file_t in_config,
         {
           ppolicy->lwmark_nb_entries = atoi(key_value);
         }
+      else if(!strcasecmp(key_name, "Max_Fd"))
+        {
+          ppolicy->max_fd = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "Use_OpenClose_cache"))
+        {
+          ppolicy->use_fd_cache = StrToBoolean(key_value);
+        }
       else
         {
           LogCrit(COMPONENT_CONFIG,
@@ -464,7 +460,7 @@ void cache_inode_print_conf_hash_parameter(FILE * output, cache_inode_parameter_
 void cache_inode_print_conf_client_parameter(FILE * output,
                                              cache_inode_client_parameter_t param)
 {
-  fprintf(output, "CacheInode Client: Entry_Prealloc_PoolSize      = %d\n",
+  fprintf(output, "CacheInode Client: Entry_Prealloc_PoolSize      = %jd\n",
           param.nb_prealloc_entry);
   fprintf(output, "CacheInode Client: Attr_Expiration_Time         = %d\n",
           (int)param.grace_period_attr);

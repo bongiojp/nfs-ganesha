@@ -96,11 +96,10 @@ int nfs_Read(nfs_arg_t * parg,
   fsal_attrib_list_t pre_attr;
   cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   cache_content_status_t content_status;
-  fsal_seek_t seek_descriptor;
-  fsal_size_t size = 0;
-  fsal_size_t read_size=0;
+  size_t size = 0;
+  size_t read_size;
   fsal_off_t offset = 0;
-  caddr_t data = NULL;
+  void *data = NULL;
   cache_inode_file_type_t filetype;
   fsal_boolean_t eof_met=FALSE;
   cache_content_policy_data_t datapol;
@@ -324,9 +323,6 @@ int nfs_Read(nfs_arg_t * parg,
           goto out;
         }
 
-      seek_descriptor.whence = FSAL_SEEK_SET;
-      seek_descriptor.offset = offset;
-
       datapol.UseMaxCacheSize = pexport->options & EXPORT_OPTION_MAXCACHESIZE;
       datapol.MaxCacheSize = pexport->MaxCacheSize;
 
@@ -371,15 +367,19 @@ int nfs_Read(nfs_arg_t * parg,
             }
         }
 
-      if(cache_inode_rdwr(pentry,
-                          CACHE_INODE_READ,
-                          &seek_descriptor,
-                          size,
-                          &read_size,
-                          &attr,
-                          data,
-                          &eof_met,
-                          pclient, pcontext, TRUE, &cache_status) == CACHE_INODE_SUCCESS)
+      if((cache_inode_rdwr(pentry,
+                           CACHE_INODE_READ,
+                           offset,
+                           size,
+                           &read_size,
+                           data,
+                           &eof_met,
+                           pclient,
+                           pcontext,
+                           CACHE_INODE_SAFE_WRITE_TO_FS,
+                           &cache_status) == CACHE_INODE_SUCCESS) &&
+         (cache_inode_getattr(pentry, &attr, pclient, pcontext,
+                              &cache_status)) == CACHE_INODE_SUCCESS)
 
         {
           switch (preq->rq_vers)

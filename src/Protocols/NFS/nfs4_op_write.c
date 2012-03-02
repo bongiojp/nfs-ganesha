@@ -87,12 +87,11 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 {
   char __attribute__ ((__unused__)) funcname[] = "nfs4_op_write";
 
-  fsal_seek_t              seek_descriptor;
   fsal_size_t              size;
   fsal_size_t              written_size;
   fsal_off_t               offset;
   fsal_boolean_t           eof_met;
-  bool_t                   stable_flag = TRUE;
+  cache_inode_stability_t  stability = CACHE_INODE_SAFE_WRITE_TO_FS;
   caddr_t                  bufferdata;
   stable_how4              stable_how;
   cache_content_status_t   content_status;
@@ -100,7 +99,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   state_t                * pstate_open;
   state_t                * pstate_iterate;
   cache_inode_status_t     cache_status;
-  fsal_attrib_list_t       attr;
   cache_entry_t          * pentry = NULL;
   int                      rc = 0;
   struct glist_head      * glist;
@@ -320,8 +318,8 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   size = arg_WRITE4.data.data_len;
   stable_how = arg_WRITE4.stable;
   LogFullDebug(COMPONENT_NFS_V4,
-               "NFS4_OP_WRITE: offset = %llu  length = %llu  stable = %d",
-               (unsigned long long)offset, size, stable_how);
+               "NFS4_OP_WRITE: offset = %"PRIu64"  length = %zu  stable = %d",
+               offset, size, stable_how);
 
   if((data->pexport->options & EXPORT_OPTION_MAXOFFSETWRITE) ==
      EXPORT_OPTION_MAXOFFSETWRITE)
@@ -347,8 +345,8 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   bufferdata = arg_WRITE4.data.data_val;
 
   LogFullDebug(COMPONENT_NFS_V4,
-               "NFS4_OP_WRITE: offset = %llu  length = %llu",
-               (unsigned long long)offset, size);
+               "NFS4_OP_WRITE: offset = %"PRIu64" length = %zu",
+               offset, size);
 
   /* if size == 0 , no I/O) are actually made and everything is alright */
   if(size == 0)
@@ -395,29 +393,24 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
   if((nfs_param.core_param.use_nfs_commit == TRUE) && (arg_WRITE4.stable == UNSTABLE4))
     {
-      stable_flag = FALSE;
+      stability = CACHE_INODE_UNSAFE_WRITE_TO_FS_BUFFER;
     }
   else
     {
-      stable_flag = TRUE;
+      stability = CACHE_INODE_SAFE_WRITE_TO_FS;
     }
 
-  /* An actual write is to be made, prepare it */
-  /* only FILE_SYNC mode is supported */
-  /* Set up uio to define the transfer */
-  seek_descriptor.whence = FSAL_SEEK_SET;
-  seek_descriptor.offset = offset;
-
   if(cache_inode_rdwr(pentry,
-                      CACHE_CONTENT_WRITE,
-                      &seek_descriptor,
+                      CACHE_INODE_WRITE,
+                      offset,
                       size,
                       &written_size,
-                      &attr,
                       bufferdata,
                       &eof_met,
                       data->pclient,
-                      data->pcontext, stable_flag, &cache_status) != CACHE_INODE_SUCCESS)
+                      data->pcontext,
+                      stability,
+                      &cache_status) != CACHE_INODE_SUCCESS)
     {
       LogDebug(COMPONENT_NFS_V4,
                "cache_inode_rdwr returned %s",
@@ -427,7 +420,7 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
     }
 
   /* Set the returned value */
-  if(stable_flag == TRUE)
+  if(stability == CACHE_INODE_SAFE_WRITE_TO_FS)
     res_WRITE4.WRITE4res_u.resok4.committed = FILE_SYNC4;
   else
     res_WRITE4.WRITE4res_u.resok4.committed = UNSTABLE4;

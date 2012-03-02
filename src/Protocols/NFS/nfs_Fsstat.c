@@ -140,8 +140,8 @@ int nfs_Fsstat(nfs_arg_t * parg,
                                              &cache_status)) == CACHE_INODE_SUCCESS)
         {
 
-          LogFullDebug(COMPONENT_NFSPROTO, 
-                       "nfs_Fsstat --> dynamicinfo.total_bytes = %llu dynamicinfo.free_bytes = %llu dynamicinfo.avail_bytes = %llu",
+          LogFullDebug(COMPONENT_NFSPROTO,
+                       "nfs_Fsstat --> dynamicinfo.total_bytes = %zu dynamicinfo.free_bytes = %zu dynamicinfo.avail_bytes = %zu",
                        dynamicinfo.total_bytes,
                        dynamicinfo.free_bytes,
                        dynamicinfo.avail_bytes);

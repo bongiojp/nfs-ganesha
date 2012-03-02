@@ -104,8 +104,9 @@ hash_table_t *cache_inode_init(cache_inode_parameter_t param,
  *
  */
 int cache_inode_client_init(cache_inode_client_t * pclient,
-                            cache_inode_client_parameter_t * paramp,
-                            int thread_index, void * pworker_data)
+                            cache_inode_client_parameter_t param,
+                            int thread_index,
+                            struct nfs_worker_data__ *pworker_data)
 {
   char name[256];
 
@@ -128,9 +129,6 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
   pclient->use_test_access = param.use_test_access;
   pclient->getattr_dir_invalidation = param.getattr_dir_invalidation;
   pclient->pworker = pworker_data;
-  pclient->use_fd_cache = paramp->use_fd_cache;
-  pclient->retention = paramp->retention;
-  pclient->max_fd = paramp->max_fd;
 
   MakePool(&pclient->pool_entry, pclient->nb_prealloc, cache_entry_t, NULL, NULL);
   NamePool(&pclient->pool_entry, "%s Entry Pool", name);

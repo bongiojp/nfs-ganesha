@@ -88,7 +88,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
 {
   char __attribute__ ((__unused__)) funcname[] = "nfs4_op_read";
 
-  fsal_seek_t              seek_descriptor;
   fsal_size_t              size;
   fsal_size_t              read_size;
   fsal_off_t               offset;
@@ -99,7 +98,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   state_t                * pstate_open;
   state_t                * pstate_iterate;
   cache_content_status_t   content_status;
-  fsal_attrib_list_t       attr;
   cache_entry_t          * pentry = NULL;
   int                      rc = 0;
   struct glist_head      * glist;
@@ -323,8 +321,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   size = arg_READ4.count;
 
   LogFullDebug(COMPONENT_NFS_V4,
-               "NFS4_OP_READ: offset = %llu  length = %llu",
-               (unsigned long long)offset, size);
+               "NFS4_OP_READ: offset = %"PRIu64"  length = %zu",
+               offset, size);
 
   if((data->pexport->options & EXPORT_OPTION_MAXOFFSETREAD) ==
      EXPORT_OPTION_MAXOFFSETREAD)
@@ -393,19 +391,17 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
     }
   memset((char *)bufferdata, 0, size);
 
-  seek_descriptor.whence = FSAL_SEEK_SET;
-  seek_descriptor.offset = offset;
-
   if(cache_inode_rdwr(pentry,
                       CACHE_INODE_READ,
-                      &seek_descriptor,
+                      offset,
                       size,
                       &read_size,
-                      &attr,
                       bufferdata,
                       &eof_met,
                       data->pclient,
-                      data->pcontext, TRUE, &cache_status) != CACHE_INODE_SUCCESS)
+                      data->pcontext,
+                      CACHE_INODE_SAFE_WRITE_TO_FS,
+                      &cache_status) != CACHE_INODE_SUCCESS)
     {
       res_READ4.status = nfs4_Errno(cache_status);
       return res_READ4.status;
@@ -415,15 +411,10 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   res_READ4.READ4res_u.resok4.data.data_val = bufferdata;
 
   LogFullDebug(COMPONENT_NFS_V4,
-               "NFS4_OP_READ: offset = %llu  read length = %llu eof=%u",
-               (unsigned long long)offset, read_size, eof_met);
+               "NFS4_OP_READ: offset = %"PRIu64" read length = %zu eof=%u",
+               offset, read_size, eof_met);
 
-  /* Is EOF met or not ? */
-  if( ( eof_met == TRUE ) ||
-      ( (offset + read_size) >= attr.filesize) )
-    res_READ4.READ4res_u.resok4.eof = TRUE;
-  else
-    res_READ4.READ4res_u.resok4.eof = FALSE;
+  res_READ4.READ4res_u.resok4.eof = eof_met;
 
   /* Say it is ok */
   res_READ4.status = NFS4_OK;

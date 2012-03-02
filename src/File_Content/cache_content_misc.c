@@ -391,33 +391,6 @@ cache_inode_status_t cache_content_error_convert(cache_content_status_t status)
 
 /**
  *
- * cache_content_fsal_seek_convert: converts a fsal_seek_t to unix offet. 
- *
- * Converts a fsal_seek_t to unix offet. Non absolulte fsal_seek_t will produce an error. 
- *
- * @param seek [IN] FSAL Seek descriptor.
- * @param pstatus [OUT] pointer to the status. 
- *
- * @return the converted value.
- * 
- */
-off_t cache_content_fsal_seek_convert(fsal_seek_t seek, cache_content_status_t * pstatus)
-{
-  off_t offset = 0;
-
-  if(seek.whence != FSAL_SEEK_SET)
-    *pstatus = CACHE_CONTENT_INVALID_ARGUMENT;
-  else
-    {
-      *pstatus = CACHE_CONTENT_SUCCESS;
-      offset = (off_t) seek.offset;
-    }
-
-  return offset;
-}                               /* cache_content_fsal_seek_convert */
-
-/**
- *
  * cache_content_fsal_size_convert: converts a fsal_size_t to unix size. 
  *
  * Converts a fsal_seek_t to unix size.

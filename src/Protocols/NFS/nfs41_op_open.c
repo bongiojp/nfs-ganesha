@@ -525,18 +525,17 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                   V(data->pexport->exp_state_mutex);
 
                   /* Open the file */
-                  if(cache_inode_open_by_name(pentry_parent,
-                                              &filename,
-                                              pentry_lookup,
-                                              data->pclient,
-                                              openflags,
-                                              data->pcontext,
-                                              &cache_status) != CACHE_INODE_SUCCESS)
+                  if(cache_inode_open(pentry_lookup,
+                                      data->pclient,
+                                      openflags,
+                                      data->pcontext,
+                                      0,
+                                      &cache_status) != CACHE_INODE_SUCCESS)
                     {
                       // TODO FSF: huh????
                       res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                       res_OPEN4.status = NFS4ERR_ACCESS;
-                      cause2 = " cache_inode_open_by_name";
+                      cause2 = " cache_inode_open";
                       goto out;
                     }
 
@@ -758,13 +757,12 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
             openflags = FSAL_O_RDWR;    /* @todo : BUGAZOMEU : Something better later */
 
           /* Open the file */
-          if(cache_inode_open_by_name(pentry_parent,
-                                      &filename,
-                                      pentry_newfile,
-                                      data->pclient,
-                                      openflags,
-                                      data->pcontext,
-                                      &cache_status) != CACHE_INODE_SUCCESS)
+          if(cache_inode_open(pentry_newfile,
+                              data->pclient,
+                              openflags,
+                              data->pcontext,
+                              0,
+                              &cache_status) != CACHE_INODE_SUCCESS)
             {
               res_OPEN4.status = NFS4ERR_ACCESS;
               cause2 = " cache_inode_open_by_name";
@@ -968,13 +966,12 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
             }
 
           /* Open the file */
-          if(cache_inode_open_by_name(pentry_parent,
-                                      &filename,
-                                      pentry_newfile,
-                                      data->pclient,
-                                      openflags,
-                                      data->pcontext,
-                                      &cache_status) != CACHE_INODE_SUCCESS)
+          if(cache_inode_open(pentry_newfile,
+                              data->pclient,
+                              openflags,
+                              data->pcontext,
+                              0,
+                              &cache_status) != CACHE_INODE_SUCCESS)
             {
               res_OPEN4.status = NFS4ERR_ACCESS;
               cause2 = " cache_inode_open_by_name";
