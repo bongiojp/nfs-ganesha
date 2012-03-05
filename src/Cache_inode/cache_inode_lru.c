@@ -423,8 +423,8 @@ cache_inode_lru_get(cache_inode_client_t *client,
      /* The lane from which we harvest (or into which we store) the
         new entry.  Usually the lane assigned to this thread. */
      uint32_t lane = 0;
-     /* For bouncing around the lanes as we search */
-     uint32_t multiplier = 0;
+     /* For searching through lanes */
+     uint32_t index = 0;
      /* The LRU entry */
      cache_inode_lru_t *lru = NULL;
      /* The Cache entry being created */
@@ -432,18 +432,22 @@ cache_inode_lru_get(cache_inode_client_t *client,
 
      /* If we are in reclaim state, try to find an entry to recycle. */
      if (lru_state.flags & LRU_STATE_RECLAIMING) {
-          /* Search through all lanes (both levels) for an entry. */
-          do {
-               lane = ((client->thread_id * ++multiplier) %
-                       LRU_N_Q_LANES);
+          /* Search through logical L2 entry. */
 
-               if ((lru = try_reap_entry(&LRU_2[lane].lru))) {
-                    break;
-               }
-               if ((lru = try_reap_entry(&LRU_1[lane].lru))) {
-                    break;
-               }
-          } while (lane != 0);
+          for (lane = (client->thread_id + (index = 0)) % LRU_N_Q_LANES;
+               (index < LRU_N_Q_LANES) && !lru;
+               lane = (client->thread_id + (++index)) % LRU_N_Q_LANES) {
+               lru = try_reap_entry(&LRU_2[lane].lru);
+          }
+
+          /* Search through logical L1 if nothing was found in L2
+             (fall through, otherwise.) */
+
+          for (lane = (client->thread_id + (index = 0)) % LRU_N_Q_LANES;
+               (index < LRU_N_Q_LANES) && !lru;
+               lane = (client->thread_id + (++index)) % LRU_N_Q_LANES) {
+               lru = try_reap_entry(&LRU_1[lane].lru);
+          }
 
           /* If we found an entry, use it */
           if (lru) {
@@ -459,7 +463,13 @@ cache_inode_lru_get(cache_inode_client_t *client,
                /* Take the mutex here, before checking state and
                   refcount. */
                pthread_mutex_lock(&entry->lru.mtx);
-
+               /* I /THINK/ we get a special dispensation in here
+                  regarding the state lock because we're holding the
+                  ref mutex.  Nobody should be able to get the entry
+                  to put state on it we have the mutex, and if the
+                  we're at the sentinel refcount, nobody should have
+                  a reference they can use to put state on the
+                  object. */
                /* if we can recycle this entry, do so. */
                if ((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) &&
                    !cache_inode_file_holds_state(entry)) {
@@ -616,6 +626,14 @@ cache_inode_lru_ref(cache_entry_t *entry,
           pthread_mutex_lock(&entry->lru.mtx);
      }
 
+     /**
+      * @todo ACE: I think it might be better to redo this so that the
+      *       state layer calls the LRU to pin and unpin entries,
+      *       rather than having the LRU interrogate the entry about
+      *       its state every time it looks at it.
+      */
+
+     pthread_rwlock_rdlock(&entry->state_lock);
      if (cache_inode_file_holds_state(entry)) {
           flags |= LRU_ENTRY_PINNED;
      }
@@ -632,6 +650,8 @@ cache_inode_lru_ref(cache_entry_t *entry,
           lru_move_entry(&entry->lru, flags | LRU_HAVE_LOCKED_ENTRY,
                          client->lru_lane);
      }
+
+     pthread_rwlock_unlock(&entry->state_lock);
 
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
           pthread_mutex_unlock(&entry->lru.mtx);
@@ -663,6 +683,7 @@ cache_inode_lru_unref(cache_entry_t *entry,
 
      /* Is this actually needed?  We should be set if we have the SAL
         call cache_inode_lru_pin and cache_inode_lru_unpin */
+     pthread_rwlock_rdlock(&entry->state_lock);
      if (cache_inode_file_holds_state(entry) &&
          !(entry->lru.flags & LRU_ENTRY_PINNED)) {
           cache_inode_lru_pin(entry,
@@ -674,6 +695,7 @@ cache_inode_lru_unref(cache_entry_t *entry,
                                 flags | LRU_HAVE_LOCKED_ENTRY,
                                 client->lru_lane);
      }
+     pthread_rwlock_unlock(&entry->state_lock);
 
 unlock:
 
@@ -727,6 +749,9 @@ static void *lru_thread(void *arg)
           pthread_mutex_lock(&lru_mtx);
           lru_state.last_count = 0;
 
+          /* First, sum the queue counts.  This lets us know where we
+             are relative to our watermarks. */
+
           for (i = 0; i < LRU_N_Q_LANES; ++i) {
                pthread_mutex_lock(&LRU_1[i].lru.mtx);
                lru_state.last_count += LRU_1[i].lru.size;
@@ -761,6 +786,86 @@ static void *lru_thread(void *arg)
           lru_state.flags = tmpflags;
 
           pthread_mutex_unlock(&lru_mtx);
+
+          /* Do a constant amount of work on every queue.  In this
+             case, if the number of file descriptors we have open is
+             greater than the high water mark, start closing them.
+             So that we don't re-examine the same file multiple
+             times, we examine each file, and then move every
+             examined file to L2 whether it has a file descriptor we
+             can close or not.  This is a preliminary example of the
+             L2 functionality rather than soemthing we expect to be
+             permanent.  (It will have to adapt heavily to the new
+             FSAL API, for example.) */
+
+          if (open_fd_count > lru_state.fds_hiwat) {
+               for (i = 0; i < LRU_N_Q_LANES; ++i) {
+                    LogDebug(COMPONENT_CACHE_INODE_LRU,
+                             "FD count is %zd and high water mark is "
+                             "%d: reaping.",
+                             open_fd_count,
+                             lru_state.fds_hiwat);
+                    int workdone = 0;
+                    cache_inode_lru_t *lru = NULL;
+                    pthread_mutex_lock(&LRU_1[i].lru.mtx);
+                    while ((workdone < LRU_WORK_PER_WAKE) &&
+                           (lru = glist_first_entry(&LRU_1[i].lru.q,
+                                                    cache_inode_lru_t,
+                                                    q))) {
+                         cache_entry_t *entry
+                              = container_of(lru, cache_entry_t, lru);
+                         pthread_mutex_lock(&lru->mtx);
+                         pthread_rwlock_rdlock(&entry->state_lock);
+                         if (!cache_inode_file_holds_state(entry)) {
+                              /* We would want the state lock for
+                                 this anyway, so someone doesn't get
+                                 an open while we're disposing of the
+                                 descriptor. */
+                              pthread_rwlock_wrlock(&entry->content_lock);
+                              if (entry->object.file.open_fd.openflags
+                                  != FSAL_O_CLOSED) {
+                                   fsal_status_t fsal_status =
+                                        FSAL_close(&(entry->object
+                                                     .file.open_fd.fd));
+                                   if (FSAL_IS_ERROR(fsal_status)) {
+                                        LogCrit(COMPONENT_CACHE_INODE_LRU,
+                                                "Error closing file in "
+                                                "LRU thread.");
+                                   }
+                                   entry->object.file.open_fd.openflags
+                                        = FSAL_O_CLOSED;
+                                   --(open_fd_count);
+                              }
+                              /* Move the entry to L2 whatever the
+                                 result of examining it.*/
+                              lru_move_entry(lru,
+                                             LRU_HAVE_LOCKED_SRC |
+                                             LRU_HAVE_LOCKED_ENTRY |
+                                             LRU_ENTRY_L2,
+                                             i);
+                              pthread_rwlock_unlock(&entry->content_lock);
+                         } else {
+                              /* Highly unlikely, this will probably
+                                 go away if we make the SAL
+                                 responsible for pinning/unpinning. */
+                              lru_move_entry(lru,
+                                             LRU_HAVE_LOCKED_SRC |
+                                             LRU_HAVE_LOCKED_ENTRY |
+                                             LRU_ENTRY_L2 |
+                                             LRU_ENTRY_PINNED,
+                                             i);
+                         }
+                         pthread_rwlock_unlock(&entry->state_lock);
+                         pthread_mutex_unlock(&lru->mtx);
+                    }
+                    pthread_mutex_unlock(&LRU_1[i].lru.mtx);
+               }
+          } else {
+               LogDebug(COMPONENT_CACHE_INODE_LRU,
+                        "FD count is %zd.  Would need to be above %d to reap.",
+                        open_fd_count,
+                        lru_state.fds_hiwat);
+          }
 
           lru_thread_delay_ms(1000 * 5 * 60);
      }

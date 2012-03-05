@@ -666,6 +666,9 @@ out:
 cache_inode_status_t cache_inode_clean_entry(cache_entry_t * pentry)
 {
   pentry->type = RECYCLED;
+  pthread_rwlock_destroy(&pentry->content_lock);
+  pthread_rwlock_destroy(&pentry->state_lock);
+  pthread_rwlock_destroy(&pentry->attr_lock);
   return CACHE_INODE_SUCCESS;
 }
 
