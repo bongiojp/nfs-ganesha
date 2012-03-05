@@ -66,9 +66,9 @@
  * state_lock_entry_t locking rule:
  * The value is always updated/read with nlm_lock_entry->lock held
  * If we have nlm_lock_list mutex held we can read it safely, because the
- * value is always updated while walking the list with pentry->object.file.lock_list_mutex held.
+ * value is always updated while walking the list with pentry->state_lock held.
  * The updation happens as below:
- *  pthread_mutex_lock(pentry->object.file.lock_list_mutex)
+ *  pthread_rwlock_wrlock(&pentry->state_mutex)
  *  pthread_mutex_lock(lock_entry->sle_mutex)
  *    update the lock_entry value
  *  ........
@@ -1439,7 +1439,7 @@ void state_complete_grant(fsal_op_context_t     * pcontext,
   lock_entry = cookie_entry->sce_lock_entry;
   pentry     = cookie_entry->sce_pentry;
 
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_wrlock(&pentry->state_lock);
 
   /* We need to make sure lock is ready to be granted */
   if(lock_entry->sle_blocked == STATE_GRANTING)
@@ -1463,7 +1463,7 @@ void state_complete_grant(fsal_op_context_t     * pcontext,
    */
   free_cookie(cookie_entry, TRUE);
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 }
 
 void try_to_grant_lock(state_lock_entry_t   * lock_entry,
@@ -1515,11 +1515,11 @@ void process_blocked_lock_upcall(state_block_data_t   * block_data,
   state_lock_entry_t * lock_entry = block_data->sbd_lock_entry;
   cache_entry_t      * pentry = lock_entry->sle_pentry;
 
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_wrlock(&pentry->state_lock);
 
   try_to_grant_lock(lock_entry, pclient);
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 }
 
 static void grant_blocked_locks(cache_entry_t        * pentry,
@@ -1706,7 +1706,7 @@ state_status_t state_release_grant(fsal_op_context_t     * pcontext,
   lock_entry = cookie_entry->sce_lock_entry;
   pentry     = cookie_entry->sce_pentry;
 
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_wrlock(&pentry->state_lock);
 
   /* We need to make sure lock is only "granted" once...
    * It's (remotely) possible that due to latency, we might end up processing
@@ -1750,7 +1750,7 @@ state_status_t state_release_grant(fsal_op_context_t     * pcontext,
   /* Check to see if we can grant any blocked locks. */
   grant_blocked_locks(pentry, pcontext, pclient);
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 
   return *pstatus;
 }
@@ -1984,6 +1984,10 @@ void copy_conflict(state_lock_entry_t  * found_entry,
  *
  * state_test: Test for lock availability
  *
+ * This function acquires the state lock on an entry and thus is only
+ * suitable for operations like lockt.  If one wishes to use it as
+ * part of a larger lock or state operation one would need to split it
+ * out.
  */
 state_status_t state_test(cache_entry_t        * pentry,
                           fsal_op_context_t    * pcontext,
@@ -2010,7 +2014,7 @@ state_status_t state_test(cache_entry_t        * pentry,
       return *pstatus;
     }
 
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_rdlock(&pentry->state_lock);
 
   found_entry = get_overlapping_entry(pentry, pcontext, powner, plock);
 
@@ -2054,7 +2058,7 @@ state_status_t state_test(cache_entry_t        * pentry,
   if(isFullDebug(COMPONENT_STATE) && isFullDebug(COMPONENT_MEMLEAKS))
     LogList("Lock List", pentry, &pentry->object.file.lock_list);
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 
   return *pstatus;
 }
@@ -2062,6 +2066,8 @@ state_status_t state_test(cache_entry_t        * pentry,
 /**
  *
  * state_lock: Attempt to acquire a lock
+ *
+ * This function acquires the state lock on a file.
  *
  */
 state_status_t state_lock(cache_entry_t         * pentry,
@@ -2095,7 +2101,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
     }
 
 #ifdef _USE_BLOCKING_LOCKS
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_wrlock(&pentry->state_lock);
   if(blocking != STATE_NON_BLOCKING)
     {
       /*
@@ -2137,7 +2143,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
            * We have matched all atribute of the existing lock.
            * Just return with blocked status. Client may be polling.
            */
-          V(pentry->object.file.lock_list_mutex);
+          pthread_rwlock_unlock(&pentry->state_lock);
           LogEntry("Found blocked", found_entry);
           *pstatus = STATE_LOCK_BLOCKED;
           return *pstatus;
@@ -2225,7 +2231,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
                                                pclient);
                 }
 #endif
-              V(pentry->object.file.lock_list_mutex);
+              pthread_rwlock_unlock(&pentry->state_lock);
               LogEntry("Found existing", found_entry);
               *pstatus = STATE_SUCCESS;
               return *pstatus;
@@ -2260,7 +2266,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
       /* Can't do async blocking lock in FSAL and have a conflict.
        * Return it.
        */
-      V(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_unlock(&pentry->state_lock);
       *pstatus = STATE_LOCK_CONFLICT;
       return *pstatus;
     }
@@ -2319,7 +2325,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
                                         plock);
   if(!found_entry)
     {
-      V(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_unlock(&pentry->state_lock);
       *pstatus = STATE_MALLOC_ERROR;
       return *pstatus;
     }
@@ -2381,7 +2387,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
 
       glist_add_tail(&pentry->object.file.lock_list, &found_entry->sle_list);
 
-      V(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_unlock(&pentry->state_lock);
 
       P(blocked_locks_mutex);
 
@@ -2402,7 +2408,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
       remove_from_locklist(found_entry, pclient);
     }
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 
   return *pstatus;
 }
@@ -2427,7 +2433,7 @@ state_status_t state_unlock(cache_entry_t        * pentry,
    * any mapping entry. And sle_lock.lock_start = 0 and sle_lock.lock_length = 0 nlm_lock
    * implies remove all entries
    */
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_wrlock(&pentry->state_lock);
 
   LogFullDebug(COMPONENT_STATE,
                "----------------------------------------------------------------------");
@@ -2463,7 +2469,7 @@ state_status_t state_unlock(cache_entry_t        * pentry,
       LogMajor(COMPONENT_STATE,
                "Unable to remove lock from list for unlock, error=%s",
                state_err_str(*pstatus));
-      V(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_unlock(&pentry->state_lock);
       return *pstatus;
     }
 
@@ -2503,7 +2509,7 @@ state_status_t state_unlock(cache_entry_t        * pentry,
   grant_blocked_locks(pentry, pcontext, pclient);
 #endif
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 
   if(isFullDebug(COMPONENT_STATE) &&
      isFullDebug(COMPONENT_MEMLEAKS) &&
@@ -2534,7 +2540,7 @@ state_status_t state_cancel(cache_entry_t        * pentry,
 
   *pstatus = STATE_NOT_FOUND;
 
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_wrlock(&pentry->state_lock);
 
   glist_for_each(glist, &pentry->object.file.lock_list)
     {
@@ -2559,7 +2565,7 @@ state_status_t state_cancel(cache_entry_t        * pentry,
       break;
     }
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 
   return *pstatus;
 }
@@ -2644,11 +2650,11 @@ state_status_t state_nlm_notify(state_nsm_client_t   * pnsmclient,
       powner  = found_entry->sle_owner;
       pexport = found_entry->sle_pexport;
 
-      P(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_wrlock(&pentry->state_lock);
 
       lock_entry_dec_ref(found_entry);
 
-      V(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_unlock(&pentry->state_lock);
 
       /* Make lock that covers the whole file - type doesn't matter for unlock */
       lock.lock_type   = FSAL_LOCK_R;
@@ -2745,11 +2751,11 @@ state_status_t state_owner_unlock_all(fsal_op_context_t    * pcontext,
       pentry  = found_entry->sle_pentry;
       pexport = found_entry->sle_pexport;
 
-      P(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_wrlock(&pentry->state_lock);
 
       lock_entry_dec_ref(found_entry);
 
-      V(pentry->object.file.lock_list_mutex);
+      pthread_rwlock_unlock(&pentry->state_lock);
 
       /* Make lock that covers the whole file - type doesn't matter for unlock */
       lock.lock_type   = FSAL_LOCK_R;
@@ -2829,13 +2835,13 @@ void find_blocked_lock_upcall(cache_entry_t        * pentry,
 
   V(blocked_locks_mutex);
 
-  P(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_rdlock(&pentry->state_lock);
 
   if(isFullDebug(COMPONENT_STATE) &&
      isFullDebug(COMPONENT_MEMLEAKS))
     LogList("File Lock List", pentry, &pentry->object.file.lock_list);
 
-  V(pentry->object.file.lock_list_mutex);
+  pthread_rwlock_unlock(&pentry->state_lock);
 
   /* We must be out of sync with FSAL, this is fatal */
   LogLockDesc(COMPONENT_STATE, NIV_MAJOR,

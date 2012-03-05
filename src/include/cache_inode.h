@@ -390,6 +390,12 @@ typedef struct cache_inode_dir_entry__
  *     READ when dereferencing the object.symlink pointer or reading
  *     cached content.
  *
+ * (5) state_lock must be held for WRITE when modifying state_list or
+ *     lock_list.  It must be held for READ when traversing or
+ *     examining the state_list or lock_list.  Operations like LRU
+ *     pinning must hold the state lock for read through the operation
+ *     of moving the entry from one queue to another.
+ *
  * The handle, weakref, and type fields are unprotected, as they are
  * considered to be immutable throughout the life of the object.
  *
@@ -433,6 +439,17 @@ struct cache_entry_t
   cache_inode_lru_t lru; /*< New style LRU link */
   pthread_rwlock_t attr_lock; /*< Reader-writer lock for attributes */
   fsal_attrib_list_t attributes; /*< The FSAL Attributes */
+  pthread_rwlock_t state_lock; /*< This is separated out from the
+                                   content lock, since there are
+                                   state oerations that don't affect
+                                   anything guarded by content (for
+                                   example, a layout return or
+                                   request has no effect on a cached
+                                   file handle) and the content lock
+                                   may be released and reacquired
+                                   several times in an operation that
+                                   should not see changes i state. */
+  struct glist_head state_list; /*< Pointers for state list */
   pthread_rwlock_t content_lock; /*< Lock on type-specific cached
                                      content.  See locking discipline
                                      for details. */
@@ -447,9 +464,7 @@ struct cache_entry_t
                                              pname, for PROXY only  */
       void *pentry_content; /*< Entry in file content cache (NULL if
                                 not cached)  */
-      struct glist_head state_list; /*< Pointers for state list */
       struct glist_head lock_list; /*< Pointers for lock list */
-      pthread_mutex_t lock_list_mutex; /*< Mutex to protect lock list */
       cache_inode_unstable_data_t
         unstable_data; /*< Unstable data, for use with WRITE/COMMIT */
     } file; /*< REGULAR_FILE data */
@@ -1033,7 +1048,7 @@ cache_inode_status_t cache_inode_reload_content(char *path,
 void cache_inode_expire_to_str(cache_inode_expire_type_t type,
                                time_t value,
                                char *out);
-inline unsigned int cache_inode_file_holds_state(cache_entry_t *pentry);
+inline bool_t cache_inode_file_holds_state(cache_entry_t *entry);
 
 inline int cache_inode_set_time_current(fsal_time_t *ptime);
 

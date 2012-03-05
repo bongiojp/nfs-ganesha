@@ -108,9 +108,11 @@ int state_conflict(state_t      * pstate,
 
 /**
  *
- * state_add: adds a new state to a file pentry
+ * state_add_impl: adds a new state to a file pentry
  *
- * Adds a new state to a file pentry
+ * Adds a new state to a file pentry.  This version of the function
+ * does not take the state lock on the entry.  It exists to allow
+ * callers to integrate state into a larger operation.
  *
  * @param pentry        [INOUT] cache entry to operate on
  * @param state_type    [IN]    state to be defined
@@ -124,36 +126,19 @@ int state_conflict(state_t      * pstate,
  * @return the same as *pstatus
  *
  */
-state_status_t state_add(cache_entry_t         * pentry,
-                         state_type_t            state_type,
-                         state_data_t          * pstate_data,
-                         state_owner_t         * powner_input,
-                         cache_inode_client_t  * pclient,
-                         fsal_op_context_t     * pcontext,
-                         state_t              ** ppstate,
-                         state_status_t        * pstatus)
+state_status_t state_add_impl(cache_entry_t         * pentry,
+                              state_type_t            state_type,
+                              state_data_t          * pstate_data,
+                              state_owner_t         * powner_input,
+                              cache_inode_client_t  * pclient,
+                              fsal_op_context_t     * pcontext,
+                              state_t              ** ppstate,
+                              state_status_t        * pstatus)
 {
   state_t           * pnew_state  = NULL;
   state_t           * piter_state = NULL;
   char                debug_str[OTHERSIZE * 2 + 1];
   struct glist_head * glist;
-
-  /* Ensure that states are are associated only with the appropriate
-     owners */
-
-  if (((state_type == STATE_TYPE_SHARE) &&
-       (powner_input->so_type != STATE_OPEN_OWNER_NFSV4)) ||
-      ((state_type == STATE_TYPE_LOCK) &&
-       (powner_input->so_type != STATE_LOCK_OWNER_NFSV4)) ||
-      (((state_type == STATE_TYPE_DELEG) ||
-        (state_type == STATE_TYPE_LAYOUT)) &&
-       (powner_input->so_type != STATE_CLIENTID_OWNER_NFSV4)))
-    {
-      return STATE_BAD_TYPE;
-    }
-
-  /* Acquire lock to enter critical section on this entry */
-  pthread_rwlock_wrlock(&pentry->content_lock);
 
   GetFromPool(pnew_state, &pclient->pool_state_v4, state_t);
 
@@ -165,8 +150,6 @@ state_status_t state_add(cache_entry_t         * pentry,
       /* stat */
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
 
-      pthread_rwlock_unlock(&pentry->content_lock);
-
       *pstatus = STATE_MALLOC_ERROR;
       return *pstatus;
     }
@@ -174,7 +157,7 @@ state_status_t state_add(cache_entry_t         * pentry,
   memset(pnew_state, 0, sizeof(*pnew_state));
 
   /* Brwose the state's list */
-  glist_for_each(glist, &pentry->object.file.state_list)
+  glist_for_each(glist, &pentry->state_list)
     {
       piter_state = glist_entry(glist, state_t, state_list);
 
@@ -188,8 +171,6 @@ state_status_t state_add(cache_entry_t         * pentry,
           pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
 
           ReleaseToPool(pnew_state, &pclient->pool_state_v4);
-
-          pthread_rwlock_unlock(&pentry->content_lock);
 
           *pstatus = STATE_STATE_CONFLICT;
           return *pstatus;
@@ -209,8 +190,6 @@ state_status_t state_add(cache_entry_t         * pentry,
       pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
 
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
-
-      pthread_rwlock_unlock(&pentry->content_lock);
 
       *pstatus = STATE_STATE_ERROR;
       return *pstatus;
@@ -241,8 +220,6 @@ state_status_t state_add(cache_entry_t         * pentry,
 
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
-      pthread_rwlock_unlock(&pentry->content_lock);
-
       /* Return STATE_MALLOC_ERROR since most likely the nfs4_State_Set failed
        * to allocate memory.
        */
@@ -251,7 +228,7 @@ state_status_t state_add(cache_entry_t         * pentry,
     }
 
   /* Add state to list for cache entry */
-  glist_add_tail(&pentry->object.file.state_list, &pnew_state->state_list);
+  glist_add_tail(&pentry->state_list, &pnew_state->state_list);
 
   P(powner_input->so_mutex);
   glist_add_tail(&powner_input->so_owner.so_nfs4_owner.so_state_list,
@@ -264,10 +241,58 @@ state_status_t state_add(cache_entry_t         * pentry,
   LogFullDebug(COMPONENT_STATE,
                "Add State: %s", debug_str);
 
-  pthread_rwlock_unlock(&pentry->content_lock);
-
   /* Regular exit */
   *pstatus = STATE_SUCCESS;
+  return *pstatus;
+}                               /* state_add */
+
+
+/**
+ *
+ * state_add: adds a new state to a file pentry
+ *
+ * Adds a new state to a file pentry
+ *
+ * @param pentry        [INOUT] cache entry to operate on
+ * @param state_type    [IN]    state to be defined
+ * @param pstate_data   [IN]    data related to this state
+ * @param powner_input  [IN]    related open_owner
+ * @param pclient       [INOUT] cache inode client to be used
+ * @param pcontext      [IN]    FSAL credentials
+ * @param ppstate       [OUT]   pointer to a pointer to the new state
+ * @param pstatus       [OUT]   returned status
+ *
+ * @return the same as *pstatus
+ *
+ */
+state_status_t state_add(cache_entry_t         * pentry,
+                         state_type_t            state_type,
+                         state_data_t          * pstate_data,
+                         state_owner_t         * powner_input,
+                         cache_inode_client_t  * pclient,
+                         fsal_op_context_t     * pcontext,
+                         state_t              ** ppstate,
+                         state_status_t        * pstatus)
+{
+  /* Ensure that states are are associated only with the appropriate
+     owners */
+
+  if (((state_type == STATE_TYPE_SHARE) &&
+       (powner_input->so_type != STATE_OPEN_OWNER_NFSV4)) ||
+      ((state_type == STATE_TYPE_LOCK) &&
+       (powner_input->so_type != STATE_LOCK_OWNER_NFSV4)) ||
+      (((state_type == STATE_TYPE_DELEG) ||
+        (state_type == STATE_TYPE_LAYOUT)) &&
+       (powner_input->so_type != STATE_CLIENTID_OWNER_NFSV4)))
+    {
+      return (*pstatus = STATE_BAD_TYPE);
+    }
+
+  pthread_rwlock_wrlock(&pentry->state_lock);
+  state_add_impl(pentry, state_type, pstate_data, powner_input,
+                 pclient, pcontext, ppstate, pstatus);
+  pthread_rwlock_unlock(&pentry->state_lock);
+
   return *pstatus;
 }                               /* state_add */
 
@@ -311,7 +336,7 @@ state_status_t state_del(state_t              * pstate,
       return *pstatus;
     }
 
-  pthread_rwlock_wrlock(&pentry->content_lock);
+  pthread_rwlock_wrlock(&pentry->state_lock);
 
   /* Remove from list of states owned by owner */
 
@@ -344,6 +369,6 @@ state_status_t state_del(state_t              * pstate,
 
   *pstatus = STATE_SUCCESS;
 
-  pthread_rwlock_unlock(&pentry->content_lock);
+  pthread_rwlock_unlock(&pentry->state_lock);
   return *pstatus;
 }                               /* state_del */

@@ -71,7 +71,8 @@ static int op_dsread(struct nfs_argop4 *op,
 /**
  * nfs4_op_read: The NFS4_OP_READ operation
  *
- * This functions handles the NFS4_OP_READ operation in NFSv4. This function can be called only from nfs4_Compound.
+ * This functions handles the NFS4_OP_READ operation in NFSv4. This
+ * function can be called only from nfs4_Compound.
  *
  * @param op    [IN]    pointer to nfs4_op arguments
  * @param data  [INOUT] Pointer to the compound request's data
@@ -101,6 +102,11 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   cache_entry_t          * pentry = NULL;
   int                      rc = 0;
   struct glist_head      * glist;
+  /* This flag is set to true in the case of an anonymous read so that
+     we know to release the state lock afterward.  The state lock does
+     not need to be held during a non-anonymous read, since the open
+     state itself prevents a conflict. */
+  bool_t                   anonymous = FALSE;
 
   cache_content_policy_data_t datapol;
 
@@ -131,7 +137,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       return res_READ4.status;
     }
 
-  /* If Filehandle points to a xattr object, manage it via the xattrs specific functions */
+  /* If Filehandle points to a xattr object, manage it via the xattrs
+     specific functions */
   if(nfs4_Is_Fh_Xattr(&(data->currentFH)))
     return nfs4_op_read_xattr(op, data, resp);
 
@@ -154,7 +161,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   /* Only files can be read */
   if(data->current_filetype != REGULAR_FILE)
     {
-      /* If the source is no file, return EISDIR if it is a directory and EINAVL otherwise */
+      /* If the source is no file, return EISDIR if it is a directory
+         and EINAVL otherwise */
       if(data->current_filetype == DIRECTORY)
         res_READ4.status = NFS4ERR_ISDIR;
       else
@@ -186,7 +194,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       return res_READ4.status;
     }
 
-  /* NB: After this points, if pstate_found == NULL, then the stateid is all-0 or all-1 */
+  /* NB: After this point, if pstate_found == NULL, then the stateid
+     is all-0 or all-1 */
 
   if(pstate_found != NULL)
     {
@@ -215,15 +224,18 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
             return res_READ4.status;
         }
 
-      /* This is a read operation, this means that the file MUST have been opened for reading */
+      /* This is a read operation, this means that the file MUST have
+         been opened for reading */
       if(pstate_open != NULL &&
-         (pstate_open->state_data.share.share_access & OPEN4_SHARE_ACCESS_READ) == 0)
+         (pstate_open->state_data.share.share_access &
+          OPEN4_SHARE_ACCESS_READ) == 0)
         {
-         /* Even if file is open for write, the client may do accidently read operation (caching).
-          * Because of this, READ is allowed if not explicitely denied.
-          * See RFC 3530, p. 72/RFC 5661, p. 186 for more details */
+         /* Even if file is open for write, the client may do
+          * accidently read operation (caching).  Because of this,
+          * READ is allowed if not explicitely denied.  See page 72 in
+          * RFC3530 for more details */
 
-          if( pstate_open->state_data.share.share_deny & OPEN4_SHARE_DENY_READ )
+          if (pstate_open->state_data.share.share_deny & OPEN4_SHARE_DENY_READ)
            {
              /* Bad open mode, return NFS4ERR_OPENMODE */
              res_READ4.status = NFS4ERR_OPENMODE;
@@ -234,31 +246,30 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
            }
         }
 
-      /** @todo : this piece of code looks a bit suspicious (see Rong's mail) */    
-      if(data->minorversion == 0)
+      /** @todo : this piece of code looks a bit suspicious (see
+          Rong's mail) */
+      switch( pstate_found->state_type )
         {
-          switch( pstate_found->state_type )
-            {
-            case STATE_TYPE_SHARE:
-              if(pstate_found->state_powner->so_owner.so_nfs4_owner.so_confirmed == FALSE)
-                {
-                  res_READ4.status = NFS4ERR_BAD_STATEID;
-                  return res_READ4.status;
-                }
-              break ;
+          case STATE_TYPE_SHARE:
+            if(pstate_found->state_powner->so_owner.so_nfs4_owner.so_confirmed
+               == FALSE)
+              {
+                 res_READ4.status = NFS4ERR_BAD_STATEID;
+                 return res_READ4.status;
+              }
+            break ;
 
-            case STATE_TYPE_LOCK:
-              /* Nothing to do */
-              break ;
+         case STATE_TYPE_LOCK:
+            /* Nothing to do */
+            break ;
 
-            default:
-              /* Sanity check: all other types are illegal.  we should
-               * not got that place (similar check above), anyway it
-               * costs nothing to add this test */
-              res_READ4.status = NFS4ERR_BAD_STATEID;
-              return res_READ4.status ;
-              break ;
-            }
+         default:
+            /* Sanity check: all other types are illegal.  we should
+             * not got that place (similar check above), anyway it
+             * costs nothing to add this test */
+            res_READ4.status = NFS4ERR_BAD_STATEID;
+            return res_READ4.status;
+            break ;
         }
     }
   else
@@ -266,21 +277,26 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       /* Special stateid, no open state, check to see if any share conflicts */
       pstate_open = NULL;
 
+      pthread_rwlock_rdlock(&pentry->state_lock);
+      anonymous = TRUE;
+
       /* Iterate through file's state to look for conflicts */
-      glist_for_each(glist, &pentry->object.file.state_list)
+      glist_for_each(glist, &pentry->state_list)
         {
           pstate_iterate = glist_entry(glist, state_t, state_list);
 
           switch(pstate_iterate->state_type)
             {
               case STATE_TYPE_SHARE:
-                if(pstate_iterate->state_data.share.share_deny & OPEN4_SHARE_DENY_READ)
+                if(pstate_iterate->state_data.share.share_deny &
+                   OPEN4_SHARE_DENY_READ)
                   {
                     /* Reading from this file is prohibited, file is read-denied */
                     res_READ4.status = NFS4ERR_LOCKED;
                     LogDebug(COMPONENT_NFS_V4_LOCK,
                              "READ is denied by state %p",
                              pstate_iterate);
+                    pthread_rwlock_unlock(&pentry->state_lock);
                     return res_READ4.status;
                   }
                 break;
@@ -312,6 +328,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                             data->pcontext,
                             &cache_status) != CACHE_INODE_SUCCESS)
         {
+          if (anonymous)
+            pthread_rwlock_unlock(&pentry->state_lock);
           res_READ4.status = nfs4_Errno(cache_status);
           return res_READ4.status;
         }
@@ -329,6 +347,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
     if((fsal_off_t) (offset + size) > data->pexport->MaxOffsetRead)
       {
         res_READ4.status = NFS4ERR_DQUOT;
+        if (anonymous)
+          pthread_rwlock_unlock(&pentry->state_lock);
         return res_READ4.status;
       }
 
@@ -350,6 +370,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       res_READ4.READ4res_u.resok4.data.data_val = NULL;
 
       res_READ4.status = NFS4_OK;
+      if (anonymous)
+        pthread_rwlock_unlock(&pentry->state_lock);
       return res_READ4.status;
     }
 
@@ -378,6 +400,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
          && (cache_status != CACHE_INODE_CACHE_CONTENT_EXISTS))
         {
           res_READ4.status = NFS4ERR_SERVERFAULT;
+          if (anonymous)
+            pthread_rwlock_unlock(&pentry->state_lock);
           return res_READ4.status;
         }
 
@@ -387,6 +411,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   if((bufferdata = Mem_Alloc_Page_Aligned(size)) == NULL)
     {
       res_READ4.status = NFS4ERR_SERVERFAULT;
+      if (anonymous)
+        pthread_rwlock_unlock(&pentry->state_lock);
       return res_READ4.status;
     }
   memset((char *)bufferdata, 0, size);
@@ -404,6 +430,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                       &cache_status) != CACHE_INODE_SUCCESS)
     {
       res_READ4.status = nfs4_Errno(cache_status);
+      if (anonymous)
+        pthread_rwlock_unlock(&pentry->state_lock);
       return res_READ4.status;
     }
 
@@ -418,6 +446,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
 
   /* Say it is ok */
   res_READ4.status = NFS4_OK;
+  if (anonymous)
+    pthread_rwlock_unlock(&pentry->state_lock);
 
   return res_READ4.status;
 }                               /* nfs4_op_read */

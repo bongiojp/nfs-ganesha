@@ -589,7 +589,8 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                   if((pentry_lookup != NULL)
                      && (pentry_lookup->type == REGULAR_FILE))
                     {
-                      glist_for_each(glist, &pentry_lookup->object.file.state_list)
+                      pthread_rwlock_rdlock(&pentry_lookup->state_lock);
+                      glist_for_each(glist, &pentry_lookup->state_list)
                         {
                           pstate_iterate = glist_entry(glist, state_t, state_list);
 
@@ -628,6 +629,8 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                 {
                                   res_OPEN4.status = NFS4ERR_SERVERFAULT;
                                   cause2 = " nfs4_FSALToFhandle failed";
+                                  pthread_rwlock_unlock(&pentry_lookup
+                                                        ->state_lock);
                                   goto out;
                                 }
 
@@ -639,6 +642,8 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                               data->current_entry = pentry_lookup;
                               data->current_filetype = REGULAR_FILE;
 
+                              pthread_rwlock_unlock(&pentry_lookup
+                                                    ->state_lock);
                               /* regular exit */
                               goto out_success;
                             }
@@ -681,8 +686,12 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                 }
               else
                 {
-                  /* If this point is reached, then the file already exists, cache_status == CACHE_INODE_ENTRY_EXISTS and pentry_newfile == NULL 
-                     This probably means EXCLUSIVE4 mode is used and verifier matches. pentry_newfile is then set to pentry_lookup */
+                  /* If this point is reached, then the file already
+                     exists, cache_status == CACHE_INODE_ENTRY_EXISTS
+                     and pentry_newfile == NULL This probably means
+                     EXCLUSIVE4 mode is used and verifier
+                     matches. pentry_newfile is then set to
+                     pentry_lookup */
                   pentry_newfile = pentry_lookup;
                 }
             }
@@ -692,7 +701,8 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           candidate_data.share.share_deny   = arg_OPEN4.share_deny;
           candidate_data.share.share_access = arg_OPEN4.share_access;
 
-          /* If file is opened under mode EXCLUSIVE4, open verifier should be kept to detect non vicious double open */
+          /* If file is opened under mode EXCLUSIVE4, open verifier
+             should be kept to detect non vicious double open */
           if(arg_OPEN4.openhow.openflag4_u.how.mode == EXCLUSIVE4)
             {
               strncpy(candidate_data.share.share_oexcl_verifier,
@@ -859,8 +869,10 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
               openflags = FSAL_O_RDWR;
             }
 
-          /* Try to find if the same open_owner already has acquired a stateid for this file */
-          glist_for_each(glist, &pentry_newfile->object.file.state_list)
+          /* Try to find if the same open_owner already has acquired a
+             stateid for this file */
+          pthread_rwlock_wrlock(&pentry_newfile->state_lock);
+          glist_for_each(glist, &pentry_newfile->state_list)
             {
               pstate_iterate = glist_entry(glist, state_t, state_list);
 
@@ -887,6 +899,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                     {
                       res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                       cause2 = " (OPEN4_SHARE_DENY_WRITE)";
+                      pthread_rwlock_unlock(&pentry_newfile->state_lock);
                       goto out;
                     }
                 }
@@ -901,6 +914,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                 {
                   res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                   cause2 = " (OPEN4_SHARE_ACCESS_READ)";
+                  pthread_rwlock_unlock(&pentry_newfile->state_lock);
                   goto out;
                 }
 
@@ -910,6 +924,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                 {
                   res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                   cause2 = " (OPEN4_SHARE_ACCESS_WRITE)";
+                  pthread_rwlock_unlock(&pentry_newfile->state_lock);
                   goto out;
                 }
             }
@@ -922,17 +937,18 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
               candidate_data.share.share_deny   = arg_OPEN4.share_deny;
               candidate_data.share.share_access = arg_OPEN4.share_access;
 
-              if(state_add(pentry_newfile,
-                           candidate_type,
-                           &candidate_data,
-                           powner,
-                           data->pclient,
-                           data->pcontext,
-                           &pfile_state,
-                           &state_status) != STATE_SUCCESS)
+              if(state_add_impl(pentry_newfile,
+                                candidate_type,
+                                &candidate_data,
+                                powner,
+                                data->pclient,
+                                data->pcontext,
+                                &pfile_state,
+                                &state_status) != STATE_SUCCESS)
                 {
                   res_OPEN4.status = NFS4ERR_SHARE_DENIED;
                   cause2 = " (state_add failed)";
+                  pthread_rwlock_unlock(&pentry_newfile->state_lock);
                   goto out;
                 }
 
@@ -964,6 +980,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                   return STATE_INVALID_ARGUMENT;
                 }
             }
+          pthread_rwlock_unlock(&pentry_newfile->state_lock);
 
           /* Open the file */
           if(cache_inode_open(pentry_newfile,

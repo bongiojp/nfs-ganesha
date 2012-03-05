@@ -105,6 +105,11 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 #ifdef _USE_QUOTA
   fsal_status_t            fsal_status ;
 #endif
+  /* This flag is set to true in the case of an anonymous read so that
+     we know to release the state lock afterward.  The state lock does
+     not need to be held during a non-anonymous read, since the open
+     state itself prevents a conflict. */
+  bool_t                   anonymous = FALSE;
 
   cache_content_policy_data_t datapol;
 
@@ -262,8 +267,11 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       /* Special stateid, no open state, check to see if any share conflicts */
       pstate_open = NULL;
 
+      pthread_rwlock_rdlock(&pentry->state_lock);
+      anonymous = TRUE;
+
       /* Iterate through file's state to look for conflicts */
-      glist_for_each(glist, &pentry->object.file.state_list)
+      glist_for_each(glist, &pentry->state_list)
         {
           pstate_iterate = glist_entry(glist, state_t, state_list);
 
@@ -277,6 +285,7 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                     LogDebug(COMPONENT_NFS_V4_LOCK,
                              "WRITE is denied by state %p",
                              pstate_iterate);
+                    pthread_rwlock_rdlock(&pentry->state_lock);
                     return res_WRITE4.status;
                   }
                 break;
@@ -309,6 +318,7 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                             &cache_status) != CACHE_INODE_SUCCESS)
         {
           res_WRITE4.status = nfs4_Errno(cache_status);;
+          pthread_rwlock_rdlock(&pentry->state_lock);
           return res_WRITE4.status;
         }
     }
@@ -326,6 +336,8 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
     if((fsal_off_t) (offset + size) > data->pexport->MaxOffsetWrite)
       {
         res_WRITE4.status = NFS4ERR_DQUOT;
+        if (anonymous)
+          pthread_rwlock_rdlock(&pentry->state_lock);
         return res_WRITE4.status;
       }
 
@@ -358,6 +370,8 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
              sizeof(verifier4));
 
       res_WRITE4.status = NFS4_OK;
+      if (anonymous)
+        pthread_rwlock_rdlock(&pentry->state_lock);
       return res_WRITE4.status;
     }
 
@@ -386,6 +400,8 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
          (cache_status != CACHE_INODE_CACHE_CONTENT_EXISTS))
         {
           res_WRITE4.status = NFS4ERR_SERVERFAULT;
+          if (anonymous)
+            pthread_rwlock_rdlock(&pentry->state_lock);
           return res_WRITE4.status;
         }
 
@@ -416,6 +432,8 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                "cache_inode_rdwr returned %s",
                cache_inode_err_str(cache_status));
       res_WRITE4.status = nfs4_Errno(cache_status);
+      if (anonymous)
+        pthread_rwlock_rdlock(&pentry->state_lock);
       return res_WRITE4.status;
     }
 
@@ -429,6 +447,9 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   memcpy(res_WRITE4.WRITE4res_u.resok4.writeverf, NFS4_write_verifier, sizeof(verifier4));
 
   res_WRITE4.status = NFS4_OK;
+
+  if (anonymous)
+    pthread_rwlock_rdlock(&pentry->state_lock);
 
   return res_WRITE4.status;
 }                               /* nfs4_op_write */

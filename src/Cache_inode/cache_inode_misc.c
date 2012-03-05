@@ -325,7 +325,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
      /* Initialize the entry locks */
      if (((rc = pthread_rwlock_init(&entry->attr_lock, NULL)) != 0) ||
-         ((rc = pthread_rwlock_init(&entry->content_lock, NULL)) != 0)) {
+         ((rc = pthread_rwlock_init(&entry->content_lock, NULL)) != 0) ||
+         ((rc = pthread_rwlock_init(&entry->state_lock, NULL)) != 0)) {
           /* Recycle */
           LogCrit(COMPONENT_CACHE_INODE,
                   "cache_inode_new_entry: pthread_rwlock_init "
@@ -341,6 +342,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      entry->type = type;
      entry->flags = 0;
      entry->policy = policy;
+     init_glist(&entry->state_list);
 
      /* Set the attributes*/
      if(attr == NULL) {
@@ -370,23 +372,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           /* There is no File Content entry associated with this
              cache entry */
           entry->object.file.pentry_content = NULL;
-          /* No state.  This should be moved out of the union (for
-             directory delegations or similar.) */
-          init_glist(&entry->object.file.state_list);
           /* No locks, yet. */
           init_glist(&entry->object.file.lock_list);
-          if ((pthread_mutex_init(&entry->object.file.lock_list_mutex,
-                                  NULL)) != 0) {
-               LogCrit(COMPONENT_CACHE_INODE,
-                       "cache_inode_new_entry: pthread_mutex_init of "
-                       "lock_list_mutex returned %d (%s)", errno,
-                       strerror(errno));
-               *status = CACHE_INODE_INIT_ENTRY_FAILED;
-               /* stat */
-               (client->stat.func_stats
-                .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
-               goto out;
-          }
 
           entry->object.file.open_fd.openflags = FSAL_O_CLOSED;
 #ifdef _USE_MFSL
@@ -637,9 +624,6 @@ out:
           /* Deconstruct the object */
           if (typespec) {
                switch (type) {
-               case REGULAR_FILE:
-                    pthread_mutex_destroy(&entry->object.file.lock_list_mutex);
-                    break;
                case SYMBOLIC_LINK:
                     cache_inode_release_symlink(entry,
                                                 &client->pool_entry_symlink);
@@ -652,6 +636,7 @@ out:
           if (locksinited) {
                pthread_rwlock_destroy(&entry->attr_lock);
                pthread_rwlock_destroy(&entry->content_lock);
+               pthread_rwlock_destroy(&entry->state_lock);
           }
           if (weakrefed) {
                cache_inode_weakref_delete(&entry->weakref);
@@ -1117,42 +1102,22 @@ void cache_inode_release_dirents(cache_entry_t           * pentry,
 }
 
 /**
+ * @brief Return true if a file holds state
  *
- *  cache_inode_file_holds_state : checks if a file entry holds state(s) or not.
+ * This function returns true if state is held on the file.  The state
+ * lock must be held for read when calling this function.
  *
- * Checks if a file entry holds state(s) or not.
+ * @param entry [in] The file to be checked
  *
- * @param pentry [IN] entry to be checked
- *
- * @return TRUE is state(s) are held, FALSE otherwise
- *
+ * @return TRUE if state is held, FALSE otherwise.
  */
-inline unsigned int cache_inode_file_holds_state( cache_entry_t * pentry )
+
+inline bool_t
+cache_inode_file_holds_state(cache_entry_t *entry)
 {
-  unsigned int found_state = FALSE ;
-
-  if( pentry == NULL )
-   return FALSE ;
-
-  if( pentry->type != REGULAR_FILE )
-   return FALSE ;
-
-   /* if locks are held in the file, do not close */
-  P(pentry->object.file.lock_list_mutex);
-  if(!glist_empty(&pentry->object.file.lock_list))
-    {
-      found_state = TRUE ;
-    }
-  V(pentry->object.file.lock_list_mutex);
-
-  if( found_state == TRUE )
-    return found_state ;
-
-  if(!glist_empty(&pentry->object.file.state_list))
-    return TRUE ;
-
-  /* if this place is reached, the file holds no state */
-  return FALSE ;
+     return !((entry == NULL) ||
+              glist_empty(&entry->object.file.lock_list) ||
+              glist_empty(&entry->state_list));
 } /* cache_inode_file_holds_state */
 
 #ifdef _USE_PROXY
