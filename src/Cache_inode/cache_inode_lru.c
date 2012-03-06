@@ -674,7 +674,9 @@ cache_inode_lru_unref(cache_entry_t *entry,
      if (--(entry->lru.refcount) == 0) {
           /* entry is UNREACHABLE -- the call path is recycling entry */
           cache_inode_lru_clean(entry, client);
-          lru_remove_entry(&entry->lru, flags, client->lru_lane);
+          lru_remove_entry(&entry->lru,
+                           flags | LRU_HAVE_LOCKED_ENTRY,
+                           client->lru_lane);
 
           pthread_mutex_unlock(&entry->lru.mtx);
           ReleaseToPool(entry, &client->pool_entry);
