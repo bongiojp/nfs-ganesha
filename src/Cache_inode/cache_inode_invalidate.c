@@ -69,8 +69,6 @@
  * @todo ACE: Decide what to do for regular files.
  *
  * @param handle [IN] FSAL handle for the entry to be invalidated
- * @param client [INOUT] Cache Inode client (useful for having pools
- *                       in which entry releasing invalidated records)
  * @param status [OUT] returned status.
  *
  * @retval CACHE_INODE_SUCCESS if operation is a success
@@ -84,7 +82,6 @@
  */
 cache_inode_status_t
 cache_inode_invalidate(fsal_handle_t *handle,
-                       cache_inode_client_t *client,
                        cache_inode_status_t *status)
 {
      cache_inode_fsal_data_t fsal_data;
@@ -92,9 +89,9 @@ cache_inode_invalidate(fsal_handle_t *handle,
      void *htoken;
      int rc = 0 ;
 
-     if (pstatus == NULL || pattr == NULL || pclient == NULL ||
-         pfsal_handle == NULL) {
-          return CACHE_INODE_INVALID_ARGUMENT ;
+     if (status == NULL || handle == NULL) {
+          *status = CACHE_INODE_INVALID_ARGUMENT;
+          goto out;
      }
 
      /* Locate the entry in the cache */
@@ -113,13 +110,12 @@ cache_inode_invalidate(fsal_handle_t *handle,
           goto out;
      }
 
-
      if ((rc = HashTable_GetEx(fh_to_cache_entry_ht,
                                &key,
                                &value)) == HASHTABLE_ERROR_NO_SUCH_KEY) {
           /* Entry is not cached */
           *status = CACHE_INODE_NOT_FOUND;
-          return *status ;
+          return *status;
      } else if (rc != HASHTABLE_SUCCESS) {
           LogCrit(COMPONENT_CACHE_INODE,
                   "Unexpected error %u while calling HashTable_GetEx", rc) ;
@@ -146,16 +142,13 @@ cache_inode_invalidate(fsal_handle_t *handle,
                            CACHE_INODE_TRUST_ATTRS |
                            CACHE_INODE_TRUST_CONTENT);
 
-     if (entry->type == DIRECTORY) {
-          if (cache_inode_invalidate_all_cached_dirent(entry,
-                                                       client,
-                                                       status)
-               != CACHE_INODE_SUCCESS) {
-               goto unlock;
-          }
-     }
 
-unlock:
+     /* The main reason for holding the lock at this point is so we
+        don't clear the trust bits while someone is populating the
+        directory or refreshing attributes.  But it would be nice, if
+        we can figure out how to get a cache_inode_client_t in here
+        so we can do things like free the directory entries we just
+        marked untrustworthy. */
 
      pthread_rwlock_unlock(&entry->attr_lock);
      pthread_rwlock_unlock(&entry->content_lock);

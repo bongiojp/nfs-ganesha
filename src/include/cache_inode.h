@@ -986,6 +986,11 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t *pfsdata,
                                      fsal_op_context_t *pcontext,
                                      cache_inode_status_t *pstatus);
 
+cache_inode_status_t cache_inode_check_trust(
+     cache_entry_t *entry,
+     fsal_op_context_t *context,
+     cache_inode_client_t *client);
+
 cache_inode_file_type_t cache_inode_fsal_type_convert(fsal_nodetype_t type);
 int cache_inode_type_are_rename_compatible(cache_entry_t *pentry_src,
                                            cache_entry_t *pentry2);
@@ -1015,9 +1020,9 @@ cache_inode_status_t cache_inode_kill_entry(cache_entry_t *entry,
                                             cache_inode_status_t *status,
                                             uint32_t flags);
 
-cache_inode_status_t cache_inode_invalidate(fsal_handle_t *handle,
-                                            cache_inode_client_t *client,
-                                            cache_inode_status_t *status);
+cache_inode_status_t cache_inode_invalidate(
+     fsal_handle_t *handle,
+     cache_inode_status_t *status);
 
 cache_inode_gc_policy_t cache_inode_get_gc_policy(void);
 void cache_inode_set_gc_policy(cache_inode_gc_policy_t policy);

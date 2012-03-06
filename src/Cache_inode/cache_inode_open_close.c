@@ -303,10 +303,6 @@ cache_inode_close(cache_entry_t *entry,
           return *status;
      }
 
-     if (!(flags & CACHE_INODE_FLAG_CONTENT_HAVE)) {
-          pthread_rwlock_wrlock(&entry->content_lock);
-     }
-
      /* If state is held in the file, do not close it.  This should
         be refined.  (A non return_on_close layout should not prevent
         the file from closing.) */

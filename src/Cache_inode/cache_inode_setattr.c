@@ -7,18 +7,19 @@
  *
  *
  * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or (at your option) any later version.
+ * modify it under the terms of the GNU Lesser General Public License
+ * as published by the Free Software Foundation; either version 3 of
+ * the License, or (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  *
  * ---------------------------------------
  */
@@ -59,102 +60,92 @@
 #include <assert.h>
 
 /**
- * @brief Set the attributes for an entry located in the cache by its address.
+ * @brief Set the attributes for a file.
  *
- * Sets the attributes for an entry located in the cache by its
- * address. Attributes are provided with compliance to the underlying
- * FSAL semantics. Attributes that are set are returned in "*pattr".
+ * This function sets the attributes of a file, both in the cache and
+ * in the underlying filesystem.
  *
- * @param pentry [in] Entry whose attributes are to be set
- * @param pattr [in,out] Attributes to set/result of set
- * @param pclient [in,out] Structure for per-thread resource
+ * @param entry [in] Entry whose attributes are to be set
+ * @param attr [in,out] Attributes to set/result of set
+ * @param client [in,out] Structure for per-thread resource
  *                         management
- * @param pcontext [in] FSAL credentials
- * @param pstatus [out] returned status
+ * @param context [in] FSAL credentials
+ * @param status [out] returned status
  *
- * @return CACHE_INODE_SUCCESS if operation is a success \n
- * @return CACHE_INODE_LRU_ERROR if allocation error occured when
+ * @retval CACHE_INODE_SUCCESS if operation is a success
+ * @retval CACHE_INODE_LRU_ERROR if allocation error occured when
  *         validating the entry
  */
 
 cache_inode_status_t
-cache_inode_setattr(cache_entry_t *pentry,
-                    fsal_attrib_list_t *pattr,
-                    cache_inode_client_t *pclient,
-                    fsal_op_context_t *pcontext,
-                    cache_inode_status_t *pstatus)
+cache_inode_setattr(cache_entry_t *entry,
+                    fsal_attrib_list_t *attr,
+                    cache_inode_client_t *client,
+                    fsal_op_context_t *context,
+                    cache_inode_status_t *status)
 {
-  fsal_status_t fsal_status = {0, 0};
+     fsal_status_t fsal_status = {0, 0};
 
-  /* Set the return default to CACHE_INODE_SUCCESS */
-  *pstatus = CACHE_INODE_SUCCESS;
+     ++(client->stat.nb_call_total);
+     ++(client->stat.func_stats.nb_call[CACHE_INODE_SETATTR]);
 
-  /* stat */
-  pclient->stat.nb_call_total += 1;
-  pclient->stat.func_stats.nb_call[CACHE_INODE_SETATTR] += 1;
+     if ((entry->type == UNASSIGNED) ||
+         (entry->type == RECYCLED)) {
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "WARNING: unknown source entry type: type=%d, "
+                  "line %d in file %s", entry->type, __LINE__, __FILE__);
+          *status = CACHE_INODE_BAD_TYPE;
+          goto out;
+     }
 
-  if ((pentry->type == UNASSIGNED) ||
-      (pentry->type == RECYCLED))
-    {
-      LogCrit(COMPONENT_CACHE_INODE,
-              "WARNING: unknown source pentry type: type=%d, "
-              "line %d in file %s", pentry->type, __LINE__, __FILE__);
-      *pstatus = CACHE_INODE_BAD_TYPE;
-      return *pstatus;
-    }
+     if ((attr->asked_attributes & FSAL_ATTR_SIZE) &&
+         (entry->type != REGULAR_FILE)) {
+          LogMajor(COMPONENT_CACHE_INODE,
+                   "Attempt to truncate non-regular file: type=%d",
+                   entry->type);
+          *status = CACHE_INODE_BAD_TYPE;
+     }
 
-  if ((pattr->asked_attributes & FSAL_ATTR_SIZE) &&
-      (pentry->type != REGULAR_FILE)) {
-    LogMajor(COMPONENT_CACHE_INODE,
-             "Attempt to truncate non-regular file: type=%d",
-             pentry->type);
-    *pstatus = CACHE_INODE_BAD_TYPE;
-  }
+     pthread_rwlock_wrlock(&entry->attr_lock);
+     if (attr->asked_attributes & FSAL_ATTR_SIZE) {
+          fsal_status = FSAL_truncate(&entry->handle,
+                                      context, attr->filesize,
+                                      NULL, NULL);
+          if (FSAL_IS_ERROR(fsal_status)) {
+               *status = cache_inode_error_convert(fsal_status);
+               ++(client->stat.func_stats
+                  .nb_err_unrecover[CACHE_INODE_SETATTR]);
+               goto unlock;
+          }
+     }
 
-  pthread_rwlock_wrlock(&pentry->attr_lock);
-  if(pattr->asked_attributes & FSAL_ATTR_SIZE)
-    {
-      fsal_status = FSAL_truncate(&pentry->handle,
-                                  pcontext, pattr->filesize,
-                                  NULL, NULL);
-      if(FSAL_IS_ERROR(fsal_status))
-        {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          pthread_rwlock_wrlock(&pentry->attr_lock);
-
-          /* stat */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR] += 1;
-          return *pstatus;
-        }
-    }
-
-  cache_inode_prep_attrs(pentry, pclient);
+     cache_inode_prep_attrs(entry, client);
 #ifdef _USE_MFSL
-  fsal_status =
-      MFSL_setattrs(&pentry->mobject, pcontext, &pclient->mfsl_context, pattr,
-                    &pentry->attributes, NULL);
+     fsal_status =
+          MFSL_setattrs(&entry->mobject, context, &client->mfsl_context, attr,
+                        &entry->attributes, NULL);
 #else
-  fsal_status = FSAL_setattrs(&pentry->handle, pcontext, pattr,
-                              &pentry->attributes);
+     fsal_status = FSAL_setattrs(&entry->handle, context, attr,
+                                 &entry->attributes);
 #endif
-  if(FSAL_IS_ERROR(fsal_status))
-    {
-      *pstatus = cache_inode_error_convert(fsal_status);
-      pthread_rwlock_unlock(&pentry->attr_lock);
-      /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR] += 1;
-      return *pstatus;
-    }
-  cache_inode_fixup_md(pentry);
-  /* Return the attributes as set */
-  *pattr = pentry->attributes;
-  pthread_rwlock_unlock(&pentry->attr_lock);
+     if (FSAL_IS_ERROR(fsal_status)) {
+          *status = cache_inode_error_convert(fsal_status);
+          ++(client->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR]);
+          goto unlock;
+     }
+     cache_inode_fixup_md(entry);
 
-  /* stat */
-  if(*pstatus != CACHE_INODE_SUCCESS)
-    pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_SETATTR] += 1;
-  else
-    pclient->stat.func_stats.nb_success[CACHE_INODE_SETATTR] += 1;
+     /* Copy the complete set of new attributes out. */
 
-  return *pstatus;
-}                               /* cache_inode_setattr */
+     *attr = entry->attributes;
+
+     *status = CACHE_INODE_SUCCESS;
+     ++(client->stat.func_stats.nb_success[CACHE_INODE_SETATTR]);
+
+unlock:
+     pthread_rwlock_unlock(&entry->attr_lock);
+
+out:
+
+     return *status;
+} /* cache_inode_setattr */

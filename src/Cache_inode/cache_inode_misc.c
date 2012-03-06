@@ -1305,11 +1305,11 @@ cache_inode_check_trust(cache_entry_t *entry,
           goto unlock;
      }
 
-     if ((entry->type == SYMBOLIC_LINK &&
-          client->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
+     if (entry->type == SYMBOLIC_LINK &&
+         (client->expire_type_link != CACHE_INODE_EXPIRE_NEVER &&
           ((current_time - entry->change_time >=
-            client->grace_period_link))) ||
-         !(entry->flags & CACHE_INODE_TRUST_CONTENT)) {
+            client->grace_period_link)) ||
+          !(entry->flags & CACHE_INODE_TRUST_CONTENT))) {
           pthread_rwlock_wrlock(&entry->content_lock);
           pthread_rwlock_unlock(&entry->attr_lock);
 

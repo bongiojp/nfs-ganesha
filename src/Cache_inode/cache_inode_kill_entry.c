@@ -101,7 +101,7 @@ cache_inode_kill_entry(cache_entry_t *entry,
      assert(!(flags & (CACHE_INODE_FLAG_ATTR_HOLD |
                        CACHE_INODE_FLAG_CONTENT_HOLD)));
 
-     memset((char *)&fsaldata, 0, sizeof(fsaldata));
+     memset(&fsaldata, 0, sizeof(fsaldata));
 
      LogInfo(COMPONENT_CACHE_INODE,
              "Using cache_inode_kill_entry for entry %p", entry);
