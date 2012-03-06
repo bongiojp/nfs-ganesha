@@ -158,6 +158,91 @@ nfs4_op_readdir(struct nfs_argop4 *op,
         them back. */
      if (cookie == 1 || cookie == 2) {
           res_READDIR4.status = NFS4ERR_BAD_COOKIE;
+          goto out;
+     }
+
+     /* Get only attributes that are allowed to be read */
+     if (!nfs4_Fattr_Check_Access_Bitmap(&arg_READDIR4.attr_request,
+                                        FATTR4_ATTR_READ)) {
+          res_READDIR4.status = NFS4ERR_INVAL;
+          goto out;
+     }
+
+     /* If maxcount is too short, return NFS4ERR_TOOSMALL */
+     if (maxcount < sizeof(entry4) || estimated_num_entries == 0) {
+          res_READDIR4.status = NFS4ERR_TOOSMALL;
+          goto out;
+     }
+
+     /* If a cookie verifier is used, then a non-trivial value is
+        returned to the client.  This value is the mtime of the
+        directory.  If verifier is unused (as in many NFS Servers)
+        then only a set of zeros is returned (trivial value) */
+     memset(cookie_verifier, 0, NFS4_VERIFIER_SIZE);
+
+     /* Cookie delivered by the server and used by the client SHOULD
+        not be 0, 1 or 2 because these values are reserved (see RFC
+        3530, p. 192/RFC 5661, p468).
+
+             0 - cookie for first READDIR
+             1 - reserved for . on client
+             2 - reserved for .. on client
+
+        '.' and '..' are not returned, so all cookies will be offset
+        by 2 */
+
+     if ((cookie != 0) && (data->pexport->UseCookieVerifier == 1)) {
+          if(memcmp(cookie_verifier, arg_READDIR4.cookieverf,
+                    NFS4_VERIFIER_SIZE) != 0) {
+               res_READDIR4.status = NFS4ERR_BAD_COOKIE;
+               goto out;
+          }
+     }
+
+     /* Prepare to read the entries */
+
+     entries = (entry4*) Mem_Alloc(estimated_num_entries *
+                                  sizeof(entry4));
+     memset(entries, 0, estimated_num_entries * sizeof(entry4));
+
+     cb_data.entries = entries;
+     cb_data.mem_left = maxcount - sizeof(READDIR4resok);
+     cb_data.count = 0;
+     cb_data.error = NFS4_OK;
+     cb_data.req_attr = arg_READDIR4.attr_request;
+     cb_data.data = data;
+
+     /* Perform the readdir operation */
+     if (cache_inode_readdir(dir_entry,
+                             data->pexport->cache_inode_policy,
+                             cookie,
+                             estimated_num_entries,
+                             &num_entries,
+                             &eod_met,
+                             data->pclient,
+                             data->pcontext,
+                             nfs4_readdir_callback,
+                             &cb_data,
+                             &cache_status) != CACHE_INODE_SUCCESS) {
+          res_READDIR4.status = nfs4_Errno(cache_status);
+          goto out;
+     }
+
+     if ((res_READDIR4.status = cb_data.error) != NFS4_OK) {
+          goto out;
+     }
+
+     if (cb_data.count != 0) {
+          /* Put the entry's list in the READDIR reply if there were any. */
+          res_READDIR4.READDIR4res_u.resok4.reply.entries = entries;
+     } else {
+          Mem_Free(entries);
+          res_READDIR4.READDIR4res_u.resok4.reply.entries
+               = entries = NULL;
+     }
+
+     if (eod_met &&
+         (cb_data.count == num_entries)) {
           res_READDIR4.READDIR4res_u.resok4.reply.eof = TRUE;
      } else {
           res_READDIR4.READDIR4res_u.resok4.reply.eof = FALSE;
