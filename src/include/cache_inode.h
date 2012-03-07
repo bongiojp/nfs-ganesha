@@ -403,10 +403,11 @@ typedef struct cache_inode_dir_entry__
  * through the functions atomic_set_it_bits and
  * atomic_clear_int_bits.
  *
- * The policy field is unprotected.  ACE: When is the policy field
- * expected to change?  Does it last the lifetime of the cache entry?
- * Even if it can change, setting or equality testing a word is
- * atomic.
+ * The policy field is unprotected.
+ *
+ * @todo ACE: When is the policy field expected to change?  Does it
+ * last the lifetime of the cache entry?  Even if it can change,
+ * setting or equality testing a word is atomic.
  *
  * The change_time and attr_time fields are unprotected and must only
  * be used for simple comparisons or servicing requests returning
