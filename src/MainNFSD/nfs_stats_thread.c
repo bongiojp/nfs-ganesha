@@ -52,6 +52,9 @@
 #include "log.h"
 
 extern hash_table_t *ht_ip_stats[NB_MAX_WORKER_THREAD];
+#ifndef _NO_BUDDY_SYSTEM
+extern buddy_stats_t global_tcp_dispatcher_buddy_stat;
+#endif /* !_NO_BUDDY_SYSTEM */
 
 #ifndef _NO_BUDDY_SYSTEM
 extern buddy_stats_t global_tcp_dispatcher_buddy_stat;

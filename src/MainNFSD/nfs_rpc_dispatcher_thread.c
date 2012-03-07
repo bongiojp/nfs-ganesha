@@ -85,7 +85,7 @@ buddy_stats_t          global_tcp_dispatcher_buddy_stat;
 
 /* This structure exists per tcp dispatcher thread */
 buddy_stats_t __thread local_tcp_dispatcher_buddy_stat;
-#endif
+#endif /*!_NO_BUDDY_SYSTEM*/
 
 #if !defined(_NO_BUDDY_SYSTEM) && defined(_DEBUG_MEMLEAKS)
 /**
@@ -1134,7 +1134,7 @@ void rpc_dispatcher_svc_run()
 #ifndef _NO_BUDDY_SYSTEM
   /* Init stat */
   memset( &local_tcp_dispatcher_buddy_stat, 0,  sizeof(buddy_stats_t));
-#endif
+#endif /* !_NO_BUDDY_SYSTEM */
 
   while(TRUE)
     {

@@ -305,7 +305,8 @@ cache_inode_close(cache_entry_t *entry,
 
      /* If state is held in the file, do not close it.  This should
         be refined.  (A non return_on_close layout should not prevent
-        the file from closing.) */
+        the file from closing.)  The caller should hold the state
+        lock. */
      if (cache_inode_file_holds_state(entry)) {
           *status = CACHE_INODE_SUCCESS;
           goto unlock;

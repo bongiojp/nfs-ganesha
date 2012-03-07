@@ -1952,7 +1952,7 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
                request_data_t,
                constructor_request_data_t, NULL);
       NamePool(&workers_data[i].request_pool, "Request Data Pool %d", i);
-               
+
       if(!IsPoolPreallocated(&workers_data[i].request_pool))
         {
           LogCrit(COMPONENT_INIT,

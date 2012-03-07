@@ -201,7 +201,7 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
   NamePool(&pclient->pool_key, "%s Key Pool", name);
   if(!IsPoolPreallocated(&pclient->pool_key))
     {
-      LogCrit(COMPONENT_CACHE_INODE,
+      LogFatal(COMPONENT_CACHE_INODE,
               "Can't init %s Key Pool", name);
       return 1;
     }

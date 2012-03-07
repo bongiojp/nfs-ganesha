@@ -148,6 +148,7 @@ static struct lru_state
      uint32_t fds_hiwat;
      uint32_t flags;
      uint64_t last_count;
+     uint64_t threadwait;
 } lru_state;
 
 static const uint32_t LRU_SLEEPING = 0x00000001;
@@ -317,6 +318,9 @@ void cache_inode_lru_pkginit(void)
      lru_state.fds_hiwat
           = (75 * cache_inode_gc_policy.max_fd) / 100;
      lru_state.last_count = 0;
+
+     lru_state.threadwait
+          = 1000 * cache_inode_gc_policy.lru_run_interval;
 
      pthread_mutex_init(&lru_mtx, NULL);
      pthread_cond_init(&lru_cv, NULL);
@@ -738,8 +742,33 @@ static void *lru_thread(void *arg)
      size_t i = 0;
     /* Temporary holder for flags */
      uint32_t tmpflags = lru_state.flags;
+     cache_inode_client_t client;
 
      SetNameFunction("lru_thread");
+
+     /* Initialize BuddyMalloc (otherwise we crash whenever we call
+        into the FSAL and it tries to update its calls tats) */
+#ifndef _NO_BUDDY_SYSTEM
+     if ((BuddyInit(&nfs_param.buddy_param_worker)) != BUDDY_SUCCESS) {
+          /* Failed init */
+          LogFatal(COMPONENT_CACHE_INODE_LRU,
+                   "Memory manager could not be initialized");
+     }
+     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                  "Memory manager successfully initialized");
+#endif
+     /* Initialize the cache_inode_client_t so we can call into
+        cache_inode and not reimplement close. */
+     if (cache_inode_client_init(&client,
+                                 (nfs_param.cache_layers_param
+                                  .cache_inode_client_param),
+                                 0, NULL)) {
+          /* Failed init */
+          LogFatal(COMPONENT_CACHE_INODE_LRU,
+                   "Cache Inode client could not be initialized");
+     }
+     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                  "Cache Inode client successfully initialized");
 
      while (1) {
           if (lru_thread_state.flags & LRU_SHUTDOWN)
@@ -801,42 +830,44 @@ static void *lru_thread(void *arg)
              FSAL API, for example.) */
 
           if (open_fd_count > lru_state.fds_hiwat) {
+               LogDebug(COMPONENT_CACHE_INODE_LRU,
+                        "FD count is %zd and high water mark is "
+                        "%d: reaping.",
+                        open_fd_count,
+                        lru_state.fds_hiwat);
                for (i = 0; i < LRU_N_Q_LANES; ++i) {
                     LogDebug(COMPONENT_CACHE_INODE_LRU,
-                             "FD count is %zd and high water mark is "
-                             "%d: reaping.",
-                             open_fd_count,
-                             lru_state.fds_hiwat);
+                             "Reaping up to %d entries from lane %zd",
+                             LRU_WORK_PER_WAKE,
+                             i);
                     int workdone = 0;
                     cache_inode_lru_t *lru = NULL;
+                    size_t formeropen = open_fd_count;
                     pthread_mutex_lock(&LRU_1[i].lru.mtx);
                     while ((workdone < LRU_WORK_PER_WAKE) &&
                            (lru = glist_first_entry(&LRU_1[i].lru.q,
                                                     cache_inode_lru_t,
                                                     q))) {
+                         cache_inode_status_t cache_status
+                              = CACHE_INODE_SUCCESS;
                          cache_entry_t *entry
                               = container_of(lru, cache_entry_t, lru);
+
                          pthread_mutex_lock(&lru->mtx);
                          pthread_rwlock_rdlock(&entry->state_lock);
-                         if (!cache_inode_file_holds_state(entry)) {
+                         if (!cache_inode_file_holds_state(entry) &&
+                             (entry->type == REGULAR_FILE)) {
                               /* We would want the state lock for
                                  this anyway, so someone doesn't get
                                  an open while we're disposing of the
                                  descriptor. */
-                              pthread_rwlock_wrlock(&entry->content_lock);
-                              if (entry->object.file.open_fd.openflags
-                                  != FSAL_O_CLOSED) {
-                                   fsal_status_t fsal_status =
-                                        FSAL_close(&(entry->object
-                                                     .file.open_fd.fd));
-                                   if (FSAL_IS_ERROR(fsal_status)) {
-                                        LogCrit(COMPONENT_CACHE_INODE_LRU,
-                                                "Error closing file in "
-                                                "LRU thread.");
-                                   }
-                                   entry->object.file.open_fd.openflags
-                                        = FSAL_O_CLOSED;
-                                   --(open_fd_count);
+                              cache_inode_close(entry, &client,
+                                                CACHE_INODE_FLAG_REALLYCLOSE,
+                                                &cache_status);
+                              if (cache_status != CACHE_INODE_SUCCESS) {
+                                   LogCrit(COMPONENT_CACHE_INODE_LRU,
+                                           "Error closing file in "
+                                           "LRU thread.");
                               }
                               /* Move the entry to L2 whatever the
                                  result of examining it.*/
@@ -845,7 +876,6 @@ static void *lru_thread(void *arg)
                                              LRU_HAVE_LOCKED_ENTRY |
                                              LRU_ENTRY_L2,
                                              i);
-                              pthread_rwlock_unlock(&entry->content_lock);
                          } else {
                               /* Highly unlikely, this will probably
                                  go away if we make the SAL
@@ -859,8 +889,15 @@ static void *lru_thread(void *arg)
                          }
                          pthread_rwlock_unlock(&entry->state_lock);
                          pthread_mutex_unlock(&lru->mtx);
+                         ++workdone;
                     }
                     pthread_mutex_unlock(&LRU_1[i].lru.mtx);
+                    LogDebug(COMPONENT_CACHE_INODE_LRU,
+                             "Actually processed %d entries on lane %zd "
+                             "closing %zd descriptors",
+                             workdone,
+                             i,
+                             formeropen - open_fd_count);
                }
           } else {
                LogDebug(COMPONENT_CACHE_INODE_LRU,
@@ -869,7 +906,7 @@ static void *lru_thread(void *arg)
                         lru_state.fds_hiwat);
           }
 
-          lru_thread_delay_ms(1000 * 5 * 60);
+          lru_thread_delay_ms(lru_state.threadwait);
      }
 
      LogCrit(COMPONENT_CACHE_INODE_LRU,

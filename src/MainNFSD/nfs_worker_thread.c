@@ -1880,7 +1880,7 @@ void *worker_thread(void *IndexArg)
 
   worker_index = (unsigned long)IndexArg;
   pmydata = &(workers_data[worker_index]);
-#ifdef _USE_SHARED_FSAL 
+#ifdef _USE_SHARED_FSAL
   unsigned int i = 0 ;
   unsigned int fsalid = 0 ;
 #endif

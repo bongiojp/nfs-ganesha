@@ -410,6 +410,10 @@ cache_inode_status_t cache_inode_read_conf_gc_policy(config_file_t in_config,
         {
           ppolicy->use_fd_cache = StrToBoolean(key_value);
         }
+      else if(!strcasecmp(key_name, "LRU_Run_Interval"))
+        {
+          ppolicy->lru_run_interval = atoi(key_value);
+        }
       else
         {
           LogCrit(COMPONENT_CONFIG,
