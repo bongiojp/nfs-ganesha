@@ -467,30 +467,29 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
           return *pstatus;
      }
 
-  fsal_status = FSAL_namecpy(&new_dir_entry->name, pname);
-  if(FSAL_IS_ERROR(fsal_status)) {
-       *pstatus = CACHE_INODE_FSAL_ERROR;
-       return *pstatus;
-  }
+     fsal_status = FSAL_namecpy(&new_dir_entry->name, pname);
+     if (FSAL_IS_ERROR(fsal_status)) {
+          *pstatus = CACHE_INODE_FSAL_ERROR;
+          return *pstatus;
+     }
 
-  /* add to avl */
-  if (cache_inode_avl_qp_insert(pentry_parent, new_dir_entry) == -1) {
-       /* collision, tree not updated--release both pool objects and return
-        * err */
-      ReleaseToPool(new_dir_entry, &pclient->pool_dir_entry);
-      *pstatus = CACHE_INODE_ENTRY_EXISTS;
-      return *pstatus;
-  }
+     /* add to avl */
+     if (cache_inode_avl_qp_insert(pentry_parent, new_dir_entry) == -1) {
+          /* collision, tree not updated--release both pool objects and return
+           * err */
+          ReleaseToPool(new_dir_entry, &pclient->pool_dir_entry);
+          *pstatus = CACHE_INODE_ENTRY_EXISTS;
+          return *pstatus;
+     }
 
-  *pnew_dir_entry = new_dir_entry;
+     *pnew_dir_entry = new_dir_entry;
 
-  /* we're going to succeed */
-  pentry_parent->object.dir.nbactive++;
-  new_dir_entry->entry = pentry_added->weakref;
+     /* we're going to succeed */
+     pentry_parent->object.dir.nbactive++;
+     new_dir_entry->entry = pentry_added->weakref;
 
-  cache_inode_lru_ref(pentry_added, pclient, LRU_REQ_SCAN);
 
-  return *pstatus;
+     return *pstatus;
 }                               /* cache_inode_add_cached_dirent */
 
 /**
