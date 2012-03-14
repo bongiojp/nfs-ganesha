@@ -136,15 +136,8 @@ int _9p_auth( _9p_request_data_t * preq9p,
   pfid= &preq9p->pconn->fids[*afid] ;
   pfid->pexport = pexport ;
   pfid->fid = *afid ;
-
-#ifdef _USE_SHARED_FSAL
-  /* At this step, the export entry is known and it's required to use the right fsalid */
-  FSAL_SetId( pexport->fsalid ) ;
-
-  memcpy( &pfid->fsal_op_context, &pwkrdata->thread_fsal_context[pexport->fsalid], sizeof( fsal_op_context_t ) ) ;
-#else
+ 
   memcpy( &pfid->fsal_op_context, &pwkrdata->thread_fsal_context, sizeof( fsal_op_context_t ) ) ;
-#endif
 
   /* Is user name provided as a string or as an uid ? */
   if( *uname_len != 0 )
