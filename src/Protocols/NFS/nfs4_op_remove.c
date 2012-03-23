@@ -191,6 +191,7 @@ int nfs4_op_remove(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   res_REMOVE4.REMOVE4res_u.resok4.cinfo.after
        = cache_inode_get_changeid4(parent_entry);
 
+  /* Operation was not atomic .... */
   res_REMOVE4.REMOVE4res_u.resok4.cinfo.atomic = FALSE;
 
   /* If you reach this point, everything was ok */
