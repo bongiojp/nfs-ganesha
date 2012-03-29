@@ -111,8 +111,8 @@ cache_inode_clean_internal(cache_entry_t *entry,
      memset(&fsaldata, 0, sizeof(fsaldata));
 
      /* delete the entry from the cache */
-     key.pdata = to_remove_entry->fh_desc.start;
-     key.len = to_remove_entry->fh_desc.len;
+     key.pdata = entry->fh_desc.start;
+     key.len = entry->fh_desc.len;
 
      /* Nonexistence is as good as success. */
      if ((rc != HASHTABLE_SUCCESS) &&
@@ -128,7 +128,7 @@ cache_inode_clean_internal(cache_entry_t *entry,
      /* Release the key that was stored in hash table */
      if (rc != HASHTABLE_ERROR_NO_SUCH_KEY) {
           cache_inode_release_fsaldata_key(&old_key, client);
-          assert((cache_entry_t*) old_value.pdata == entry);
+          assert(old_value.pdata == entry);
      }
 
      /* Delete from the weakref table */

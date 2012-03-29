@@ -566,6 +566,7 @@ int cacheinode_init(char *filename, int flag_v, FILE * output)
     }
 
   cache_param.hparam.hash_func_key = cache_inode_fsal_hash_func;
+
   cache_param.hparam.hash_func_rbt = cache_inode_fsal_rbt_func;
   cache_param.hparam.hash_func_both = NULL ; /* BUGAZOMEU */
   cache_param.hparam.compare_key = cache_inode_compare_key_fsal;
@@ -1604,26 +1605,13 @@ int fn_Cache_inode_callstat(int argc,   /* IN : number of args in argv */
           "------------------------------------------------------------------------------\n");
 
   /* Statistics for the HashTable */
-  HashTable_GetStats(fh_to_cache_entry_ht, &hstat);
-  fprintf(output, "Operation            |     ok      |    err      |   notfound  \n");
-  fprintf(output, "Set                  | %11u | %11u | %11u \n",
-          hstat.dynamic.ok.nb_set, hstat.dynamic.err.nb_set,
-          hstat.dynamic.notfound.nb_set);
-  fprintf(output, "Test                 | %11u | %11u | %11u \n",
-          hstat.dynamic.ok.nb_test, hstat.dynamic.err.nb_test,
-          hstat.dynamic.notfound.nb_test);
-  fprintf(output, "Get                  | %11u | %11u | %11u \n", hstat.dynamic.ok.nb_get,
-          hstat.dynamic.err.nb_get, hstat.dynamic.notfound.nb_get);
-  fprintf(output, "Del                  | %11u | %11u | %11u \n", hstat.dynamic.ok.nb_del,
-          hstat.dynamic.err.nb_del, hstat.dynamic.notfound.nb_del);
+  HashTable_GetStats(ht, &hstat);
+  fprintf(output, "There are %zu entries in the Cache inode HashTable\n",
+          hstat.entries);
   fprintf(output,
-          "------------------------------------------------------------------------------\n");
-  fprintf(output, "There are %d entries in the Cache inode HashTable\n",
-          hstat.dynamic.nb_entries);
-  fprintf(output,
-          "index_size=%d  min_rbt_num_node=%d  max_rbt_num_node=%d average_rbt_num_node=%d\n",
-          fh_to_cache_entry_ht->parameter.index_size, hstat.computed.min_rbt_num_node,
-          hstat.computed.max_rbt_num_node, hstat.computed.average_rbt_num_node);
+          "index_size=%"PRIu32"  min_rbt_num_node=%zu  max_rbt_num_node=%zu average_rbt_num_node=%zu\n",
+          ht->parameter.index_size, hstat.min_rbt_num_node,
+          hstat.max_rbt_num_node, hstat.average_rbt_num_node);
   fprintf(output,
           "------------------------------------------------------------------------------\n");
   fprintf(output,

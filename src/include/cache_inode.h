@@ -419,7 +419,6 @@ typedef struct cache_inode_dir_entry__
 struct cache_entry_t
 {
   fsal_handle_t handle; /*< The FSAL Handle */
-<<<<<<< HEAD
   struct fsal_handle_desc fh_desc; /*< Points to handle.  Adds size,
                                        len for hash table etc. */
   fsal_attrib_list_t attributes; /*< The FSAL Attributes */
@@ -438,8 +437,6 @@ struct cache_entry_t
                           etc.) */
   time_t attr_time; /*< Time at which we last refreshed attributes. */
   cache_inode_lru_t lru; /*< New style LRU link */
-  pthread_rwlock_t attr_lock; /*< Reader-writer lock for attributes */
-  fsal_attrib_list_t attributes; /*< The FSAL Attributes */
   pthread_rwlock_t state_lock; /*< This is separated out from the
                                    content lock, since there are
                                    state oerations that don't affect
@@ -708,43 +705,15 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
                             cache_inode_client_parameter_t * paramp,
                             int thread_index, void * pworker_data);
 
-cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
-			       cache_inode_policy_t policy,
-                               fsal_attrib_list_t * pattr,
-                               cache_inode_client_t * pclient,
-                               fsal_op_context_t * pcontext,
-                               cache_inode_status_t * pstatus);
-
-cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t * pfsdata,
-                                       cache_entry_t * plocation,
-				       cache_inode_policy_t policy,
-                                       fsal_attrib_list_t * pattr,
-                                       cache_inode_client_t * pclient,
-                                       fsal_op_context_t * pcontext,
-                                       cache_inode_status_t * pstatus) ;
-
-=======
-                               cache_inode_status_t *pstatus);
-int cache_inode_client_init(cache_inode_client_t *pclient,
-                            cache_inode_client_parameter_t param,
-                            int thread_index,
-                            struct nfs_worker_data__ *pworker_data);
-
-cache_entry_t *cache_inode_get(cache_inode_fsal_data_t *pfsdata,
+cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * fsdata,
                                cache_inode_policy_t policy,
-                               fsal_attrib_list_t *pattr,
-                               cache_inode_client_t *pclient,
-                               fsal_op_context_t *pcontext,
-                               cache_inode_status_t *pstatus);
-cache_entry_t *cache_inode_get_located(cache_inode_fsal_data_t *pfsdata,
-                                       cache_entry_t *plocation,
-                                       cache_inode_policy_t policy,
-                                       fsal_attrib_list_t *pattr,
-                                       cache_inode_client_t *pclient,
-                                       fsal_op_context_t *pcontext,
-                                       cache_inode_status_t *pstatus);
+                               fsal_attrib_list_t * attr,
+                               cache_inode_client_t * pclient,
+                               fsal_op_context_t * context,
+                               cache_inode_status_t * status);
+
 cache_inode_status_t cache_inode_put(cache_entry_t *entry,
-                                     cache_inode_client_t *pclient);
+                                     cache_inode_client_t *client);
 
 cache_inode_status_t cache_inode_access_sw(cache_entry_t * pentry,
                                            fsal_accessflags_t access_type,
@@ -1058,19 +1027,16 @@ inline bool_t cache_inode_file_holds_state(cache_entry_t *entry);
 
 inline int cache_inode_set_time_current(fsal_time_t *ptime);
 
-/* Hash functions for hashtables and RBT */
-unsigned long cache_inode_fsal_hash_func(hash_parameter_t *p_hparam,
-                                         hash_buffer_t *buffclef);
-unsigned long cache_inode_fsal_rbt_func(hash_parameter_t *p_hparam,
-                                        hash_buffer_t *buffclef);
-unsigned int cache_inode_fsal_rbt_both(hash_parameter_t *p_hparam,
-                                       hash_buffer_t *buffclef,
-                                       uint32_t *phashval,
-                                       uint32_t *prbtval);
-int display_key(hash_buffer_t *pbuff, char *str);
-int display_not_implemented(hash_buffer_t *pbuff,
-                            char *str);
-int display_value(hash_buffer_t *pbuff, char *str);
+uint32_t cache_inode_fsal_hash_func(hash_parameter_t * p_hparam,
+                                    hash_buffer_t * buffclef);
+uint64_t cache_inode_fsal_rbt_func(hash_parameter_t * p_hparam,
+                                        hash_buffer_t * buffclef);
+int cache_inode_fsal_rbt_both( hash_parameter_t * p_hparam,
+                               hash_buffer_t    * buffclef,
+                               uint32_t * phashval, uint64_t * prbtval ) ;
+int display_key(hash_buffer_t * pbuff, char *str);
+int display_not_implemented(hash_buffer_t * pbuff, char *str);
+int display_value(hash_buffer_t * pbuff, char *str);
 
 /**
  * @brief Update cache_entry metadata from its attributes
@@ -1303,7 +1269,6 @@ atomic_clear_hyper_bits(uint64_t *var,
 {
      __sync_fetch_and_and(var, ~bits);
 }
-
 /**
  * \brief Atomically set bits in a 64-bit integer
  *

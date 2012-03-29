@@ -37,7 +37,7 @@
 #include "solaris_port.h"
 #endif                          /* _SOLARIS */
 
-#include "log_macros.h"
+#include "log.h"
 #include "cache_inode.h"
 
 /**

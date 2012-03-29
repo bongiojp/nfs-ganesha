@@ -82,8 +82,8 @@ hash_table_t *ht_uidgid;
  * @see HashTable_Init
  *
  */
-unsigned long idmapper_value_hash_func(hash_parameter_t * p_hparam,
-                                       hash_buffer_t * buffclef)
+uint32_t idmapper_value_hash_func(hash_parameter_t * p_hparam,
+                                  hash_buffer_t * buffclef)
 {
   unsigned int sum = 0;
   unsigned int i = 0;
@@ -97,7 +97,7 @@ unsigned long idmapper_value_hash_func(hash_parameter_t * p_hparam,
 }                               /*  ip_name_value_hash_func */
 
 
-unsigned long namemapper_value_hash_func(hash_parameter_t * p_hparam,
+uint32_t namemapper_value_hash_func(hash_parameter_t * p_hparam,
                                          hash_buffer_t * buffclef)
 {
   return ((unsigned long)(buffclef->pdata) % p_hparam->index_size);
@@ -117,8 +117,8 @@ unsigned long namemapper_value_hash_func(hash_parameter_t * p_hparam,
  * @see HashTable_Init
  *
  */
-unsigned long idmapper_rbt_hash_func(hash_parameter_t * p_hparam,
-                                     hash_buffer_t * buffclef)
+uint64_t idmapper_rbt_hash_func(hash_parameter_t * p_hparam,
+                                hash_buffer_t * buffclef)
 {
   unsigned int result;
 
@@ -129,8 +129,8 @@ unsigned long idmapper_rbt_hash_func(hash_parameter_t * p_hparam,
   return (unsigned long)result;
 }                               /* ip_name_rbt_hash_func */
 
-unsigned long namemapper_rbt_hash_func(hash_parameter_t * p_hparam,
-                                       hash_buffer_t * buffclef)
+uint64_t namemapper_rbt_hash_func(hash_parameter_t * p_hparam,
+                                  hash_buffer_t * buffclef)
 {
   return (unsigned long)(buffclef->pdata);
 }
@@ -210,7 +210,7 @@ int display_idmapper_val(hash_buffer_t * pbuff, char *str)
  */
 int idmap_uid_init(nfs_idmap_cache_parameter_t param)
 {
-  if((ht_pwnam = HashTable_Init(param.hash_param)) == NULL)
+  if((ht_pwnam = HashTable_Init(&param.hash_param)) == NULL)
     {
       LogCrit(COMPONENT_IDMAPPER,
               "NFS ID MAPPER: Cannot init IDMAP_UID cache");
@@ -222,7 +222,7 @@ int idmap_uid_init(nfs_idmap_cache_parameter_t param)
 
 int uidgidmap_init(nfs_idmap_cache_parameter_t param)
 {
-  if((ht_uidgid = HashTable_Init(param.hash_param)) == NULL)
+  if((ht_uidgid = HashTable_Init(&param.hash_param)) == NULL)
     {
       LogCrit(COMPONENT_IDMAPPER,
               "NFS UID/GID MAPPER: Cannot init UIDGID_MAP cache");
@@ -234,7 +234,7 @@ int uidgidmap_init(nfs_idmap_cache_parameter_t param)
 
 int idmap_uname_init(nfs_idmap_cache_parameter_t param)
 {
-  if((ht_pwuid = HashTable_Init(param.hash_param)) == NULL)
+  if((ht_pwuid = HashTable_Init(&param.hash_param)) == NULL)
     {
       LogCrit(COMPONENT_IDMAPPER,
               "NFS ID MAPPER: Cannot init IDMAP_UNAME cache");
@@ -257,7 +257,7 @@ int idmap_uname_init(nfs_idmap_cache_parameter_t param)
  */
 int idmap_gid_init(nfs_idmap_cache_parameter_t param)
 {
-  if((ht_grnam = HashTable_Init(param.hash_param)) == NULL)
+  if((ht_grnam = HashTable_Init(&param.hash_param)) == NULL)
     {
       LogCrit(COMPONENT_IDMAPPER,
               "NFS ID MAPPER: Cannot init IDMAP_GID cache");
@@ -269,7 +269,7 @@ int idmap_gid_init(nfs_idmap_cache_parameter_t param)
 
 int idmap_gname_init(nfs_idmap_cache_parameter_t param)
 {
-  if((ht_grgid = HashTable_Init(param.hash_param)) == NULL)
+  if((ht_grgid = HashTable_Init(&param.hash_param)) == NULL)
     {
       LogCrit(COMPONENT_IDMAPPER,
               "NFS ID MAPPER: Cannot init IDMAP_GNAME cache");

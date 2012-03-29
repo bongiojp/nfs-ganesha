@@ -63,8 +63,8 @@
  * @return the computed hash value.
  *
  */
-unsigned long cache_inode_fsal_hash_func(hash_parameter_t * p_hparam,
-                                         hash_buffer_t * buffclef)
+uint32_t cache_inode_fsal_hash_func(hash_parameter_t * p_hparam,
+                                    hash_buffer_t * buffclef)
 {
     unsigned long h = 0;
     char printbuf[512];
@@ -97,8 +97,8 @@ unsigned long cache_inode_fsal_hash_func(hash_parameter_t * p_hparam,
  * @return the computed rbt value.
  *
  */
-unsigned long cache_inode_fsal_rbt_func(hash_parameter_t * p_hparam,
-                                        hash_buffer_t * buffclef)
+uint64_t cache_inode_fsal_rbt_func(hash_parameter_t * p_hparam,
+                                   hash_buffer_t * buffclef)
 {
     /*
      * A polynomial function too, but reversed, to avoid
@@ -158,42 +158,53 @@ unsigned long __cache_inode_fsal_rbt_func(hash_parameter_t * p_hparam,
  *
  */
 
-unsigned int cache_inode_fsal_rbt_both_on_fsal( hash_parameter_t * p_hparam,
-				               hash_buffer_t    * buffclef, 
-				               uint32_t * phashval, uint32_t * prbtval )
+int cache_inode_fsal_rbt_both_on_fsal(hash_parameter_t * p_hparam,
+                                      hash_buffer_t    * buffclef,
+                                      uint32_t * phashval, uint64_t * prbtval)
 {
     char printbuf[512];
     unsigned int rc = 0 ;
-    fsal_handle_t *pfsal_handle = (fsal_handle_t *) (buffclef->pdata);
+    unsigned int FSALindex = 0;
+    unsigned int FSALrbt = 0;
 
-    rc = FSAL_Handle_to_Hash_both( pfsal_handle, 0,
-				   p_hparam->alphabet_length, p_hparam->index_size,
-				   phashval, prbtval ) ;
+    /**
+     * @todo ACE: This is a temporary hack so we don't have to change every FSAL
+     * right now.
+     */
 
+    rc = FSAL_Handle_to_Hash_both( &pfsdata->handle, pfsdata->cookie,
+                                   p_hparam->alphabet_length,
+                                   p_hparam->index_size,
+                                   &FSALindex, &FSALrbt);
+
+    *phashval = FSALindex;
+    *prbtval = FSALrbt;
     if( rc == 0 )
-      {
-          snprintHandle(printbuf, 512, pfsal_handle);
-          LogMajor(COMPONENT_HASHTABLE,
-                   "Unable to hash (Handle=%s, Cookie=%"PRIu64")",
-                   printbuf, 0UL);
-          return 0 ;
-      }
+    {
+         snprintHandle(printbuf, 512, pfsal_handle);
+         LogMajor(COMPONENT_HASHTABLE,
+                  "Unable to hash (Handle=%s, Cookie=%"PRIu64")",
+                  printbuf, 0UL);
+         return 0 ;
+    }
 
     if(isFullDebug(COMPONENT_HASHTABLE))
       {
           snprintHandle(printbuf, 512, pfsal_handle);
           LogFullDebug(COMPONENT_HASHTABLE,
-                       "hash_func rbt both: buff = (Handle=%s, Cookie=%"PRIu64"), hashvalue=%u rbtvalue=%u",
-                       printbuf, 0UL, *phashval, *prbtval );
+                       "hash_func rbt both: buff = (Handle=%s,"
+                       " Cookie=%"PRIu64"), hashvalue=%"PRIu32
+                       " rbtvalue=%"PRIu64,
+                       printbuf, pfsdata->cookie, *phashval, *prbtval );
       }
 
-   /* Success */
-   return 1 ;
+    /* Success */
+    return 1 ;
 } /*  cache_inode_fsal_rbt_both */
 
-unsigned int cache_inode_fsal_rbt_both_locally( hash_parameter_t * p_hparam,
-				              hash_buffer_t    * buffclef, 
-				              uint32_t * phashval, uint32_t * prbtval )
+int cache_inode_fsal_rbt_both_locally(hash_parameter_t * p_hparam,
+                                      hash_buffer_t    * buffclef,
+                                      uint32_t * phashval, uint64_t * prbtval)
 {
     char printbuf[512];
     uint32_t h1 = 0 ;
@@ -221,9 +232,9 @@ unsigned int cache_inode_fsal_rbt_both_locally( hash_parameter_t * p_hparam,
 } /*  cache_inode_fsal_rbt_both */
 
 
-unsigned int cache_inode_fsal_rbt_both( hash_parameter_t * p_hparam,
-				        hash_buffer_t    * buffclef, 
-				        uint32_t * phashval, uint32_t * prbtval )
+int cache_inode_fsal_rbt_both( hash_parameter_t * p_hparam,
+                               hash_buffer_t    * buffclef,
+                               uint32_t * phashval, uint64_t * prbtval )
 {
   if( nfs_param.cache_layers_param.cache_inode_client_param.use_fsal_hash == FALSE )
     return cache_inode_fsal_rbt_both_locally( p_hparam, buffclef, phashval, prbtval ) ;

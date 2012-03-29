@@ -81,7 +81,7 @@
  * @see HashTable_Init
  *
  */
-unsigned long int ip_stats_value_hash_func(hash_parameter_t * p_hparam,
+uint32_t ip_stats_value_hash_func(hash_parameter_t * p_hparam,
                                            hash_buffer_t * buffclef)
 {
   return hash_sockaddr((sockaddr_t *)buffclef->pdata, IGNORE_PORT) % p_hparam->index_size;
@@ -102,7 +102,7 @@ unsigned long int ip_stats_value_hash_func(hash_parameter_t * p_hparam,
  * @see HashTable_Init
  *
  */
-unsigned long int ip_stats_rbt_hash_func(hash_parameter_t * p_hparam,
+uint64_t ip_stats_rbt_hash_func(hash_parameter_t * p_hparam,
                                          hash_buffer_t * buffclef)
 {
   return hash_sockaddr((sockaddr_t *)buffclef->pdata, IGNORE_PORT);
@@ -411,7 +411,7 @@ hash_table_t *nfs_Init_ip_stats(nfs_ip_stats_parameter_t param)
 {
   hash_table_t *ht_ip_stats;
 
-  if((ht_ip_stats = HashTable_Init(param.hash_param)) == NULL)
+  if((ht_ip_stats = HashTable_Init(&param.hash_param)) == NULL)
     {
       LogCrit(COMPONENT_INIT, "NFS IP_STATS: Cannot init IP stats cache");
       return NULL;
@@ -465,11 +465,11 @@ void nfs_ip_stats_dump(hash_table_t ** ht_ip_stats,
            current_time_struct.tm_hour,
            current_time_struct.tm_min, current_time_struct.tm_sec);
 
-  /* All clients are supposed to have call at least one time worker #0 
+  /* All clients are supposed to have call at least one time worker #0
    * we loop on every client in the HashTable */
   for(i = 0; i < ht_ip_stats[0]->parameter.index_size; i++)
     {
-      tete_rbt = &((ht_ip_stats[0]->array_rbt)[i]);
+      tete_rbt = &ht_ip_stats[0]->partitions[i].rbt;
       RBT_LOOP(tete_rbt, it)
       {
         pdata = (hash_data_t *) it->rbt_opaq;

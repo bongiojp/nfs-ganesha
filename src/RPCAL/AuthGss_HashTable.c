@@ -191,7 +191,7 @@ hash_table_t *ht_gss_ctx;
  * @see HashTable_Init
  *
  */
-unsigned long gss_ctx_hash_func(hash_parameter_t * p_hparam, hash_buffer_t * buffclef)
+uint32_t gss_ctx_hash_func(hash_parameter_t * p_hparam, hash_buffer_t * buffclef)
 {
   unsigned long hash_func;
   gss_union_ctx_id_desc *pgss_ctx;
@@ -228,7 +228,7 @@ unsigned long gss_ctx_hash_func(hash_parameter_t * p_hparam, hash_buffer_t * buf
  * @see HashTable_Init
  *
  */
-unsigned long gss_ctx_rbt_hash_func(hash_parameter_t * p_hparam, hash_buffer_t * buffclef)
+uint64_t gss_ctx_rbt_hash_func(hash_parameter_t * p_hparam, hash_buffer_t * buffclef)
 {
   unsigned long hash_func;
   gss_union_ctx_id_desc *pgss_ctx;
@@ -476,7 +476,7 @@ int Gss_ctx_Hash_Del(gss_union_ctx_id_desc * pgss_ctx)
  */
 int Gss_ctx_Hash_Init(nfs_krb5_parameter_t param)
 {
-  if((ht_gss_ctx = HashTable_Init(param.hash_param)) == NULL)
+  if((ht_gss_ctx = HashTable_Init(&param.hash_param)) == NULL)
     {
       LogCrit(COMPONENT_RPCSEC_GSS, "GSS_CTX_HASH: Cannot init GSS CTX  cache");
       return -1;
