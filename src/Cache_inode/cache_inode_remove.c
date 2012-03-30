@@ -104,11 +104,16 @@ cache_inode_status_t
 cache_inode_clean_internal(cache_entry_t *entry,
                            cache_inode_client_t *client)
 {
-     cache_inode_fsal_data_t fsaldata;
-     hash_buffer_t old_value;
-     int rc = 0;
+     hash_buffer_t key, old_key, old_value;
+     hash_error_t rc = 0;
 
-     memset(&fsaldata, 0, sizeof(fsaldata));
+     key.pdata = entry->fh_desc.start;
+     key.len = entry->fh_desc.len;
+
+     rc = HashTable_Del(fh_to_cache_entry_ht,
+                        &key,
+                        &old_key,
+                        &old_value);
 
      /* Nonexistence is as good as success. */
      if ((rc != HASHTABLE_SUCCESS) &&
