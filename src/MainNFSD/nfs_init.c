@@ -622,6 +622,7 @@ void nfs_set_param_default()
   nfs_param.cache_layers_param.gcpol.lwmark_nb_entries = 10000;
   nfs_param.cache_layers_param.gcpol.max_fd = 1000;
   nfs_param.cache_layers_param.gcpol.use_fd_cache = TRUE;
+  nfs_param.cache_layers_param.gcpol.lru_run_interval = 600;
   nfs_param.cache_layers_param.cache_inode_client_param.nb_prealloc_entry = 1024;
   nfs_param.cache_layers_param.cache_inode_client_param.nb_pre_state_v4 = 512;
   nfs_param.cache_layers_param.cache_inode_client_param.grace_period_attr   = 0;
@@ -1579,57 +1580,56 @@ static void nfs_Start_threads(bool_t flush_datacache_mode)
   LogDebug(COMPONENT_THREAD,
            "sigmgr thread started");
 
-  /* init cache_inode_lru -- request threads should not race its
-   * initialization */
-  cache_inode_lru_pkginit();
-
   if(!flush_datacache_mode)
     {
       /* Starting the rpc dispatcher thread */
       if((rc =
           pthread_create(&rpc_dispatcher_thrid, &attr_thr, rpc_dispatcher_thread,
-                       &nfs_param)) != 0)
+                         &nfs_param)) != 0)
         {
-          /* Starting all of the worker thread */
-          for(i = 0; i < nfs_param.core_param.nb_worker; i++)
-            {
-              if((rc =
-                  pthread_create(&(worker_thrid[i]), &attr_thr, worker_thread, (void *)i)) != 0)
-                {
-                  LogFatal(COMPONENT_THREAD,
-                           "Could not create worker_thread #%lu, error = %d (%s)",
-                           i, errno, strerror(errno));
-                }
-            }
-          LogEvent(COMPONENT_THREAD,
-                   "%d worker threads were started successfully",
-                   nfs_param.core_param.nb_worker);
-
-#ifdef _USE_BLOCKING_LOCKS
-          /* Start State Async threads */
-          state_async_thread_start();
-#endif
-
-          /*
-           * Now that all TCB controlled threads (workers, NLM,
-           * sigmgr) were created, lets wait for them to fully
-           * initialze __before__ we create the threads that listen
-           * for incoming requests.
-           */
-          wait_for_threads_to_awaken();
-
-#ifdef _USE_9P
-          /* Starting the 9p dispatcher thread */
-          if((rc = pthread_create(&_9p_dispatcher_thrid, &attr_thr,
-                                  _9p_dispatcher_thread, NULL ) ) != 0 )
+          LogFatal(COMPONENT_THREAD,
+                   "Could not create rpc_dpsatcher_thread, error = %d (%s)",
+                   errno, strerror(errno));
+        }
+      /* Starting all of the worker thread */
+      for(i = 0; i < nfs_param.core_param.nb_worker; i++)
+        {
+          if((rc =
+              pthread_create(&(worker_thrid[i]), &attr_thr, worker_thread, (void *)i)) != 0)
             {
               LogFatal(COMPONENT_THREAD,
-                       "Could not create  9p dispatcher_thread, error = %d (%s)",
-                       errno, strerror(errno));
+                       "Could not create worker_thread #%lu, error = %d (%s)",
+                       i, errno, strerror(errno));
             }
-          LogEvent(COMPONENT_THREAD, "9p dispatcher thread was started successfully");
-#endif
         }
+      LogEvent(COMPONENT_THREAD,
+               "%d worker threads were started successfully",
+               nfs_param.core_param.nb_worker);
+
+#ifdef _USE_BLOCKING_LOCKS
+      /* Start State Async threads */
+      state_async_thread_start();
+#endif
+
+      /*
+       * Now that all TCB controlled threads (workers, NLM,
+       * sigmgr) were created, lets wait for them to fully
+       * initialze __before__ we create the threads that listen
+       * for incoming requests.
+       */
+      wait_for_threads_to_awaken();
+
+#ifdef _USE_9P
+      /* Starting the 9p dispatcher thread */
+      if((rc = pthread_create(&_9p_dispatcher_thrid, &attr_thr,
+                              _9p_dispatcher_thread, NULL ) ) != 0 )
+        {
+          LogFatal(COMPONENT_THREAD,
+                   "Could not create  9p dispatcher_thread, error = %d (%s)",
+                   errno, strerror(errno));
+        }
+      LogEvent(COMPONENT_THREAD, "9p dispatcher thread was started successfully");
+#endif
     }
 
   /* Starting the admin thread */
@@ -1690,7 +1690,7 @@ static void nfs_Start_threads(bool_t flush_datacache_mode)
 
   if(nfs_param.cache_layers_param.dcgcpol.run_interval != 0)
     {
-      tcb_new(&gccb, "NFS FILE CONTENT GARBAGE COLLECTION Thread"); 
+      tcb_new(&gccb, "NFS FILE CONTENT GARBAGE COLLECTION Thread");
       /* Starting the nfs file content gc thread  */
       if((rc =
           pthread_create(&fcc_gc_thrid, &attr_thr, file_content_gc_thread,
