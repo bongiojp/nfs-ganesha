@@ -98,8 +98,6 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
 
 
     /* Zeroing the cache_stats */
-    global_cache_inode_stat->nb_gc_lru_active = 0;
-    global_cache_inode_stat->nb_gc_lru_total = 0;
     global_cache_inode_stat->nb_call_total = 0;
 
     memset(global_cache_inode_stat->func_stats.nb_err_unrecover, 0,
@@ -107,10 +105,6 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
 
     /* Merging the cache inode stats for every thread */
     for (i = 0; i < nfs_param.core_param.nb_worker; i++) {
-        global_cache_inode_stat->nb_gc_lru_active +=
-            workers_data[i].cache_inode_client.stat.nb_gc_lru_active;
-        global_cache_inode_stat->nb_gc_lru_total +=
-            workers_data[i].cache_inode_client.stat.nb_gc_lru_total;
         global_cache_inode_stat->nb_call_total +=
             workers_data[i].cache_inode_client.stat.nb_call_total;
 
@@ -142,7 +136,7 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
     }
 
     /* This is done only on worker[0]: the hashtable is shared and worker 0 always exists */
-    HashTable_GetStats(workers_data[0].ht, cache_inode_stat);
+    HashTable_GetStats(fh_to_cache_entry_ht, cache_inode_stat);
 
     /* Merging the NFS protocols stats together */
     global_worker_stat->nb_total_req = 0;
@@ -627,9 +621,7 @@ void *stats_thread(void *addr)
       /* Printing the cache_inode stat */
       fprintf(stats_file, "CACHE_INODE_CALLS,%s;%u",
               strdate,
-              global_cache_inode_stat->nb_call_total,
-              global_cache_inode_stat->nb_gc_lru_total,
-              global_cache_inode_stat->nb_gc_lru_active);
+              global_cache_inode_stat->nb_call_total);
 
       for(j = 0; j < CACHE_INODE_NB_COMMAND; j++)
         fprintf(stats_file, "|%u,%u,%u,%u",
@@ -641,7 +633,7 @@ void *stats_thread(void *addr)
 
       /* Pinting the cache inode hash stat */
       /* This is done only on worker[0]: the hashtable is shared and worker 0 always exists */
-      HashTable_GetStats(fh_to_cache_entry_ht, &hstat);
+      HashTable_GetStats(fh_to_cache_entry_ht, cache_inode_stat);
 
       fprintf(stats_file,
               "CACHE_INODE_HASH,%s;%zu,%zu,%zu,%zu\n",

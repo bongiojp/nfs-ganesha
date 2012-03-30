@@ -1278,7 +1278,6 @@ int nfs4_op_readdir_xattr(struct nfs_argop4 *op,
   entry_name_array_item_t *entry_name_array = NULL;
   fsal_handle_t *pfsal_handle = NULL;
   fsal_status_t fsal_status;
-  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   file_handle_v4_t *file_handle;
   nfs_fh4 nfsfh;
   struct alloc_file_handle_v4 temp_handle;

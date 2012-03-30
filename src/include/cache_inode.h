@@ -675,9 +675,9 @@ typedef enum cache_inode_status_t
 
 typedef bool_t(*cache_inode_readdir_cb_t)(
      void *opaque,
-     const char *name,
-     const fsal_handle_t *handle,
-     const fsal_attrib_list_t *attrs,
+     char *name,
+     fsal_handle_t *handle,
+     fsal_attrib_list_t *attrs,
      uint64_t cookie);
 
 const char *cache_inode_err_str(cache_inode_status_t err);
@@ -693,17 +693,16 @@ const char *cache_inode_err_str(cache_inode_status_t err);
 
 cache_inode_status_t cache_inode_clean_entry(cache_entry_t *pentry);
 int cache_inode_compare_key_fsal(hash_buffer_t *buff1, hash_buffer_t *buff2);
-void cache_inode_release_fsaldata_key(hash_buffer_t *pkey,
-                                      cache_inode_client_t *pclient);
 void cache_inode_release_symlink(cache_entry_t * pentry,
                                  struct prealloc_pool *pool);
 
 hash_table_t *cache_inode_init(cache_inode_parameter_t param,
                                cache_inode_status_t * pstatus);
 
-int cache_inode_client_init(cache_inode_client_t * pclient,
-                            cache_inode_client_parameter_t * paramp,
-                            int thread_index, void * pworker_data);
+int cache_inode_client_init(cache_inode_client_t *client,
+                            cache_inode_client_parameter_t *param,
+                            int thread_index,
+                            struct nfs_worker_data__ *pworker_data);
 
 cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * fsdata,
                                cache_inode_policy_t policy,
@@ -991,7 +990,7 @@ cache_inode_status_t cache_inode_kill_entry(cache_entry_t *entry,
                                             uint32_t flags);
 
 cache_inode_status_t cache_inode_invalidate(
-     fsal_handle_t *handle,
+     cache_inode_fsal_data_t *fsal_data,
      cache_inode_status_t *status);
 
 cache_inode_gc_policy_t cache_inode_get_gc_policy(void);

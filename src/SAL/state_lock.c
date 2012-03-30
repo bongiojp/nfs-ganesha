@@ -2121,7 +2121,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
            */
           if(found_entry->sle_pexport != pexport)
             {
-              V(pentry->object.file.lock_list_mutex);
+              pthread_rwlock_unlock(&pentry->state_lock);
               LogEvent(COMPONENT_STATE,
                        "Lock Owner Export Conflict, Lock held for export %d (%s), request for export %d (%s)",
                        found_entry->sle_pexport->id,
@@ -2161,7 +2161,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
       if(found_entry->sle_pexport != pexport &&
          !different_owners(found_entry->sle_owner, powner))
         {
-          V(pentry->object.file.lock_list_mutex);
+             pthread_rwlock_unlock(&pentry->state_lock);
           LogEvent(COMPONENT_STATE,
                    "Lock Owner Export Conflict, Lock held for export %d (%s), request for export %d (%s)",
                    found_entry->sle_pexport->id,

@@ -258,7 +258,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      off_t size_in_cache = 0;
      cache_content_status_t cache_content_status
           = CACHE_CONTENT_SUCCESS;
-     void *htoken = NULL;
+     struct hash_latch latch;
      bool_t lrurefed = FALSE;
      bool_t weakrefed = FALSE;
      bool_t locksinited = FALSE;
@@ -272,8 +272,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      key.len = fsdata->fh_desc.len;
 
      /* Check if the entry doesn't already exists */
-     if (HashTable_GetEx(fh_to_cache_entry_ht, &key, &value, &htoken)
-         == HASHTABLE_SUCCESS) {
+     if (HashTable_GetLatch(fh_to_cache_entry_ht, &key, &value, FALSE,
+                            &latch) == HASHTABLE_SUCCESS) {
           /* Entry is already in the cache, do not add it */
           entry = value.pdata;
           *status = CACHE_INODE_ENTRY_EXISTS;
@@ -286,10 +286,11 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                cache_inode_lru_ref(entry, client, LRU_FLAG_NONE);
           /* Release the subtree hash table mutex acquired in
              HashTable_GetEx */
-          HashTable_Release(fh_to_cache_entry_ht, htoken);
+          HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
           (client->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
           goto out;
      }
+     HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
 
      /* Pull an entry off the LRU */
      entry = cache_inode_lru_get(client, status, LRU_REQ_FLAG_REF);
@@ -309,8 +310,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 #ifdef _USE_MFSL
      entry->mobject.handle = entry->handle;
 #endif /* _USE_MFSL */
-     entry->fh_data.start = &entry;
-     entry->fh_data.len = fsdata->fh_desc.len
+     entry->fh_desc.start = (caddr_t) &entry;
+     entry->fh_desc.len = fsdata->fh_desc.len;
 
      /* Enroll the object in the weakref table */
 
@@ -449,8 +450,10 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                    "cache_inode_new_entry: Adding a FS_JUNCTION pentry=%p "
                    "policy=%u", entry, policy);
 
-          fsal_status = FSAL_lookupJunction(&fsdata->handle, context,
-                                            &entry->handle, NULL);
+          fsal_status = FSAL_lookupJunction(
+               (fsal_handle_t *)&fsdata->fh_desc.start,
+               context,
+               &entry->handle, NULL);
           if (FSAL_IS_ERROR(fsal_status)) {
                *status = cache_inode_error_convert(fsal_status);
                LogMajor(COMPONENT_CACHE_INODE,

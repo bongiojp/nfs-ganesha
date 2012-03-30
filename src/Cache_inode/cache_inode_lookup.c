@@ -124,7 +124,6 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           *pstatus = CACHE_INODE_NOT_A_DIRECTORY;
           /* stats */
           (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_LOOKUP])++;
->>>>>>> More Cache_Inode LRU fixes
           return NULL;
      }
 

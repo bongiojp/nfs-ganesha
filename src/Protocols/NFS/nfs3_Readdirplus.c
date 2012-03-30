@@ -68,9 +68,9 @@
 #include "nfs_proto_tools.h"
 
 static bool_t nfs3_readdirplus_callback(void* opaque,
-                                        const char *name,
-                                        const fsal_handle_t *handle,
-                                        const fsal_attrib_list_t *attrs,
+                                        char *name,
+                                        fsal_handle_t *handle,
+                                        fsal_attrib_list_t *attrs,
                                         uint64_t cookie);
 static void free_entryplus3s(entryplus3 *entryplus3s);
 
@@ -442,9 +442,9 @@ void nfs3_Readdirplus_Free(nfs_res_t *resp)
 
 static bool_t
 nfs3_readdirplus_callback(void* opaque,
-                          const char *name,
-                          const fsal_handle_t *handle,
-                          const fsal_attrib_list_t *attrs,
+                          char *name,
+                          fsal_handle_t *handle,
+                          fsal_attrib_list_t *attrs,
                           uint64_t cookie)
 {
      /* Not-so-opaque pointer to callback data`*/
@@ -452,6 +452,10 @@ nfs3_readdirplus_callback(void* opaque,
           (struct nfs3_readdirplus_cb_data *) opaque;
      /* Length of the current filename */
      size_t namelen = strlen(name);
+     /* Fileid buffer descriptor */
+     struct fsal_handle_desc id_descriptor
+          = {sizeof(tracker->entries[tracker->count].fileid),
+             (caddr_t) &tracker->entries[tracker->count].fileid};
 
      if ((tracker->mem_left < (sizeof(entry3) + namelen))) {
           if (tracker->count == 0) {
@@ -462,7 +466,7 @@ nfs3_readdirplus_callback(void* opaque,
      FSAL_DigestHandle(FSAL_GET_EXP_CTX(tracker->context),
                        FSAL_DIGEST_FILEID3,
                        handle,
-                       (caddr_t) &(tracker->entries[tracker->count].fileid));
+                       &id_descriptor);
 
      tracker->entries[tracker->count].name
           = Mem_Alloc(namelen + 1);

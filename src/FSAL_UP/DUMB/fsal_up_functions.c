@@ -56,7 +56,7 @@ fsal_status_t dumb_fsal_up_invalidate(fsal_up_event_data_t * pevdata)
            "FSAL_UP_DUMB: calling cache_inode_get()");
 
   /* Lock the entry */
-  cache_inode_invalidate(&pevdata->event_context.fsal_data.handle,
+  cache_inode_invalidate(&pevdata->event_context.fsal_data,
                          &cache_status);
 
   ReturnCode(ERR_FSAL_NO_ERROR, 0);

@@ -53,9 +53,9 @@
 #define res_READDIR4 resp->nfs_resop4_u.opreaddir
 
 static bool_t nfs4_readdir_callback(void* opaque,
-                                    const char *name,
-                                    const fsal_handle_t *handle,
-                                    const fsal_attrib_list_t *attrs,
+                                    char *name,
+                                    fsal_handle_t *handle,
+                                    fsal_attrib_list_t *attrs,
                                     uint64_t cookie);
 static void free_entries(entry4 *entries);
 
@@ -298,9 +298,9 @@ void nfs4_op_readdir_Free(READDIR4res *resp)
 
 static bool_t
 nfs4_readdir_callback(void* opaque,
-                      const char *name,
-                      const fsal_handle_t *handle,
-                      const fsal_attrib_list_t *attrs,
+                      char *name,
+                      fsal_handle_t *handle,
+                      fsal_attrib_list_t *attrs,
                       uint64_t cookie)
 {
      struct nfs4_readdir_cb_data *tracker =

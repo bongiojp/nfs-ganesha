@@ -1581,7 +1581,7 @@ static void nfs_Start_threads(bool_t flush_datacache_mode)
 
   /* init cache_inode_lru -- request threads should not race its
    * initialization */
-  cache_inode_lru_pkginit(&attr_thr);
+  cache_inode_lru_pkginit();
 
   if(!flush_datacache_mode)
     {
@@ -2167,7 +2167,6 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
    * So initialize Callback interface after everything else. */
 #ifdef _USE_FSAL_UP
   nfs_Init_FSAL_UP(); /* initalizes an event pool */
-  nfs_param.fsal_up_param.ht = ht;
 #endif /* _USE_FSAL_UP */
 
   /* Create stable storage directory, this should not be necessary */

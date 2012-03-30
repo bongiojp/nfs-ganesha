@@ -152,9 +152,9 @@ int nfs2_FhandleToFSAL(fhandle2 * pfh2,
                        fsal_op_context_t * pcontext);
 
 int nfs4_FSALToFhandle(nfs_fh4 *pfh4,
-                       const fsal_handle_t *pfsalhandle,
+                       fsal_handle_t *pfsalhandle,
                        compound_data_t *data);
-int nfs3_FSALToFhandle(nfs_fh3 * pfh3, const fsal_handle_t * pfsalhandle,
+int nfs3_FSALToFhandle(nfs_fh3 * pfh3, fsal_handle_t * pfsalhandle,
                        exportlist_t * pexport);
 int nfs2_FSALToFhandle(fhandle2 * pfh2, fsal_handle_t * pfsalhandle,
                        exportlist_t * pexport);

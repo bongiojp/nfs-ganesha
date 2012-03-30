@@ -254,7 +254,7 @@ int nfs2_FhandleToFSAL(fhandle2 * pfh2,
  *
  */
 int nfs4_FSALToFhandle(nfs_fh4 *pfh4,
-                       const fsal_handle_t *pfsalhandle,
+                       fsal_handle_t *pfsalhandle,
                        compound_data_t *data)
 {
   fsal_status_t fsal_status;
@@ -270,7 +270,9 @@ int nfs4_FSALToFhandle(nfs_fh4 *pfh4,
   fh_desc.start = (caddr_t) &file_handle->fsopaque;
   fh_desc.len = pfh4->nfs_fh4_len - offsetof(file_handle_v4_t, fsopaque);
   fsal_status =
-      FSAL_DigestHandle(&data->pexport->FS_export_context, FSAL_DIGEST_NFSV4, pfsalhandle,
+      FSAL_DigestHandle(&data->pexport->FS_export_context,
+                        FSAL_DIGEST_NFSV4,
+                        pfsalhandle,
                         &fh_desc);
   if(FSAL_IS_ERROR(fsal_status))
     return 0;
@@ -309,7 +311,7 @@ int nfs4_FSALToFhandle(nfs_fh4 *pfh4,
  * compensate??
  */
 int nfs3_FSALToFhandle(nfs_fh3 *pfh3,
-                       const fsal_handle_t *pfsalhandle,
+                       fsal_handle_t *pfsalhandle,
                        exportlist_t *pexport)
 {
   fsal_status_t fsal_status;

@@ -81,38 +81,30 @@
  *
  */
 cache_inode_status_t
-cache_inode_invalidate(fsal_handle_t *handle,
+cache_inode_invalidate(cache_inode_fsal_data_t *fsal_data,
                        cache_inode_status_t *status)
 {
-     cache_inode_fsal_data_t fsal_data;
      hash_buffer_t key, value;
-     void *htoken;
      int rc = 0 ;
+     cache_entry_t *entry;
 
-     if (status == NULL || handle == NULL) {
+     if (status == NULL || fsal_data == NULL) {
           *status = CACHE_INODE_INVALID_ARGUMENT;
           goto out;
      }
 
      /* Locate the entry in the cache */
-     fsal_data.fh_desc.start = (caddr_t)pfsal_handle ;
-     fsal_data.fh_desc.len = 0;  /* No DIR_CONTINUE is managed here */
-     (void) FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
-                              FSAL_DIGEST_SIZEOF,
-                              &fsal_data.fh_desc);
+     FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
+                       FSAL_DIGEST_SIZEOF,
+                       &fsal_data->fh_desc);
 
      /* Turn the input to a hash key */
-     key.pdata = fsal_data.fh_desc.start;
-     key.len = fsal_data.fh_desc.len;
+     key.pdata = fsal_data->fh_desc.start;
+     key.len = fsal_data->fh_desc.len;
 
-     if (status == NULL || client == NULL || handle == NULL) {
-          *status = CACHE_INODE_INVALID_ARGUMENT;
-          goto out;
-     }
-
-     if ((rc = HashTable_GetEx(fh_to_cache_entry_ht,
-                               &key,
-                               &value)) == HASHTABLE_ERROR_NO_SUCH_KEY) {
+     if ((rc = HashTable_Get(fh_to_cache_entry_ht,
+                             &key,
+                             &value)) == HASHTABLE_ERROR_NO_SUCH_KEY) {
           /* Entry is not cached */
           *status = CACHE_INODE_NOT_FOUND;
           return *status;
@@ -123,7 +115,7 @@ cache_inode_invalidate(fsal_handle_t *handle,
           goto out;
      }
 
-     entry = (cache_entry_t *)value.pdata;
+     entry = value.pdata;
 
      pthread_rwlock_wrlock(&entry->attr_lock);
      pthread_rwlock_wrlock(&entry->content_lock);

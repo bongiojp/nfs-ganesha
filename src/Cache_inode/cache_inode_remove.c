@@ -105,14 +105,10 @@ cache_inode_clean_internal(cache_entry_t *entry,
                            cache_inode_client_t *client)
 {
      cache_inode_fsal_data_t fsaldata;
-     hash_buffer_t key, old_key, old_value;
+     hash_buffer_t old_value;
      int rc = 0;
 
      memset(&fsaldata, 0, sizeof(fsaldata));
-
-     /* delete the entry from the cache */
-     key.pdata = entry->fh_desc.start;
-     key.len = entry->fh_desc.len;
 
      /* Nonexistence is as good as success. */
      if ((rc != HASHTABLE_SUCCESS) &&
@@ -121,13 +117,11 @@ cache_inode_clean_internal(cache_entry_t *entry,
            * reference, and it seems to indicate a very serious problem */
           LogCrit(COMPONENT_CACHE_INODE,
                   "HashTable_Del error %d in cache_inode_clean_internal", rc);
-          cache_inode_release_fsaldata_key(&key, NULL);
           return CACHE_INODE_INCONSISTENT_ENTRY;
      }
 
      /* Release the key that was stored in hash table */
      if (rc != HASHTABLE_ERROR_NO_SUCH_KEY) {
-          cache_inode_release_fsaldata_key(&old_key, client);
           assert(old_value.pdata == entry);
      }
 

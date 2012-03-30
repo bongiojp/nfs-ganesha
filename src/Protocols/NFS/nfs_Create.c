@@ -100,13 +100,11 @@ int nfs_Create(nfs_arg_t * parg,
   fsal_attrib_list_t parent_attr;
   fsal_attrib_list_t attr;
   fsal_attrib_list_t attr_newfile;
-  fsal_attrib_list_t attr_parent_after;
   fsal_attrib_list_t attributes_create;
   fsal_attrib_list_t *ppre_attr;
   cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   cache_inode_status_t cache_status_lookup;
   cache_inode_file_type_t parent_filetype;
-  fsal_handle_t *pfsal_handle;
   int rc = NFS_REQ_OK;
 #ifdef _USE_QUOTA
   fsal_status_t fsal_status ;

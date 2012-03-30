@@ -94,8 +94,7 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
   int hrc = 0;
   fsal_attrib_list_t fsal_attributes;
   fsal_handle_t *pfile_handle;
-  cache_inode_fsal_data_t *ppoolfsdata = NULL;
-  void *htoken;
+  struct hash_latch latch;
 
   memset(&create_arg, 0, sizeof(create_arg));
 
@@ -114,16 +113,18 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
   key.pdata = pfsdata->fh_desc.start;
   key.len = pfsdata->fh_desc.len;
 
-  switch (hrc = HashTable_GetEx(fh_to_cache_entry_ht, &key, &value, &htoken))
+  switch (hrc = HashTable_GetLatch(fh_to_cache_entry_ht, &key, &value,
+                                   FALSE,
+                                   &latch))
     {
     case HASHTABLE_SUCCESS:
       /* Entry exists in the cache and was found */
-      pentry = (cache_entry_t *) value.pdata;
+      pentry = value.pdata;
 
       /* take an extra reference within the critical section */
       cache_inode_lru_ref(pentry, pclient, LRU_REQ_INITIAL);
 
-      HashTable_Release(fh_to_cache_entry_ht, htoken);
+      HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
 
       /* return attributes additionally */
       *pattr = pentry->attributes;
@@ -136,6 +137,7 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
       break;
 
     case HASHTABLE_ERROR_NO_SUCH_KEY:
+      HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
       if ( !pclient ) {
         /* invalidate. Just return */
         return( NULL );
@@ -269,9 +271,6 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * pfsdata,
 
   /* stats */
   pclient->stat.func_stats.nb_success[CACHE_INODE_GET] += 1;
-
-  /* Free this key */
-  cache_inode_release_fsaldata_key(&key, pclient);
 
   /* This is the replacement for cache_inode_renew_entry.  Rather
      than calling that function at the start of every

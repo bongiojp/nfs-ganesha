@@ -172,7 +172,7 @@ int cache_inode_fsal_rbt_both_on_fsal(hash_parameter_t * p_hparam,
      * right now.
      */
 
-    rc = FSAL_Handle_to_Hash_both( &pfsdata->handle, pfsdata->cookie,
+    rc = FSAL_Handle_to_Hash_both( buffclef->pdata, 0,
                                    p_hparam->alphabet_length,
                                    p_hparam->index_size,
                                    &FSALindex, &FSALrbt);
@@ -181,21 +181,20 @@ int cache_inode_fsal_rbt_both_on_fsal(hash_parameter_t * p_hparam,
     *prbtval = FSALrbt;
     if( rc == 0 )
     {
-         snprintHandle(printbuf, 512, pfsal_handle);
+         snprintHandle(printbuf, 512, buffclef->pdata);
          LogMajor(COMPONENT_HASHTABLE,
                   "Unable to hash (Handle=%s, Cookie=%"PRIu64")",
                   printbuf, 0UL);
-         return 0 ;
+         return 0;
     }
 
     if(isFullDebug(COMPONENT_HASHTABLE))
       {
-          snprintHandle(printbuf, 512, pfsal_handle);
+          snprintHandle(printbuf, 512, buffclef->pdata);
           LogFullDebug(COMPONENT_HASHTABLE,
-                       "hash_func rbt both: buff = (Handle=%s,"
-                       " Cookie=%"PRIu64"), hashvalue=%"PRIu32
-                       " rbtvalue=%"PRIu64,
-                       printbuf, pfsdata->cookie, *phashval, *prbtval );
+                       "hash_func rbt both: buff = Handle=%s,"
+                       " hashvalue=%"PRIu32 " rbtvalue=%"PRIu64,
+                       printbuf, *phashval, *prbtval );
       }
 
     /* Success */

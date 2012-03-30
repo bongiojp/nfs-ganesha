@@ -237,7 +237,6 @@ cache_inode_readdir_nonamecache(cache_entry_t *dir_entry,
                                 context,
                                 &fsal_dirent_array[iter].cookie,
                                 &cur_cookie);
->>>>>>> Callbackification of readdir and several other things.
 
 
           if (!(cb(cb_opaque,

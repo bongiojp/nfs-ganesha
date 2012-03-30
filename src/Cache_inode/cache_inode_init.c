@@ -96,15 +96,15 @@ hash_table_t *cache_inode_init(cache_inode_parameter_t param,
  *
  * Init the ressource necessary for the cache inode management on the client handside.
  *
- * @param pclient      [OUT] the pointer to the client to be initiated.
+ * @param client      [OUT] the pointer to the client to be initiated.
  * @param paramp        [IN]  the parameter for this cache client.
  * @param thread_index [IN]  an integer related to the 'position' of the thread, from 0 to Nb_Workers -1
  *
  * @return 0 if successful, 1 if failed.
  *
  */
-int cache_inode_client_init(cache_inode_client_t * pclient,
-                            cache_inode_client_parameter_t param,
+int cache_inode_client_init(cache_inode_client_t *client,
+                            cache_inode_client_parameter_t *param,
                             int thread_index,
                             struct nfs_worker_data__ *pworker_data)
 {
@@ -117,49 +117,49 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
   else
     sprintf(name, "Cache Inode NLM Async #%d", thread_index - NLM_THREAD_INDEX);
 
-  pclient->attrmask = param.attrmask;
-  pclient->nb_prealloc = param.nb_prealloc_entry;
-  pclient->nb_pre_state_v4 = param.nb_pre_state_v4;
-  pclient->expire_type_attr = param.expire_type_attr;
-  pclient->expire_type_link = param.expire_type_link;
-  pclient->expire_type_dirent = param.expire_type_dirent;
-  pclient->grace_period_attr = param.grace_period_attr;
-  pclient->grace_period_link = param.grace_period_link;
-  pclient->grace_period_dirent = param.grace_period_dirent;
-  pclient->use_test_access = param.use_test_access;
-  pclient->getattr_dir_invalidation = param.getattr_dir_invalidation;
-  pclient->pworker = pworker_data;
+  client->attrmask = param->attrmask;
+  client->nb_prealloc = param->nb_prealloc_entry;
+  client->nb_pre_state_v4 = param->nb_pre_state_v4;
+  client->expire_type_attr = param->expire_type_attr;
+  client->expire_type_link = param->expire_type_link;
+  client->expire_type_dirent = param->expire_type_dirent;
+  client->grace_period_attr = param->grace_period_attr;
+  client->grace_period_link = param->grace_period_link;
+  client->grace_period_dirent = param->grace_period_dirent;
+  client->use_test_access = param->use_test_access;
+  client->getattr_dir_invalidation = param->getattr_dir_invalidation;
+  client->pworker = pworker_data;
 
-  MakePool(&pclient->pool_entry, pclient->nb_prealloc, cache_entry_t, NULL, NULL);
-  NamePool(&pclient->pool_entry, "%s Entry Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_entry))
+  MakePool(&client->pool_entry, client->nb_prealloc, cache_entry_t, NULL, NULL);
+  NamePool(&client->pool_entry, "%s Entry Pool", name);
+  if(!IsPoolPreallocated(&client->pool_entry))
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Entry Pool", name);
       return 1;
     }
 
-  MakePool(&pclient->pool_entry_symlink, pclient->nb_prealloc, cache_inode_symlink_t, NULL, NULL);
-  NamePool(&pclient->pool_entry_symlink, "%s Entry Symlink Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_entry_symlink))
+  MakePool(&client->pool_entry_symlink, client->nb_prealloc, cache_inode_symlink_t, NULL, NULL);
+  NamePool(&client->pool_entry_symlink, "%s Entry Symlink Pool", name);
+  if(!IsPoolPreallocated(&client->pool_entry_symlink))
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Entry Symlink Pool", name);
       return 1;
     }
 
-  MakePool(&pclient->pool_dir_entry, pclient->nb_prealloc, cache_inode_dir_entry_t, NULL, NULL);
-  NamePool(&pclient->pool_dir_entry, "%s Dir Entry Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_dir_entry))
+  MakePool(&client->pool_dir_entry, client->nb_prealloc, cache_inode_dir_entry_t, NULL, NULL);
+  NamePool(&client->pool_dir_entry, "%s Dir Entry Pool", name);
+  if(!IsPoolPreallocated(&client->pool_dir_entry))
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Dir Entry Pool", name);
       return 1;
     }
 
-  MakePool(&pclient->pool_state_v4, pclient->nb_pre_state_v4, state_t, NULL, NULL);
-  NamePool(&pclient->pool_state_v4, "%s State V4 Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_state_v4))
+  MakePool(&client->pool_state_v4, client->nb_pre_state_v4, state_t, NULL, NULL);
+  NamePool(&client->pool_state_v4, "%s State V4 Pool", name);
+  if(!IsPoolPreallocated(&client->pool_state_v4))
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s State V4 Pool", name);
@@ -167,9 +167,9 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
     }
 
   /* TODO: warning - entries in this pool are never released! */
-  MakePool(&pclient->pool_state_owner, pclient->nb_pre_state_v4, state_owner_t, NULL, NULL);
-  NamePool(&pclient->pool_state_owner, "%s Open Owner Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_state_owner))
+  MakePool(&client->pool_state_owner, client->nb_pre_state_v4, state_owner_t, NULL, NULL);
+  NamePool(&client->pool_state_owner, "%s Open Owner Pool", name);
+  if(!IsPoolPreallocated(&client->pool_state_owner))
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Open Owner Pool", name);
@@ -177,9 +177,9 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
     }
 
   /* TODO: warning - entries in this pool are never released! */
-  MakePool(&pclient->pool_nfs4_owner_name, pclient->nb_pre_state_v4, state_nfs4_owner_name_t, NULL, NULL);
-  NamePool(&pclient->pool_nfs4_owner_name, "%s Open Owner Name Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_nfs4_owner_name))
+  MakePool(&client->pool_nfs4_owner_name, client->nb_pre_state_v4, state_nfs4_owner_name_t, NULL, NULL);
+  NamePool(&client->pool_nfs4_owner_name, "%s Open Owner Name Pool", name);
+  if(!IsPoolPreallocated(&client->pool_nfs4_owner_name))
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Open Owner Name Pool", name);
@@ -187,9 +187,9 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
     }
 #ifdef _USE_NFS4_1
   /* TODO: warning - entries in this pool are never released! */
-  MakePool(&pclient->pool_session, pclient->nb_pre_state_v4, nfs41_session_t, NULL, NULL);
-  NamePool(&pclient->pool_session, "%s Session Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_session))
+  MakePool(&client->pool_session, client->nb_pre_state_v4, nfs41_session_t, NULL, NULL);
+  NamePool(&client->pool_session, "%s Session Pool", name);
+  if(!IsPoolPreallocated(&client->pool_session))
     {
       LogCrit(COMPONENT_CACHE_INODE,
               "Can't init %s Session Pool", name);
@@ -197,19 +197,19 @@ int cache_inode_client_init(cache_inode_client_t * pclient,
     }
 #endif                          /* _USE_NFS4_1 */
 
-  MakePool(&pclient->pool_key, pclient->nb_prealloc, cache_inode_fsal_data_t, NULL, NULL);
-  NamePool(&pclient->pool_key, "%s Key Pool", name);
-  if(!IsPoolPreallocated(&pclient->pool_key))
+  MakePool(&client->pool_key, client->nb_prealloc, cache_inode_fsal_data_t, NULL, NULL);
+  NamePool(&client->pool_key, "%s Key Pool", name);
+  if(!IsPoolPreallocated(&client->pool_key))
     {
       LogFatal(COMPONENT_CACHE_INODE,
               "Can't init %s Key Pool", name);
       return 1;
     }
 
-  pclient->thread_id
+  client->thread_id
        = cache_inode_lru_thread_id(thread_index);
 
-  pclient->lru_lane
+  client->lru_lane
        = cache_inode_lru_thread_lane(thread_index);
 
   /* Everything was ok, return 0 */

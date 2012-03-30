@@ -91,6 +91,7 @@ cache_inode_kill_entry(cache_entry_t *entry,
      hash_buffer_t key, old_key;
      hash_buffer_t old_value;
      int rc;
+     fsal_status_t fsal_status = {0, 0};
 
      if (cache_inode_file_holds_state(entry)) {
           goto out;
@@ -106,8 +107,7 @@ cache_inode_kill_entry(cache_entry_t *entry,
      LogInfo(COMPONENT_CACHE_INODE,
              "Using cache_inode_kill_entry for entry %p", entry);
 
-     fsaldata.fh_desc.start = pfsal_handle;
-     fsaldata.fh_desc.len = 0;
+     fsaldata.fh_desc = entry->fh_desc;
      (void) FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
                               FSAL_DIGEST_SIZEOF,
                               &fsaldata.fh_desc);
@@ -117,23 +117,24 @@ cache_inode_kill_entry(cache_entry_t *entry,
      key.len = fsaldata.fh_desc.len;
 
      /* return HashTable (sentinel) reference */
-     cache_inode_lru_unref(pentry, pclient, LRU_FLAG_NONE);
+     cache_inode_lru_unref(entry, client, LRU_FLAG_NONE);
 
      /* Clean up the associated ressources in the FSAL */
-     if(FSAL_IS_ERROR(fsal_status = FSAL_CleanObjectResources(pfsal_handle)))
-     {
-      LogCrit(COMPONENT_CACHE_INODE,
-              "cache_inode_kill_entry: Couldn't free FSAL ressources fsal_status.major=%u",
-              fsal_status.major);
-    }
+     fsal_status = FSAL_CleanObjectResources(&entry->handle);
+     if (FSAL_IS_ERROR(fsal_status)) {
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "cache_inode_kill_entry: Couldn't free FSAL ressources fsal_status.major=%u",
+                  fsal_status.major);
+     }
 
      /* Sanity check: old_value.pdata is expected to be equal to pentry,
       * and is released later in this function */
      if ((cache_entry_t *) old_value.pdata != entry ||
-         (cache_entry_t *)old_value.pdata->fh_desc.start != &pentry->handle) {
+         ((fsal_handle_t *) ((cache_entry_t *)old_value.pdata)->fh_desc.start)
+         != &entry->handle) {
           LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_kill_entry: unexpected pdata %p from hash table (pentry=%p)",
-                  old_value.pdata, pentry);
+                  "cache_inode_kill_entry: unexpected pdata %p from hash table (entry=%p)",
+                  old_value.pdata, entry);
      }
 
 

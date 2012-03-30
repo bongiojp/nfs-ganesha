@@ -119,7 +119,6 @@ cache_content_status_t cache_content_create_name(char *path,
   u_int64_t fileid4;            /* Don't want to include nfs_prot.h at this level */
   fsal_handle_t *pfsal_handle = NULL;
   struct fsal_handle_desc fh_desc;
-  cache_inode_status_t cache_status;
   char entrydir[MAXPATHLEN];
   int i, nb_char;
   short hash_val;

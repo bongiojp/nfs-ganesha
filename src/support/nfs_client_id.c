@@ -443,11 +443,10 @@ static void release_lockstate(state_owner_t *plock_owner)
                 state_err_str(state_status));
       }
     }
-    
 }
+
 /**
  * release_openstate: traverse the state list of the open owner
- *   
  */
 static void release_openstate(state_owner_t *popen_owner)
 {
@@ -457,26 +456,25 @@ static void release_openstate(state_owner_t *popen_owner)
   glist_for_each_safe(glist, glistn, &popen_owner->so_owner.so_nfs4_owner.so_state_list)
     {
       state_t * pstate_found = glist_entry(glist,
-					  state_t,
-					  state_owner_list);  
-				     
-				     
+                                           state_t,
+                                           state_owner_list);
+
+
       cache_entry_t    * pentry = pstate_found->state_pentry;
       cache_inode_status_t   cache_status;
       if(state_del(pstate_found,
                popen_owner->so_pclient,
                &state_status) != STATE_SUCCESS)
-      { 
+      {
          LogDebug(COMPONENT_STATE,
                "CLOSE failed to release stateid error %s",
                state_err_str(state_status));
       }
       /* Close the file in FSAL through the cache inode */
-      P_w(&pentry->lock);
       cache_inode_close(pentry,
-                       popen_owner->so_pclient,
-                       &cache_status);
-      V_w(&pentry->lock);
+                        popen_owner->so_pclient,
+                        CACHE_INODE_FLAG_NONE,
+                        &cache_status);
     }
 }
 

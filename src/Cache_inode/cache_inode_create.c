@@ -99,18 +99,15 @@ cache_inode_create(cache_entry_t *parent,
      fsal_handle_t object_handle;
 #endif
      fsal_attrib_list_t object_attributes;
-     fsal_handle_t dir_handle;
      cache_inode_fsal_data_t fsal_data;
-     cache_inode_status_t status;
      cache_inode_create_arg_t zero_create_arg;
-     fsal_accessflags_t access_mask = 0;
 
      memset(&zero_create_arg, 0, sizeof(zero_create_arg));
      memset(&fsal_data, 0, sizeof(fsal_data));
      memset(&object_handle, 0, sizeof(object_handle));
 
-     if (pcreate_arg == NULL) {
-          pcreate_arg = &zero_create_arg;
+     if (create_arg == NULL) {
+          create_arg = &zero_create_arg;
      }
 
      /* Set the return default to CACHE_INODE_SUCCESS */
@@ -290,14 +287,14 @@ cache_inode_create(cache_entry_t *parent,
           goto out;
      }
 #ifdef _USE_MFSL
-     fsal_data.fh_desc.start = &object_handle.handle;
+     fsal_data.fh_desc.start = (caddr_t) &object_handle.handle;
 #else
-     fsal_data.fh_desc.start = &object_handle;
+     fsal_data.fh_desc.start = (caddr_t) &object_handle;
 #endif
      fsal_data.fh_desc.len = 0;
-     (void) FSAL_ExpandHandle(pcontext->export_context,
-                              FSAL_DIGEST_SIZEOF,
-                              &fsal_data.fh_desc);
+     FSAL_ExpandHandle(context->export_context,
+                       FSAL_DIGEST_SIZEOF,
+                       &fsal_data.fh_desc);
 
      entry = cache_inode_new_entry(&fsal_data,
                                    &object_attributes,
@@ -310,9 +307,9 @@ cache_inode_create(cache_entry_t *parent,
                                    CACHE_INODE_FLAG_EXREF,
                                    status);
      if (entry == NULL) {
-          *pstatus = CACHE_INODE_INSERT_ERROR;
+          *status = CACHE_INODE_INSERT_ERROR;
 
-          inc_func_err_unrecover(pclient, CACHE_INODE_CREATE);
+          inc_func_err_unrecover(client, CACHE_INODE_CREATE);
           return NULL;
      }
 

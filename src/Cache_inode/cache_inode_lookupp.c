@@ -132,9 +132,9 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
           }
 
           /* Call cache_inode_get to populate the cache with the parent entry */
-          fsdata.fh_desc.start = &parent_handle;
+          fsdata.fh_desc.start = (caddr_t) &parent_handle;
           fsdata.fh_desc.len = 0;
-          FSAL_ExpandHandle(pcontext->export_context,
+          FSAL_ExpandHandle(context->export_context,
                             FSAL_DIGEST_SIZEOF,
                             &fsdata.fh_desc);
 

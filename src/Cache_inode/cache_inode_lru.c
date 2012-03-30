@@ -44,7 +44,7 @@
 #include "nlm_list.h"
 #include "fsal.h"
 #include "nfs_core.h"
-#include "log_macros.h"
+#include "log.h"
 #include "cache_inode.h"
 #include "cache_inode_lru.h"
 
@@ -760,8 +760,8 @@ static void *lru_thread(void *arg)
      /* Initialize the cache_inode_client_t so we can call into
         cache_inode and not reimplement close. */
      if (cache_inode_client_init(&client,
-                                 (nfs_param.cache_layers_param
-                                  .cache_inode_client_param),
+                                 &(nfs_param.cache_layers_param
+                                   .cache_inode_client_param),
                                  0, NULL)) {
           /* Failed init */
           LogFatal(COMPONENT_CACHE_INODE_LRU,

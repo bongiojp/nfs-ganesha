@@ -46,7 +46,7 @@
 #include "nlm_list.h"
 #include "fsal.h"
 #include "nfs_core.h"
-#include "log_macros.h"
+#include "log.h"
 #include "cache_inode.h"
 #include "generic_weakref.h"
 

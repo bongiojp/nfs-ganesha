@@ -356,7 +356,7 @@ state_status_t state_del(state_t              * pstate,
   if(pstate->state_type == STATE_TYPE_LOCK)
     glist_del(&pstate->state_data.lock.state_sharelist);
 
-  V_w(&pentry->lock);
+  pthread_rwlock_unlock(&pentry->state_lock);
 
   /* Remove from list of states for a particular export */
   P(pstate->state_pexport->exp_state_mutex);

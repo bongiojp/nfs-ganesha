@@ -345,8 +345,7 @@ int nfs_Mkdir(nfs_arg_t * parg,
                                * Build entry
                                * attributes 
                                */
-                              nfs_SetPostOpAttr(pcontext, pexport,
-                                                dir_pentry,
+                              nfs_SetPostOpAttr(pexport,
                                                 &attr,
                                                 &(pres->res_mkdir3.MKDIR3res_u.resok.
                                                   obj_attributes));

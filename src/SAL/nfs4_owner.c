@@ -418,8 +418,7 @@ int nfs4_owner_Get_Pointer(state_nfs4_owner_name_t  * pname,
   if(HashTable_GetRef(ht_nfs4_owner,
                       &buffkey,
                       &buffval,
-                      Hash_inc_state_owner_ref,
-                      NULL) != HASHTABLE_SUCCESS)
+                      Hash_inc_state_owner_ref) != HASHTABLE_SUCCESS)
     {
       *powner = NULL;
       LogFullDebug(COMPONENT_STATE,
