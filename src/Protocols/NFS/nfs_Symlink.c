@@ -97,7 +97,7 @@ int nfs_Symlink(nfs_arg_t * parg /* IN  */ ,
   char *str_target_path = NULL;
   cache_inode_create_arg_t create_arg;
   fsal_accessmode_t mode = 0777;
-  cache_entry_t *symlink_pentry;
+  cache_entry_t *symlink_pentry = NULL;
   cache_entry_t *parent_pentry;
   cache_inode_file_type_t parent_filetype;
   fsal_attrib_list_t parent_attr;
@@ -227,8 +227,6 @@ int nfs_Symlink(nfs_arg_t * parg /* IN  */ ,
       str_target_path = parg->arg_symlink3.symlink.symlink_data;
       break;
     }
-
-  symlink_pentry = NULL;
 
   if(str_symlink_name == NULL ||
      *str_symlink_name == '\0'||

@@ -412,7 +412,7 @@ fsal_status_t GPFSFSAL_write(fsal_file_t * file_desc,       /* IN */
                                                   : (p_seek_descriptor->whence ==
                                                      FSAL_SEEK_END ? "SEEK_END" :
                                                      "ERROR"))),
-                   (long long) p_seek_descriptor->offset, buffer_size);
+                   (long long) p_seek_descriptor->offset, (long long)buffer_size);
 
     }
 
