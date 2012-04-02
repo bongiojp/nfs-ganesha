@@ -1474,7 +1474,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr,    /* Out: File att
 int nfs4_attrmap_to_FSAL_attrmask(bitmap4 attrmap, fsal_attrib_mask_t* attrmask);
 
 int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
-                           const fsal_attrib_list_t *pattr,
+                           fsal_attrib_list_t *pattr,
                            fattr4 *Fattr,
                            compound_data_t *data,
                            nfs_fh4 *objFH,

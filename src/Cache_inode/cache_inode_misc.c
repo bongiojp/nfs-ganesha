@@ -145,10 +145,6 @@ const char *cache_inode_err_str(cache_inode_status_t err)
 #ifdef _USE_PROXY
 void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry);
 #endif
-#ifdef _USE_NFS4_ACL
-static void cache_inode_gc_acl(cache_entry_t * pentry);
-#endif                          /* _USE_NFS4_ACL */
-
 
 /**
  *
@@ -559,11 +555,11 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
 #ifdef _USE_NFS4_ACL
      LogDebug(COMPONENT_CACHE_INODE, "init_attributes: md_type=%d, acl=%p",
-              entry->internal_md.type, attr->acl);
+              entry->type, attr->acl);
 
   /* Bump up reference counter of new acl. */
      if(entry->attributes.acl)
-          nfs4_acl_entry_inc_ref(pentry->attributes.acl);
+          nfs4_acl_entry_inc_ref(entry->attributes.acl);
 #endif /* _USE_NFS4_ACL */
      /* if entry is a REGULAR_FILE and has a related data cache entry
         from a previous server instance that crashed, recover it */
@@ -1169,58 +1165,6 @@ void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry)
                tag, comment, outstr);
 }                               /* cache_inode_print_srvhandle */
 #endif
-
-#ifdef _USE_NFS4_ACL
-/**
- * Garbagge NFS4 ACLs if any.
- */
-static void cache_inode_gc_acl(cache_entry_t * pentry)
-{
-  fsal_acl_status_t status = NFS_V4_ACL_SUCCESS;
-  fsal_acl_t *pacl = NULL;
-
-  switch (pentry->internal_md.type)
-    {
-    case REGULAR_FILE:
-      pacl = pentry->object.file.attributes.acl;
-      break;
-
-    case SYMBOLIC_LINK:
-      pacl = pentry->object.symlink->attributes.acl;
-      break;
-
-    case FS_JUNCTION:
-    case DIRECTORY:
-      pacl = pentry->object.dir.attributes.acl;
-      break;
-
-    case SOCKET_FILE:
-    case FIFO_FILE:
-    case BLOCK_FILE:
-    case CHARACTER_FILE:
-      pacl = pentry->object.special_obj.attributes.acl;
-      break;
-
-    case UNASSIGNED:
-    case RECYCLED:
-      LogDebug(COMPONENT_CACHE_INODE_GC,
-                   "Unexpected UNNASIGNED or RECYLCED type in cache_inode_gc_acl");
-      break;
-    }
-
-  /* Release an acl. */
-  if(pacl)
-    {
-      LogDebug(COMPONENT_CACHE_INODE_GC, "cache_inode_gc_acl: md_type = %d, acl  = %p",
-               pentry->internal_md.type, pacl);
-
-      nfs4_acl_release_entry(pacl, &status);
-
-      if(status != NFS_V4_ACL_SUCCESS)
-        LogEvent(COMPONENT_CACHE_INODE_GC, "cache_inode_gc_acl: Failed to gc acl, status=%d", status);
-    }
-}                               /* cache_inode_gc_acl */
-#endif                          /* _USE_NFS4_ACL */
 
 /**
  *

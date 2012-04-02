@@ -244,14 +244,6 @@ static int get_inode_stat_nb(snmp_adm_type_union * param, void *opt)
 
   switch (cs)
     {
-    case 0:
-      for(i = 0; i < nfs_param.core_param.nb_worker; i++)
-        param->integer += workers_data[i].cache_inode_client.stat.nb_gc_lru_active;
-      break;
-    case 1:
-      for(i = 0; i < nfs_param.core_param.nb_worker; i++)
-        param->integer += workers_data[i].cache_inode_client.stat.nb_gc_lru_total;
-      break;
     case 2:
       for(i = 0; i < nfs_param.core_param.nb_worker; i++)
         param->integer += workers_data[i].cache_inode_client.stat.nb_call_total;
@@ -309,7 +301,7 @@ static int get_hash(snmp_adm_type_union * param, void *opt)
     {
       /* Pinting the cache inode hash stat */
       /* This is done only on worker[0]: the hashtable is shared and worker 0 always exists */
-      HashTable_GetStats(workers_data[0].ht, &hstat);
+      HashTable_GetStats(fh_to_cache_entry_ht, &hstat);
     }
   else if((cs & 0xF0) == 0x10)
     {

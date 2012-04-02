@@ -65,7 +65,10 @@
 #include "nlm_list.h"
 #ifdef _USE_NFS4_1
 #include "nfs41_session.h"
-#endif                          /* _USE_NFS4_1 */
+#endif /* _USE_NFS4_1 */
+#ifdef _USE_NFS4_ACL
+#include "nfs4_acls.h"
+#endif /* _USE_NFS4_ACL */
 
 extern hash_table_t *fh_to_cache_entry_ht; /*< Global hash table for
                                                servicing lookups by
@@ -1080,11 +1083,11 @@ cache_inode_prep_attrs(cache_entry_t *entry,
 #ifdef _USE_NFS4_ACL
      fsal_acl_status_t acl_status = 0;
 
-     nfs4_acl_release_entry(entry->attributes, &status);
-     if (status != NFS_V4_ACL_SUCCESS) {
+     nfs4_acl_release_entry(entry->attributes.acl, &acl_status);
+     if (acl_status != NFS_V4_ACL_SUCCESS) {
           LogEvent(COMPONENT_CACHE_INODE,
                    "Failed to release old acl, status=%d",
-                   status);
+                   acl_status);
      }
      entry->attributes.acl = NULL;
 #endif /* _USE_NFS4_ACL */

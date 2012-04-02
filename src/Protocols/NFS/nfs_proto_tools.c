@@ -748,7 +748,7 @@ static int nfs4_encode_acl(fsal_attrib_list_t * pattr, char *attrvalsBuffer, u_i
  */
 
 int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
-                           const fsal_attrib_list_t *pattr,
+                           fsal_attrib_list_t *pattr,
                            fattr4 *Fattr,
                            compound_data_t *data,
                            nfs_fh4 *objFH,
