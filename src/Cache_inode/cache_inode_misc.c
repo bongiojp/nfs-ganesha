@@ -310,7 +310,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 #ifdef _USE_MFSL
      entry->mobject.handle = entry->handle;
 #endif /* _USE_MFSL */
-     entry->fh_desc.start = (caddr_t) &entry;
+     entry->fh_desc.start = (caddr_t) &entry->handle;
      entry->fh_desc.len = fsdata->fh_desc.len;
 
      /* Enroll the object in the weakref table */
