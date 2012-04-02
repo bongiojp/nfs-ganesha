@@ -85,7 +85,6 @@ static cache_inode_policy_t cachepol = CACHE_INODE_POLICY_ATTRS_ONLY_WRITE_THROU
 /** Global (exported) variable : init parameters for clients. */
 cache_inode_client_parameter_t cache_client_param;
 cache_content_client_parameter_t datacache_client_param;
-hash_table_t *fh_to_cache_entry_ht = NULL;
 
 typedef struct cmdCacheInode_thr_info__
 {

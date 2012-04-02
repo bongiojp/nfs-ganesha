@@ -300,6 +300,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      assert(entry->lru.refcount == LRU_SENTINEL_REFCOUNT);
      lrurefed = TRUE;
 
+     memset(&entry->handle, 0, sizeof(entry->handle));
      memcpy(&entry->handle,
             fsdata->fh_desc.start,
             fsdata->fh_desc.len);

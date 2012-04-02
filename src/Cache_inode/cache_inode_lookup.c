@@ -94,7 +94,8 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                         fsal_op_context_t *pcontext,
                         cache_inode_status_t *pstatus)
 {
-     cache_inode_dir_entry_t dirent_key[1], *dirent = NULL;
+     cache_inode_dir_entry_t dirent_key;
+     cache_inode_dir_entry_t *dirent = NULL;
      cache_inode_dir_entry_t *new_dir_entry = NULL;
      cache_entry_t *pentry = NULL;
      fsal_status_t fsal_status = {0, 0};
@@ -112,6 +113,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
      cache_inode_fsal_data_t new_entry_fsdata;
      cache_inode_dir_entry_t *broken_dirent = NULL;
 
+     memset(&dirent_key, 0, sizeof(dirent_key));
      memset(&new_entry_fsdata, 0, sizeof(new_entry_fsdata));
 
      /* Set the return default to CACHE_INODE_SUCCESS */
@@ -144,8 +146,8 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           /* We first try avltree_lookup by name.  If that fails, we
            * dispatch to the FSAL. */
 
-          FSAL_namecpy(&dirent_key->name, pname);
-          dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
+          FSAL_namecpy(&dirent_key.name, pname);
+          dirent = cache_inode_avl_qp_lookup_s(pentry_parent, &dirent_key, 1);
           if (dirent) {
                /* Getting a weakref itself increases the refcount. */
                pentry = cache_inode_weakref_get(&dirent->entry,
@@ -159,7 +161,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           pthread_rwlock_wrlock(&pentry_parent->content_lock);
           /* Make sure nobody put the entry in the cache while we
              were waiting. */
-          dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
+          dirent = cache_inode_avl_qp_lookup_s(pentry_parent, &dirent_key, 1);
           if (dirent) {
                pentry = cache_inode_weakref_get(&dirent->entry,
                                                 pclient,
