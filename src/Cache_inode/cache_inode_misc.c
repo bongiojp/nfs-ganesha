@@ -22,14 +22,11 @@
  */
 
 /**
- * \File    cache_inode_misc.c
- * \author  $Author: deniel $
- * \date    $Date: 2006/01/05 15:14:51 $
- * \version $Revision: 1.63 $
- * \brief   Some routines for management of the cache_inode layer, shared by other calls.
+ * @file    cache_inode_misc.c
+ * @brief   routines for management of the cache_inode layer,
  *
- * cache_inode_misc.c : Some routines for management of the cache_inode layer, shared by other calls.
- *
+ * Some routines for management of the cache_inode layer, shared by
+ * other calls.
  *
  */
 #ifdef HAVE_CONFIG_H
@@ -160,9 +157,9 @@ void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry);
  * @see FSAL_handlecmp
  *
  */
-int cache_inode_compare_key_fsal(hash_buffer_t * buff1, hash_buffer_t * buff2)
+int cache_inode_compare_key_fsal(hash_buffer_t *buff1, hash_buffer_t *buff2)
 {
-  /* Test if one of teh entries are NULL */
+  /* Test if one of the entries is NULL */
   if(buff1->pdata == NULL)
     return (buff2->pdata == NULL) ? 0 : 1;
   else
@@ -171,10 +168,12 @@ int cache_inode_compare_key_fsal(hash_buffer_t * buff1, hash_buffer_t * buff2)
         return -1;              /* left member is the greater one */
       else
         {
+          if(buff2->pdata == NULL)
+            return -1;              /* left member is the greater one */
           int rc;
 
           rc = (buff1->len == buff2->len &&
-		!memcmp(buff1->pdata, buff2->pdata, buff1->len)) ? 0 : 1;
+                !memcmp(buff1->pdata, buff2->pdata, buff1->len)) ? 0 : 1;
 
           return rc;
         }
@@ -304,9 +303,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      memcpy(&entry->handle,
             fsdata->fh_desc.start,
             fsdata->fh_desc.len);
-#ifdef _USE_MFSL
-     entry->mobject.handle = entry->handle;
-#endif /* _USE_MFSL */
      entry->fh_desc.start = (caddr_t) &entry->handle;
      entry->fh_desc.len = fsdata->fh_desc.len;
 
@@ -374,18 +370,9 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           init_glist(&entry->object.file.lock_list);
 
           entry->object.file.open_fd.openflags = FSAL_O_CLOSED;
-#ifdef _USE_MFSL
-          memset(&(pentry->object.file.open_fd.mfsl_fd), 0,
-                 sizeof(mfsl_file_t));
-#else /* !_USE_MFSL */
           memset(&(entry->object.file.open_fd.fd), 0, sizeof(fsal_file_t));
-#endif /* !_USE_MFSL */
           memset(&(entry->object.file.unstable_data), 0,
                  sizeof(cache_inode_unstable_data_t));
-#ifdef _USE_PROXY
-          entry->object.file.pname = NULL;
-          entry->object.file.pentry_parent_open = NULL;
-#endif /* _USE_PROXY */
           break;
 
      case DIRECTORY:
@@ -480,10 +467,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
           /* XXX Fake FS_JUNCTION into directory */
           entry->type = DIRECTORY;
-
-#ifdef _USE_MFSL
-          pentry->mobject.handle = pentry->handle;
-#endif
 
           atomic_clear_int_bits(&entry->flags,
                                 CACHE_INODE_TRUST_CONTENT |

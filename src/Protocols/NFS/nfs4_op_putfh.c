@@ -95,27 +95,6 @@ int nfs4_op_putfh(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   resp->resop = NFS4_OP_PUTFH;
   res_PUTFH4.status = NFS4_OK;
 
-  /* If there is no FH */
-  if(nfs4_Is_Fh_Empty(&(arg_PUTFH4.object)))
-    {
-      res_PUTFH4.status = NFS4ERR_NOFILEHANDLE;
-      return res_PUTFH4.status;
-    }
-
-  /* If the filehandle is invalid */
-  if(nfs4_Is_Fh_Invalid(&(arg_PUTFH4.object)))
-    {
-      res_PUTFH4.status = NFS4ERR_BADHANDLE;
-      return res_PUTFH4.status;
-    }
-
-  /* Tests if the Filehandle is expired (for volatile filehandle) */
-  if(nfs4_Is_Fh_Expired(&(arg_PUTFH4.object)))
-    {
-      res_PUTFH4.status = NFS4ERR_FHEXPIRED;
-      return res_PUTFH4.status;
-    }
-
   /* If no currentFH were set, allocate one */
   if(data->currentFH.nfs_fh4_len == 0)
     {
