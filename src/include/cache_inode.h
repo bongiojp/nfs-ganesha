@@ -979,15 +979,17 @@ cache_inode_prep_attrs(cache_entry_t *entry,
                        cache_inode_client_t *client)
 {
 #ifdef _USE_NFS4_ACL
-     fsal_acl_status_t acl_status = 0;
+     if (entry->attributes.acl) {
+         fsal_acl_status_t acl_status = 0;
 
-     nfs4_acl_release_entry(entry->attributes.acl, &acl_status);
-     if (acl_status != NFS_V4_ACL_SUCCESS) {
-          LogEvent(COMPONENT_CACHE_INODE,
-                   "Failed to release old acl, status=%d",
-                   acl_status);
+         nfs4_acl_release_entry(entry->attributes.acl, &acl_status);
+         if (acl_status != NFS_V4_ACL_SUCCESS) {
+              LogEvent(COMPONENT_CACHE_INODE,
+                       "Failed to release old acl, status=%d",
+                       acl_status);
+         }
+         entry->attributes.acl = NULL;
      }
-     entry->attributes.acl = NULL;
 #endif /* _USE_NFS4_ACL */
 
      memset(&entry->attributes, 0, sizeof(fsal_attrib_list_t));
