@@ -833,7 +833,9 @@ HashTable_Test_And_Set(struct hash_table *ht,
      hash_error_t rc = 0;
 
      rc = HashTable_GetLatch(ht, key, NULL,
-                             (how != HASHTABLE_SET_HOW_TEST_ONLY),
+                             (how == HASHTABLE_SET_HOW_TEST_ONLY ?
+                              FALSE :
+                              TRUE),
                              &latch);
 
      if ((rc != HASHTABLE_SUCCESS) &&

@@ -99,11 +99,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
      cache_inode_dir_entry_t *new_dir_entry = NULL;
      cache_entry_t *pentry = NULL;
      fsal_status_t fsal_status = {0, 0};
-#ifdef _USE_MFSL
-     mfsl_object_t object_handle;
-#else
      fsal_handle_t object_handle;
-#endif
      fsal_attrib_list_t object_attributes;
      cache_inode_create_arg_t create_arg = {
           .newly_created_dir = FALSE
@@ -178,38 +174,10 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
 
           memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
           object_attributes.asked_attributes = pclient->attrmask;
-#ifdef _USE_MFSL
-#ifdef _USE_MFSL_ASYNC
-          if(!mfsl_async_is_object_asynchronous(&pentry_parent->mobject)) {
-               /* If the parent is asynchronous, rely on the content
-                * of the cache inode parent entry.
-                *
-                * /!\ If the fs behind the FSAL is touched in a
-                * non-nfs way, there will be huge incoherencies.
-                */
-#endif /* _USE_MFSL_ASYNC */
-               fsal_status
-                    = MFSL_lookup(&pentry_parent->mobject,
-                                  pname,
-                                  pcontext,
-                                  &pclient->mfsl_context,
-                                  &object_handle,
-                                  &object_attributes, NULL);
-#ifdef _USE_MFSL_ASYNC
-          } else {
-               LogMidDebug(COMPONENT_CACHE_INODE,
-                        "cache_inode_lookup chose to bypass FSAL and trusted "
-                        " his cache for name=%s", pname->name);
-               fsal_status.major = ERR_FSAL_NOENT;
-               fsal_status.minor = ENOENT;
-          }
-#endif /* _USE_MFSL_ASYNC */
-#else /* !_USE_MFSL */
           fsal_status =
                FSAL_lookup(&pentry_parent->handle,
                            pname, pcontext, &object_handle,
                            &object_attributes);
-#endif /* !_USE_MFSL */
           if(FSAL_IS_ERROR(fsal_status)) {
                *pstatus = cache_inode_error_convert(fsal_status);
                (pclient->stat.func_stats.
@@ -222,20 +190,11 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           /* If entry is a symlink, this value for be cached */
           if(type == SYMBOLIC_LINK) {
                if(CACHE_INODE_KEEP_CONTENT(policy)) {
-#ifdef _USE_MFSL
-                    fsal_status =
-                         MFSL_readlink(&object_handle,
-                                       pcontext,
-                                       &pclient->mfsl_context,
-                                       &create_arg.link_content,
-                                       &object_attributes, NULL);
-#else /* !_USE_MFSL */
                     fsal_status =
                          FSAL_readlink(&object_handle,
                                        pcontext,
                                        &create_arg.link_content,
                                        &object_attributes);
-#endif /* !_USE_MFSL */
                } else {
                     fsal_status.major = ERR_FSAL_NO_ERROR;
                     fsal_status.minor = 0;
@@ -250,15 +209,11 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           }
 
           /* Allocation of a new entry in the cache */
-#ifdef _USE_MFSL
-          new_entry_fsdata.fh_desc.start = (caddr_t)(&object_handle.handle);
-#else
           new_entry_fsdata.fh_desc.start = (caddr_t)(&object_handle);
-#endif
           new_entry_fsdata.fh_desc.len = 0;
-          (void) FSAL_ExpandHandle(pcontext->export_context,
-                                   FSAL_DIGEST_SIZEOF,
-                                   &new_entry_fsdata.fh_desc);
+          FSAL_ExpandHandle(pcontext->export_context,
+                            FSAL_DIGEST_SIZEOF,
+                            &new_entry_fsdata.fh_desc);
 
           if((pentry
               = cache_inode_new_entry(&new_entry_fsdata,

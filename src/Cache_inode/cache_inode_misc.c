@@ -46,7 +46,6 @@
 #include "cache_inode_avl.h"
 #include "cache_inode_lru.h"
 #include "cache_inode_weakref.h"
-#include "cache_content.h"
 #include "stuff_alloc.h"
 #include "nfs4_acls.h"
 
@@ -138,10 +137,6 @@ const char *cache_inode_err_str(cache_inode_status_t err)
     }
   return "unknown";
 }
-
-#ifdef _USE_PROXY
-void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry);
-#endif
 
 /**
  *
@@ -250,9 +245,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      hash_buffer_t key, value;
      fsal_status_t fsal_status = {0, 0};
      int rc = 0;
-     off_t size_in_cache = 0;
-     cache_content_status_t cache_content_status
-          = CACHE_CONTENT_SUCCESS;
      struct hash_latch latch;
      bool_t lrurefed = FALSE;
      bool_t weakrefed = FALSE;
@@ -363,9 +355,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                    "cache_inode_new_entry: Adding a REGULAR_FILE, entry=%p "
                    "policy=%u", entry, policy);
 
-          /* There is no File Content entry associated with this
-             cache entry */
-          entry->object.file.pentry_content = NULL;
           /* No locks, yet. */
           init_glist(&entry->object.file.lock_list);
 
@@ -545,57 +534,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      if(entry->attributes.acl)
           nfs4_acl_entry_inc_ref(entry->attributes.acl);
 #endif /* _USE_NFS4_ACL */
-     /* if entry is a REGULAR_FILE and has a related data cache entry
-        from a previous server instance that crashed, recover it */
-
-     /* This is done only when this is not a creation (when creating a
-        new file, it is impossible to have it cached)  */
-     if (type == REGULAR_FILE && (!(flags & CACHE_INODE_FLAG_CREATE))) {
-          cache_content_test_cached(entry,
-                                    (cache_content_client_t *)
-                                    client->pcontent_client,
-                                    context, &cache_content_status);
-
-          if (cache_content_status == CACHE_CONTENT_SUCCESS) {
-               LogDebug(COMPONENT_CACHE_INODE,
-                        "cache_inode_new_entry: Entry %p is already "
-                        "datacached, recovering...", entry);
-
-               /* Adding the cached entry to the data cache */
-               if ((entry->object.file.pentry_content
-                    = cache_content_new_entry(
-                         entry,
-                         NULL,
-                         (cache_content_client_t *) client->pcontent_client,
-                         RECOVER_ENTRY,
-                         context,
-                         &cache_content_status))
-                   == NULL) {
-                    LogCrit(COMPONENT_CACHE_INODE,
-                            "Error recovering cached data for pentry %p",
-                            entry);
-               } else {
-                    LogDebug(COMPONENT_CACHE_INODE,
-                             "Cached data added successfully for pentry %p",
-                             entry);
-
-                    /* Recover the size from the data cache too... */
-                    if ((size_in_cache =
-                         cache_content_get_cached_size(
-                              (cache_content_entry_t *)
-                              entry->object.file.pentry_content)) == -1) {
-                         LogCrit(COMPONENT_CACHE_INODE,
-                                 "Error when recovering size in cache "
-                                 "for entry %p", entry);
-                    } else {
-                         pthread_rwlock_wrlock(&entry->attr_lock);
-                         entry->attributes.filesize
-                              = (fsal_size_t) size_in_cache;
-                         pthread_rwlock_unlock(&entry->attr_lock);
-                    }
-               }
-          }
-     }
 
      LogDebug(COMPONENT_CACHE_INODE,
               "cache_inode_new_entry: New entry %p added", entry);
@@ -1105,50 +1043,6 @@ cache_inode_file_holds_state(cache_entry_t *entry)
               glist_empty(&entry->object.file.lock_list) ||
               glist_empty(&entry->state_list));
 } /* cache_inode_file_holds_state */
-
-#ifdef _USE_PROXY
-void nfs4_sprint_fhandle(nfs_fh4 * fh4p, char *outstr);
-
-void cache_inode_print_srvhandle(char *comment, cache_entry_t * pentry)
-{
-  proxyfsal_handle_t *pfsal_handle;
-  nfs_fh4 nfsfh;
-  char tag[30];
-  char outstr[1024];
-
-  if(pentry == NULL)
-    return;
-
-  switch (pentry->internal_md.type)
-    {
-    case REGULAR_FILE:
-      strcpy(tag, "file");
-      break;
-
-    case SYMBOLIC_LINK:
-      strcpy(tag, "link");
-      break;
-
-    case DIRECTORY:
-      strcpy(tag, "dir ");
-      break;
-
-    default:
-      return;
-      break;
-    }
-
-  pfsal_handle = (proxyfsal_handle_t *) &(pentry->handle);
-  nfsfh.nfs_fh4_len = pfsal_handle->data.srv_handle_len;
-  nfsfh.nfs_fh4_val = pfsal_handle->data.srv_handle_val;
-
-  nfs4_sprint_fhandle(&nfsfh, outstr);
-
-  LogMidDebug(COMPONENT_CACHE_INODE,
-               "-->-->-->-->--> External FH (%s) comment=%s = %s",
-               tag, comment, outstr);
-}                               /* cache_inode_print_srvhandle */
-#endif
 
 /**
  *

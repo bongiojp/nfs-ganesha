@@ -120,14 +120,8 @@ cache_inode_setattr(cache_entry_t *entry,
      }
 
      cache_inode_prep_attrs(entry, client);
-#ifdef _USE_MFSL
-     fsal_status =
-          MFSL_setattrs(&entry->mobject, context, &client->mfsl_context, attr,
-                        &entry->attributes, NULL);
-#else
      fsal_status = FSAL_setattrs(&entry->handle, context, attr,
                                  &entry->attributes);
-#endif
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
           ++(client->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR]);

@@ -59,7 +59,6 @@
 #include "nfs_exports.h"
 #include "nfs_file_handle.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 
 static void nfs_set_times_current(fattr3 * attrs)
 {

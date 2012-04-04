@@ -151,20 +151,6 @@ cache_content_status_t cache_content_crash_recover(unsigned short exportid,
                   sprintf(fullpath, "%s/%s/%s", pclient_data->cache_dir, direntp->d_name,
                           dirent_export.d_name);
 
-                  if((cache_inode_status = cache_inode_reload_content(fullpath,
-                                                                      &inode_entry)) !=
-                     CACHE_INODE_SUCCESS)
-                    {
-                      LogMajor(COMPONENT_CACHE_CONTENT,
-                                        "File Content Cache record for File ID %"PRIx64" is unreadable",
-                                        inum);
-                      continue;
-                    }
-                  else
-                    LogMajor(COMPONENT_CACHE_CONTENT,
-                                      "File Content Cache record for File ID %"PRIx64" : READ OK",
-                                      inum);
-
                   /* Populating the cache_inode... */
                   fsal_data.fh_desc = inode_entry.fh_desc;
 

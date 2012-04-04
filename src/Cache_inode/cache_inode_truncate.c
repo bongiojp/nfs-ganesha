@@ -48,7 +48,6 @@
 #include "HashData.h"
 #include "HashTable.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -82,7 +81,6 @@ cache_inode_truncate_impl(cache_entry_t *pentry,
                           cache_inode_status_t *pstatus)
 {
   fsal_status_t fsal_status;
-  cache_content_status_t cache_content_status;
 
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
@@ -100,56 +98,18 @@ cache_inode_truncate_impl(cache_entry_t *pentry,
       return *pstatus;
     }
 
-  /* Calls file content cache to operate on the cache */
-  if (pentry->object.file.pentry_content != NULL)
+  /* Call FSAL to actually truncate */
+  pentry->attributes.asked_attributes = pclient->attrmask;
+  fsal_status = FSAL_truncate(&pentry->handle, pcontext, length,
+                              NULL,
+                              &pentry->attributes);
+
+  if(FSAL_IS_ERROR(fsal_status))
     {
-      if (cache_content_truncate(pentry->object.file.pentry_content,
-                                 length,
-                                 (cache_content_client_t *)
-                                 pclient->pcontent_client,
-                                 &cache_content_status)
-          != CACHE_CONTENT_SUCCESS) {
-        *pstatus = cache_content_error_convert(cache_content_status);
-        pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
-        return *pstatus;
-      }
-
-      /* Cache truncate succeeded, we must now update the size in the
-         attributes */
-      if ((pentry->attributes.asked_attributes & FSAL_ATTR_SIZE) ||
-          (pentry->attributes.asked_attributes & FSAL_ATTR_SPACEUSED)) {
-        pentry->attributes.filesize = length;
-        pentry->attributes.spaceused = length;
-      }
-
-      /* Set the time stamp values too */
-      cache_inode_set_time_current( &pentry->attributes.mtime ) ;
-      pentry->attributes.ctime = pentry->attributes.mtime;
-    }
-  else
-    {
-      /* Call FSAL to actually truncate */
-      pentry->attributes.asked_attributes = pclient->attrmask;
-#ifdef _USE_MFSL
-      fsal_status = MFSL_truncate(&pentry->mobject, pcontext,
-                                  &pclient->mfsl_context, length, NULL,
-                                  &pentry->attributes, NULL);
-#else
-      fsal_status = FSAL_truncate(&pentry->handle, pcontext, length,
-                                  NULL, /**
-                                           @todo
-                                           &pentry->object.file.open_fd.fd,
-                                           Used only with FSAL_PROXY*/
-                                  &pentry->attributes);
-#endif /* _USE_MFSL */
-
-      if(FSAL_IS_ERROR(fsal_status))
-        {
-          *pstatus = cache_inode_error_convert(fsal_status);
-          /* stats */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
-          return *pstatus;
-        }
+      *pstatus = cache_inode_error_convert(fsal_status);
+      /* stats */
+      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
+      return *pstatus;
     }
 
   /* Returns the attributes */

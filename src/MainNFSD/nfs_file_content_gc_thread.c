@@ -94,11 +94,6 @@ int ___cache_content_invalidate_flushed(LRU_entry_t * plru_entry, void *addparam
       return LRU_LIST_DO_NOT_SET_INVALID;
     }
 
-  /* Clean up and set the entry invalid */
-  pthread_rwlock_wrlock(&pentry->pentry_inode->content_lock);
-  pentry->pentry_inode->object.file.pentry_content = NULL;
-  pthread_rwlock_unlock(&pentry->pentry_inode->content_lock);
-
   /* Release the entry */
   ReleaseToPool(pentry, &pclient->content_pool);
 

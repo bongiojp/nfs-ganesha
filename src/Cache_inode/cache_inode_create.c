@@ -93,11 +93,7 @@ cache_inode_create(cache_entry_t *parent,
      cache_entry_t *entry = NULL;
      cache_inode_dir_entry_t *new_dir_entry = NULL;
      fsal_status_t fsal_status = {0, 0};
-#ifdef _USE_MFSL
-     mfsl_object_t object_handle;
-#else
      fsal_handle_t object_handle;
-#endif
      fsal_attrib_list_t object_attributes;
      cache_inode_fsal_data_t fsal_data;
      cache_inode_create_arg_t zero_create_arg;
@@ -156,118 +152,51 @@ cache_inode_create(cache_entry_t *parent,
      object_attributes.asked_attributes = client->attrmask;
      switch (type) {
      case REGULAR_FILE:
-#ifdef _USE_MFSL
-          fsal_status = MFSL_create(&parent->mobject,
-                                    name, context,
-                                    &client->mfsl_context,
-                                    mode, &object_handle,
-                                    &object_attributes, NULL,
-                                    NULL);
-#else
           fsal_status = FSAL_create(&parent->handle,
                                     name, context, mode,
                                     &object_handle, &object_attributes);
-#endif
           break;
 
      case DIRECTORY:
-#ifdef _USE_MFSL
-          fsal_status = MFSL_mkdir(&parent->mobject,
-                                   name, context,
-                                   &client->mfsl_context,
-                                   mode, &object_handle,
-                                   &object_attributes,
-                                   NULL,
-                                   NULL);
-#else
           fsal_status = FSAL_mkdir(&parent->handle,
                                    name, context, mode,
                                    &object_handle, &object_attributes);
-#endif
           break;
 
      case SYMBOLIC_LINK:
-#ifdef _USE_MFSL
-          fsal_status = MFSL_symlink(&parent->mobject,
-                                     name, &create_arg->link_content,
-                                     context, &client->mfsl_context,
-                                     mode, &object_handle,
-                                     &object_attributes, NULL);
-#else
           fsal_status = FSAL_symlink(&parent->handle,
                                      name, &create_arg->link_content,
                                      context, mode, &object_handle,
                                      &object_attributes);
-#endif
           break;
 
      case SOCKET_FILE:
-#ifdef _USE_MFSL
-          fsal_status = MFSL_mknode(&parent->mobject, name,
-                                    context, &client->mfsl_context, mode,
-                                    FSAL_TYPE_SOCK, NULL,
-                                    &object_handle,
-                                    &object_attributes,
-                                    NULL);
-#else
           fsal_status = FSAL_mknode(&parent->handle, name, context,
                                     mode, FSAL_TYPE_SOCK, NULL,
                                     &object_handle, &object_attributes);
-#endif
           break;
 
      case FIFO_FILE:
-#ifdef _USE_MFSL
-          fsal_status = MFSL_mknode(&parent->mobject, name,
-                                    context, &client->mfsl_context,
-                                    mode, FSAL_TYPE_FIFO, NULL,
-                                    &object_handle,
-                                    &object_attributes,
-                                    NULL);
-#else
           fsal_status = FSAL_mknode(&parent->handle, name, context,
                                     mode, FSAL_TYPE_FIFO, NULL,
                                     &object_handle, &object_attributes);
-#endif
           break;
 
      case BLOCK_FILE:
-#ifdef _USE_MFSL
-          fsal_status = MFSL_mknode(&parent->mobject,
-                                    name, context,
-                                    &client->mfsl_context,
-                                    mode, FSAL_TYPE_BLK,
-                                    &create_arg->dev_spec,
-                                    &object_handle,
-                                    &object_attributes,
-                                    NULL);
-#else
           fsal_status = FSAL_mknode(&parent->handle,
                                     name, context,
                                     mode, FSAL_TYPE_BLK,
                                     &create_arg->dev_spec,
                                     &object_handle, &object_attributes);
-#endif
              break;
 
      case CHARACTER_FILE:
-#ifdef _USE_MFSL
-          fsal_status = MFSL_mknode(&parent->mobject,
-                                    name, context,
-                                    &client->mfsl_context,
-                                    mode, FSAL_TYPE_CHR,
-                                    &create_arg->dev_spec,
-                                    &object_handle,
-                                    &object_attributes,
-                                    NULL);
-#else
           fsal_status = FSAL_mknode(&parent->handle,
                                     name, context,
                                     mode, FSAL_TYPE_CHR,
                                     &create_arg->dev_spec,
                                     &object_handle,
                                     &object_attributes);
-#endif
           break;
 
      default:
@@ -286,11 +215,7 @@ cache_inode_create(cache_entry_t *parent,
           entry = NULL;
           goto out;
      }
-#ifdef _USE_MFSL
-     fsal_data.fh_desc.start = (caddr_t) &object_handle.handle;
-#else
      fsal_data.fh_desc.start = (caddr_t) &object_handle;
-#endif
      fsal_data.fh_desc.len = 0;
      FSAL_ExpandHandle(context->export_context,
                        FSAL_DIGEST_SIZEOF,
@@ -312,12 +237,6 @@ cache_inode_create(cache_entry_t *parent,
           inc_func_err_unrecover(client, CACHE_INODE_CREATE);
           return NULL;
      }
-
-#ifdef _USE_MFSL
-     /* Copy the MFSL object to the cache */
-     memcpy(&(pentry->mobject),
-            &object_handle, sizeof(mfsl_object_t));
-#endif
 
      pthread_rwlock_wrlock(&parent->content_lock);
      /* Add this entry to the directory (also takes an internal ref) */

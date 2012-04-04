@@ -58,7 +58,6 @@ t*
 #include "nfs_exports.h"
 #include "nfs_file_handle.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 
 int nfs4_XattrToFattr(fattr4 * Fattr,
                       compound_data_t * data, nfs_fh4 * objFH, bitmap4 * Bitmap)

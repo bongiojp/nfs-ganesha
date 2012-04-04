@@ -60,7 +60,6 @@
 #include "mount.h"
 #include "nfs_core.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 #include "nfs_exports.h"
 #include "nfs_creds.h"
 #include "nfs_proto_functions.h"
@@ -848,7 +847,7 @@ int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
   fsal_staticfsinfo_t * pstaticinfo = NULL ;
   fsal_dynamicfsinfo_t dynamicinfo;
 
-  if( data != NULL ) /* data can be NULL if called from FSAL_PROXY operating as a client */
+  if( data != NULL )
     pstaticinfo = data->pcontext->export_context->fe_static_fs_info;
 
 #ifdef _USE_NFS4_ACL
@@ -1586,9 +1585,6 @@ int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
           break;
 
         case FATTR4_TIME_ACCESS_SET:
-#ifdef _USE_PROXY
-          op_attr_success = 0;  /* should never be used here outside FSAL_PROXY */
-#else
           time_access_set.set_it = htonl(SET_TO_CLIENT_TIME4);
           memcpy((char *)(attrvalsBuffer + LastOffset),
                  &time_access_set.set_it, sizeof(time_how4));
@@ -1606,7 +1602,6 @@ int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
           LastOffset += sizeof(uint32_t);
 
           op_attr_success = 0;
-#endif
           break;
 
         case FATTR4_TIME_BACKUP:
@@ -1663,9 +1658,6 @@ int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
           break;
 
         case FATTR4_TIME_MODIFY_SET:
-#ifndef _USE_PROXY
-          op_attr_success = 0;  /* should never be used here outside FSAL_PROXY */
-#else
           time_modify_set.set_it = htonl(SET_TO_CLIENT_TIME4);
           memcpy((char *)(attrvalsBuffer + LastOffset),
                  &time_modify_set.set_it, sizeof(time_how4));
@@ -1683,7 +1675,6 @@ int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
           LastOffset += sizeof(uint32_t);
 
           op_attr_success = 0;
-#endif
           break;
 
         case FATTR4_MOUNTED_ON_FILEID:
@@ -3356,7 +3347,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
       switch (attribute_to_set)
         {
-        case FATTR4_TYPE:      /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_TYPE:
           memcpy((char *)&attr_type,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_type));
@@ -3401,7 +3392,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
           LastOffset += fattr4tab[attribute_to_set].size_fattr4;
           break;
 
-        case FATTR4_FILEID:    /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_FILEID:
           /* The analog to the inode number. RFC3530 says "a number uniquely identifying the file within the filesystem"
            * I use hpss_GetObjId to extract this information from the Name Server's handle */
           memcpy((char *)&attr_fileid,
@@ -3414,7 +3405,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
           break;
 
-        case FATTR4_FSID:      /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_FSID:
           memcpy((char *)&attr_fsid,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_fsid));
@@ -3426,7 +3417,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
           break;
 
-        case FATTR4_NUMLINKS:  /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_NUMLINKS:
           memcpy((char *)&attr_numlinks,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_numlinks));
@@ -3534,7 +3525,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
           break;
 
-        case FATTR4_RAWDEV:    /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_RAWDEV:
           memcpy((char *)&attr_rawdev,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_rawdev));
@@ -3546,7 +3537,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
           break;
 
-        case FATTR4_SPACE_USED:        /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_SPACE_USED:
           memcpy((char *)&attr_space_used,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_space_used));
@@ -3557,7 +3548,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
           break;
 
-        case FATTR4_TIME_ACCESS:       /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_TIME_ACCESS:
           memcpy((char *)&attr_time_access,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_time_access));
@@ -3569,7 +3560,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
           break;
 
-        case FATTR4_TIME_METADATA:     /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_TIME_METADATA:
           memcpy((char *)&attr_time_metadata,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_time_metadata));
@@ -3581,7 +3572,7 @@ int nfs4_Fattr_To_FSAL_attr(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr)
 
           break;
 
-        case FATTR4_TIME_MODIFY:       /* Used only by FSAL_PROXY to reverse convert */
+        case FATTR4_TIME_MODIFY:
           memcpy((char *)&attr_time_modify,
                  (char *)(Fattr->attr_vals.attrlist4_val + LastOffset),
                  sizeof(fattr4_time_modify));

@@ -52,9 +52,6 @@
 #include "avltree.h"
 #include "generic_weakref.h"
 #include "fsal.h"
-#ifdef _USE_MFSL
-#include "mfsl.h"
-#endif
 #include "log.h"
 #include "config_parsing.h"
 #include "nfs23.h"
@@ -263,13 +260,8 @@ typedef struct cache_inode_client_parameter__
 
 typedef struct cache_inode_opened_file__
 {
-#ifdef _USE_MFSL
-  mfsl_file_t mfsl_fd; /*< MFSL specific object representing a given
-                           file open. */
-#else
   fsal_file_t fd; /*< FSAL specific object representing a given file
                       open. */
-#endif
   fsal_openflags_t openflags; /*< Flags showing whether the file is
                                   open for reading, writing, or both. */
 } cache_inode_opened_file_t;
@@ -294,7 +286,7 @@ typedef enum cache_inode_file_type__
 
 /**
  * Indicate whether this is a read or write operation, for
- * cache_inode_rdwr and cache_content functions.
+ * cache_inode_rdwr.
  */
 
 typedef enum io_direction__
@@ -460,11 +452,6 @@ struct cache_entry_t
     {
       cache_inode_opened_file_t open_fd;/*< Cached fsal_file_t for
                                             optimized access */
-      fsal_name_t *pname; /*< Pointer to filename, for PROXY only */
-      cache_entry_t *pentry_parent_open; /*< Parent associated with
-                                             pname, for PROXY only  */
-      void *pentry_content; /*< Entry in file content cache (NULL if
-                                not cached)  */
       struct glist_head lock_list; /*< Pointers for lock list */
       cache_inode_unstable_data_t
         unstable_data; /*< Unstable data, for use with WRITE/COMMIT */
@@ -485,10 +472,6 @@ struct cache_entry_t
   } object; /*< Filetype specific data, discriminated by the type
                 field.  Note that data for special files is in
                 attributes.rawdev */
-
-#ifdef _USE_MFSL
-  mfsl_object_t mobject;
-#endif
 };
 
 typedef struct cache_inode_file__ cache_inode_file_t;
@@ -548,16 +531,11 @@ struct cache_inode_client_t
                               of FSAL_access */
   bool_t getattr_dir_invalidation; /*< Use getattr as cookie for directory
                                        invalidation */
-  struct cache_content_client__ *pcontent_client; /*< Pointer to cache content
-                                                      client */
   struct nfs_worker_data__ *pworker; /*< Pointer to the information on the
                                          worker I belong to */
   uint64_t thread_id; /*< Integer identifier for the current thread */
   uint32_t lru_lane; /*< Lane in logical LRU queue on which we prefer
                          to operate */
-#ifdef _USE_MFSL
-  mfsl_context_t mfsl_context; /*< Context to be used for MFSL module */
-#endif
 };
 
 /**
@@ -735,11 +713,7 @@ cache_inode_status_t cache_inode_access(cache_entry_t *pentry,
                                         fsal_op_context_t *pcontext,
                                         cache_inode_status_t *pstatus);
 
-#ifdef _USE_MFSL
-mfsl_file_t *cache_inode_fd(cache_entry_t *pentry);
-#else
 fsal_file_t *cache_inode_fd(cache_entry_t *pentry);
-#endif
 
 bool_t is_open_for_read(cache_entry_t *entry);
 bool_t is_open_for_write(cache_entry_t *entry);
@@ -1016,12 +990,6 @@ void cache_inode_print_conf_client_parameter(
      cache_inode_client_parameter_t param);
 void cache_inode_print_conf_gc_policy(FILE *output,
                                       cache_inode_gc_policy_t gcpolicy);
-cache_inode_status_t cache_inode_dump_content(char *path,
-                                              cache_entry_t *pentry);
-
-cache_inode_status_t cache_inode_reload_content(char *path,
-                                                cache_entry_t *pentry);
-
 void cache_inode_expire_to_str(cache_inode_expire_type_t type,
                                time_t value,
                                char *out);

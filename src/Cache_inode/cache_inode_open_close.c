@@ -48,7 +48,6 @@
 #include "HashTable.h"
 #include "cache_inode.h"
 #include "cache_inode_lru.h"
-#include "cache_content.h"
 #include "stuff_alloc.h"
 
 #include <unistd.h>
@@ -74,13 +73,8 @@ extern cache_inode_gc_policy_t cache_inode_gc_policy;
  * closed.
  */
 
-#ifdef _USE_MFSL
-mfsl_file_t *
-cache_inode_fd(cache_entry_t *entry)
-#else
 fsal_file_t *
 cache_inode_fd(cache_entry_t *entry)
-#endif
 {
      if (entry == NULL) {
           return NULL;
@@ -91,11 +85,7 @@ cache_inode_fd(cache_entry_t *entry)
      }
 
      if (entry->object.file.open_fd.openflags != FSAL_O_CLOSED) {
-#ifdef _USE_MFSL
-          return &entry->object.file.open_fd.mfsl_fd;
-#else
           return &entry->object.file.open_fd.fd;
-#endif
      }
 
      return NULL;
@@ -189,13 +179,7 @@ cache_inode_open(cache_entry_t *entry,
      if ((entry->object.file.open_fd.openflags != FSAL_O_RDWR) &&
          (entry->object.file.open_fd.openflags != 0) &&
          (entry->object.file.open_fd.openflags != openflags)) {
-#ifdef _USE_MFSL
-          fsal_status
-               = MFSL_close(&(entry->object.file.open_fd.mfsl_fd),
-                            &client->mfsl_context, NULL);
-#else
           fsal_status = FSAL_close(&(entry->object.file.open_fd.fd));
-#endif
           if (FSAL_IS_ERROR(fsal_status) &&
               (fsal_status.major != ERR_FSAL_NOT_OPENED)) {
                *status = cache_inode_error_convert(fsal_status);
@@ -212,21 +196,11 @@ cache_inode_open(cache_entry_t *entry,
      }
 
      if ((entry->object.file.open_fd.openflags == FSAL_O_CLOSED)) {
-#ifdef _USE_MFSL
-          fsal_status = MFSL_open(&(entry->mobject),
-                                  context,
-                                  &client->mfsl_context,
-                                  openflags,
-                                  &entry->object.file.open_fd.mfsl_fd,
-                                  NULL,
-                                  NULL);
-#else
           fsal_status = FSAL_open(&(entry->handle),
                                   context,
                                   openflags,
                                   &entry->object.file.open_fd.fd,
                                   NULL);
-#endif
           if (FSAL_IS_ERROR(fsal_status)) {
                *status = cache_inode_error_convert(fsal_status);
                LogDebug(COMPONENT_CACHE_INODE,
@@ -284,7 +258,7 @@ cache_inode_close(cache_entry_t *entry,
      fsal_status_t fsal_status;
 
      if ((entry == NULL) || (client == NULL) || (status == NULL)) {
-          *status = CACHE_CONTENT_INVALID_ARGUMENT;
+          *status = CACHE_INODE_INVALID_ARGUMENT;
           goto out;
      }
 
@@ -316,12 +290,7 @@ cache_inode_close(cache_entry_t *entry,
          (flags & CACHE_INODE_FLAG_REALLYCLOSE)) {
           LogDebug(COMPONENT_CACHE_INODE,
                    "cache_inode_close: entry %p", entry);
-#ifdef _USE_MFSL
-          fsal_status = MFSL_close(&(entry->object.file.open_fd.mfsl_fd),
-                                   &client->mfsl_context, NULL);
-#else
           fsal_status = FSAL_close(&(entry->object.file.open_fd.fd));
-#endif
 
           entry->object.file.open_fd.openflags = FSAL_O_CLOSED;
           if (FSAL_IS_ERROR(fsal_status) &&
@@ -335,14 +304,6 @@ cache_inode_close(cache_entry_t *entry,
           }
           --(open_fd_count);
      }
-#ifdef _USE_PROXY
-     /* If proxy if used, free the name if needed */
-     if (entry->object.file.pname != NULL) {
-          Mem_Free((char *)(entry->object.file.pname));
-          entry->object.file.pname = NULL;
-     }
-     entry->object.file.entry_parent_open = NULL;
-#endif
 
      *status = CACHE_INODE_SUCCESS;
 
@@ -355,4 +316,4 @@ unlock:
 out:
 
      return *status;
-}                               /* cache_content_close */
+}

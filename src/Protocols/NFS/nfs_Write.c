@@ -58,8 +58,6 @@
 #include "mount.h"
 #include "nfs_core.h"
 #include "cache_inode.h"
-#include "cache_content.h"
-#include "cache_content_policy.h"
 #include "nfs_exports.h"
 #include "nfs_creds.h"
 #include "nfs_proto_functions.h"
@@ -99,7 +97,6 @@ int nfs_Write(nfs_arg_t * parg,
   fsal_attrib_list_t pre_attr;
   fsal_attrib_list_t *ppre_attr;
   cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
-  cache_content_status_t content_status;
   size_t size = 0;
   size_t written_size;
   fsal_off_t offset = 0;
@@ -146,10 +143,6 @@ int nfs_Write(nfs_arg_t * parg,
                (unsigned long long) size,
                stables);
     }
-
-  cache_content_policy_data_t datapol;
-
-  datapol.UseMaxCacheSize = FALSE;
 
   if(preq->rq_vers == NFS_V3)
     {
@@ -448,53 +441,6 @@ int nfs_Write(nfs_arg_t * parg,
   else
     {
       /* An actual write is to be made, prepare it */
-
-      /* If entry is not cached, cache it now */
-      datapol.UseMaxCacheSize = pexport->options & EXPORT_OPTION_MAXCACHESIZE;
-      datapol.MaxCacheSize = pexport->MaxCacheSize;
-
-      if((pexport->options & EXPORT_OPTION_USE_DATACACHE) &&
-         (cache_content_cache_behaviour(pentry,
-                                        &datapol,
-                                        (cache_content_client_t *)
-                                        pclient->pcontent_client,
-                                        &content_status) == CACHE_CONTENT_FULLY_CACHED)
-         && (pentry->object.file.pentry_content == NULL))
-        {
-          /* Entry is not in datacache, but should be in, cache it .
-           * Several threads may call this function at the first time and a race condition can occur here
-           * in order to avoid this, cache_inode_add_data_cache is "mutex protected" 
-           * The first call will create the file content cache entry, the further will return
-           * with error CACHE_INODE_CACHE_CONTENT_EXISTS which is not a pathological thing here */
-
-          /* Status is set in last argument */
-          cache_inode_add_data_cache(pentry, pclient, pcontext, &cache_status);
-          if((cache_status != CACHE_INODE_SUCCESS) &&
-             (cache_status != CACHE_INODE_CACHE_CONTENT_EXISTS))
-            {
-              /* If we are here, there was an error */
-              if(nfs_RetryableError(cache_status))
-                {
-                  rc = NFS_REQ_DROP;
-                  goto out;
-                }
-
-              nfs_SetFailedStatus(pcontext, pexport,
-                                  preq->rq_vers,
-                                  cache_status,
-                                  &pres->res_attr2.status,
-                                  &pres->res_write3.status,
-                                  NULL, NULL,
-                                  pentry,
-                                  ppre_attr,
-                                  &(pres->res_write3.WRITE3res_u.resfail.file_wcc),
-                                  NULL, NULL, NULL);
-
-              rc = NFS_REQ_OK;
-              goto out;
-            }
-        }
-
       if((cache_inode_rdwr(pentry,
                            CACHE_INODE_WRITE,
                            offset,

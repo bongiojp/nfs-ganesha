@@ -2954,10 +2954,6 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
                    "cache content client (for datacache recovery) could not be allocated");
         }
 
-
-      /* Link together the small client and the recover_datacache_client */
-      small_client.pcontent_client = (void *)&recover_datacache_client;
-
       /* Get the context for FSAL super user */
 #ifdef _USE_SHARED_FSAL
       for( i = 0 ; i < nfs_param.nb_loaded_fsal ; i++ )

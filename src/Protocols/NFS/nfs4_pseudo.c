@@ -58,7 +58,6 @@
 #include "nfs_exports.h"
 #include "nfs_file_handle.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 
 #define NB_TOK_ARG 10
 #define NB_OPT_TOK 10

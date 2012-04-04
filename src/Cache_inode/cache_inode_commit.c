@@ -48,7 +48,6 @@
 #include "HashData.h"
 #include "HashTable.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 #include "stuff_alloc.h"
 #include "nfs_core.h"
 
@@ -102,12 +101,6 @@ cache_inode_commit(cache_entry_t *entry,
         called. */
      *status = CACHE_INODE_SUCCESS;
 
-     /* Do not use this function is Data Cache is used */
-     if (entry->object.file.pentry_content != NULL) {
-          *status = CACHE_INODE_SUCCESS;
-          goto out;
-     }
-
      /* If we aren't using the Ganesha write buffer, then we're using
         the filesystem write buffer so execute a normal fsal_commit()
         call. */
@@ -131,17 +124,9 @@ cache_inode_commit(cache_entry_t *entry,
                }
           }
 
-#ifdef _USE_MFSL
-          fsal_status
-               = MFSL_commit(&(entry->object.file.open_fd.mfsl_fd),
-                             offset,
-                             count,
-                             NULL);
-#else
           fsal_status = FSAL_commit(&(entry->object.file.open_fd.fd),
                                     offset,
                                     count);
-#endif
           if (FSAL_IS_ERROR(fsal_status)) {
                LogMajor(COMPONENT_CACHE_INODE,
                         "cache_inode_rdwr: fsal_commit() failed: "

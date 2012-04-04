@@ -26,7 +26,6 @@
 #include "cache_inode.h"
 #include "cache_inode_lru.h"
 #include "cache_inode_weakref.h"
-#include "cache_content.h"
 #include "stuff_alloc.h"
 
 #include <unistd.h>
@@ -132,28 +131,6 @@ cache_inode_clean_internal(cache_entry_t *entry,
 
      /* Delete from the weakref table */
      cache_inode_weakref_delete(&entry->weakref);
-
-     /* If entry is datacached, remove it from the cache */
-     if (entry->type == REGULAR_FILE) {
-          cache_content_status_t cache_content_status = 0;
-
-          pthread_rwlock_wrlock(&entry->content_lock);
-
-          if (entry->object.file.pentry_content != NULL) {
-               if (cache_content_release_entry(
-                        (cache_content_entry_t *)
-                        entry->object.file.pentry_content,
-                        (cache_content_client_t *) client->pcontent_client,
-                        &cache_content_status)
-                   != CACHE_CONTENT_SUCCESS) {
-                    LogCrit(COMPONENT_CACHE_INODE,
-                            "Could not removed datacached entry for "
-                            "pentry %p", entry);
-               }
-          }
-          pthread_rwlock_unlock(&entry->content_lock);
-     }
-
 
      if (entry->type == SYMBOLIC_LINK) {
           pthread_rwlock_wrlock(&entry->content_lock);
@@ -271,7 +248,6 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
                                              uint32_t flags)
 {
      cache_entry_t *to_remove_entry = NULL;
-     cache_content_status_t content_status = 0;
      fsal_status_t fsal_status = {0, 0};
 
      if(entry->type != DIRECTORY) {
@@ -301,20 +277,10 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
               "---> Cache_inode_remove : %s", name->name);
 
      cache_inode_prep_attrs(entry, client);
-#ifdef _USE_MFSL
-     fsal_status = MFSL_unlink(&entry->mobject,
-                               name,
-                               &to_remove_entry->mobject,
-                               context,
-                               &client->mfsl_context,
-                               &entry->attributes,
-                               NULL);
-#else
      fsal_status = FSAL_unlink(&entry->handle,
                                name,
                                context,
                                &entry->attributes);
-#endif
 
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
@@ -354,28 +320,6 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
      /* Now, delete "to_remove_entry" from the cache inode and free
         its associated resources, but only if numlinks == 0 */
      if (to_remove_entry->attributes.numlinks == 0) {
-          /* If pentry is a regular file, data cached, the related
-             data cache entry should be removed as well */
-          if (to_remove_entry->type == REGULAR_FILE) {
-               if(to_remove_entry->object.file.pentry_content != NULL) {
-                    /* Something is to be deleted, release the cache
-                       data entry */
-                    if (cache_content_release_entry((cache_content_entry_t *)
-                                                    (to_remove_entry->object
-                                                     .file.pentry_content),
-                                                    (cache_content_client_t *)
-                                                    client->pcontent_client,
-                                                    &content_status)
-                        != CACHE_CONTENT_SUCCESS) {
-                         LogEvent(COMPONENT_CACHE_INODE,
-                                  "pentry %p, named %s could not be "
-                                  "released from data cache, status=%d",
-                                  to_remove_entry, name->name,
-                                  content_status);
-                    }
-               }
-          }
-
           /* Destroy the entry when everyone's references to it have
              been relinquished.  Most likely now. */
           pthread_rwlock_unlock(&to_remove_entry->attr_lock);

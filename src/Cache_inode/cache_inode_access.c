@@ -136,14 +136,8 @@ cache_inode_access_sw(cache_entry_t *pentry,
           } else {
                /* There is no reason to hold the mutex here, since we
                   aren't doing anything with cached attributes. */
-#ifdef _USE_MFSL
-                    fsal_status = MFSL_access(&pentry->mobject, pcontext,
-                                              &pclient->mfsl_context,
-                                              used_access_type, NULL, NULL);
-#else
                     fsal_status = FSAL_access(&pentry->handle, pcontext,
                                               used_access_type, NULL);
-#endif
           }
 
           if(FSAL_IS_ERROR(fsal_status)) {

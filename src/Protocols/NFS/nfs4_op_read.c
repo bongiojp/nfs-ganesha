@@ -53,7 +53,6 @@
 #include "nfs4.h"
 #include "nfs_core.h"
 #include "sal_functions.h"
-#include "cache_content_policy.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
 #ifdef _PNFS_DS
@@ -98,7 +97,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   state_t                * pstate_found = NULL;
   state_t                * pstate_open;
   state_t                * pstate_iterate;
-  cache_content_status_t   content_status;
   cache_entry_t          * pentry = NULL;
   int                      rc = 0;
   struct glist_head      * glist;
@@ -107,10 +105,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
      not need to be held during a non-anonymous read, since the open
      state itself prevents a conflict. */
   bool_t                   anonymous = FALSE;
-
-  cache_content_policy_data_t datapol;
-
-  datapol.UseMaxCacheSize = FALSE;
 
   /* Say we are managing NFS4_OP_READ */
   resp->resop = NFS4_OP_READ;
@@ -379,40 +373,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
           pthread_rwlock_unlock(&pentry->state_lock);
         }
       return res_READ4.status;
-    }
-
-  if((data->pexport->options & EXPORT_OPTION_USE_DATACACHE) &&
-     (pentry->object.file.pentry_content == NULL))
-    {
-      /* Entry is not in datacache, but should be in, cache it .
-       * Several threads may call this function at the first time and a race condition can occur here
-       * in order to avoid this, cache_inode_add_data_cache is "mutex protected"
-       * The first call will create the file content cache entry, the further will return
-       * with error CACHE_INODE_CACHE_CONTENT_EXISTS which is not a pathological thing here */
-
-      datapol.UseMaxCacheSize = data->pexport->options & EXPORT_OPTION_MAXCACHESIZE;
-      datapol.MaxCacheSize = data->pexport->MaxCacheSize;
-
-      /* Status is set in last argument */
-      cache_inode_add_data_cache(pentry, data->pclient, data->pcontext,
-                                 &cache_status);
-
-      if((cache_status != CACHE_INODE_SUCCESS) &&
-         (cache_content_cache_behaviour(pentry,
-                                        &datapol,
-                                        (cache_content_client_t *) (data->pclient->
-                                                                    pcontent_client),
-                                        &content_status) == CACHE_CONTENT_FULLY_CACHED)
-         && (cache_status != CACHE_INODE_CACHE_CONTENT_EXISTS))
-        {
-          res_READ4.status = NFS4ERR_SERVERFAULT;
-          if (anonymous)
-            {
-              pthread_rwlock_unlock(&pentry->state_lock);
-            }
-          return res_READ4.status;
-        }
-
     }
 
   /* Some work is to be done */

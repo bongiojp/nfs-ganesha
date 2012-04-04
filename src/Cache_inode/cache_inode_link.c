@@ -100,12 +100,6 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
 {
      fsal_status_t fsal_status = {0, 0};
      cache_inode_dir_entry_t *new_dir_entry;
-     fsal_size_t save_size = 0;
-     fsal_size_t save_spaceused = 0;
-     fsal_time_t save_mtime = {
-          .seconds = 0,
-          .nseconds = 0
-     };
      bool_t srcattrlock = FALSE;
      bool_t destattrlock = FALSE;
      bool_t destdirlock = FALSE;
@@ -165,44 +159,20 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
           goto out;
      }
 
-     /* If object is a data cached regular file, save its mtime and
-        size */
-     if ((pentry_src->type == REGULAR_FILE) &&
-         (pentry_src->object.file.pentry_content != NULL)) {
-          save_mtime = pentry_src->attributes.mtime;
-          save_size = pentry_src->attributes.filesize;
-          save_spaceused = pentry_src->attributes.spaceused;
-     }
-
      /* Acquire the directory entry lock */
      pthread_rwlock_wrlock(&pentry_dir_dest->content_lock);
      destdirlock = TRUE;
 
      /* Do the link at FSAL level */
      cache_inode_prep_attrs(pentry_src, pclient);
-#ifdef _USE_MFSL
-     fsal_status =
-          MFSL_link(&pentry_src->mobject, &pentry_dir_dest->mobject,
-                    plink_name, pcontext,
-                    &pclient->mfsl_context, &pentry_src->attributes, NULL);
-#else
      fsal_status =
           FSAL_link(&pentry_src->handle, &pentry_dir_dest->handle,
                     plink_name, pcontext, &pentry_src->attributes);
-#endif
-     if(FSAL_IS_ERROR(fsal_status)) {
+     if (FSAL_IS_ERROR(fsal_status)) {
           *pstatus = cache_inode_error_convert(fsal_status);
           goto out;
      }
 
-     /* If the link source is a data cached regular file, restore the
-        saved mtime and size. */
-     if((pentry_src->type == REGULAR_FILE)
-        && (pentry_src->object.file.pentry_content != NULL)) {
-          pentry_src->attributes.mtime = save_mtime;
-          pentry_src->attributes.filesize = save_size;
-          pentry_src->attributes.spaceused = save_spaceused;
-     }
      cache_inode_fixup_md(pentry_src);
      *pattr = pentry_src->attributes;
      pthread_rwlock_unlock(&pentry_src->attr_lock);

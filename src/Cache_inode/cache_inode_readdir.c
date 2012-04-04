@@ -174,17 +174,8 @@ cache_inode_readdir_nonamecache(cache_entry_t *dir_entry,
                   "dir_entry=entry=%p cookie=%"PRIu64, dir_entry, cookie);
 
      /* Open the directory */
-#ifdef _USE_MFSL
-     fsal_status = MFSL_opendir(&entry_dir->mobject,
-                                context,
-                                &client->mfsl_context,
-                                &fsal_dirhandle,
-                                NULL,
-                                NULL);
-#else
      fsal_status = FSAL_opendir(&dir_entry->handle,
                                 context, &fsal_dirhandle, NULL);
-#endif
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
           goto out;
@@ -195,18 +186,6 @@ cache_inode_readdir_nonamecache(cache_entry_t *dir_entry,
      FSAL_SET_COOKIE_BY_OFFSET(begin_cookie, cookie);
      fsal_eod = FALSE;
 
-#ifdef _USE_MFSL
-     fsal_status = MFSL_readdir(&fsal_dirhandle,
-                                begin_cookie,
-                                client->attrmask,
-                                nbwanted * sizeof(fsal_dirent_t),
-                                fsal_dirent_array,
-                                &end_cookie,
-                                &fsal_nbfound,
-                                &fsal_eod,
-                                &pclient->mfsl_context,
-                                NULL);
-#else
      fsal_status = FSAL_readdir(&fsal_dirhandle,
                                 begin_cookie,
                                 client->attrmask,
@@ -215,7 +194,6 @@ cache_inode_readdir_nonamecache(cache_entry_t *dir_entry,
                                 &end_cookie,
                                 &fsal_found,
                                 &fsal_eod);
-#endif
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
           goto out;
@@ -260,11 +238,7 @@ cache_inode_readdir_nonamecache(cache_entry_t *dir_entry,
 out:
      /* Close the directory */
      if (diropen) {
-#ifdef _USE_MFSL
-          fsal_status = MFSL_closedir(&fsal_dirhandle, &pclient->mfsl_context, NULL);
-#else
           fsal_status = FSAL_closedir(&fsal_dirhandle);
-#endif
           if(FSAL_IS_ERROR(fsal_status)) {
                *status = cache_inode_error_convert(fsal_status);
           }
@@ -631,17 +605,6 @@ cache_inode_status_t cache_inode_readdir_populate(
       *pstatus = CACHE_INODE_BAD_TYPE;
       return *pstatus;
     }
-#ifdef _USE_MFSL_ASYNC
-  /* If entry is asynchronous (via MFSL), it should not be repopulated until
-     it is synced */
-  if(MFSL_ASYNC_is_synced(&pentry_dir->mobject) == FALSE)
-    {
-      /* Directory is asynchronous, do not repopulate it and let it
-       * in the state 'has_been_readdir == FALSE' */
-      *pstatus = CACHE_INODE_SUCCESS;
-      return *pstatus;
-    }
-#endif
 
   /* If directory is already populated , there is no job to do */
   if(pentry_dir->flags & CACHE_INODE_DIR_POPULATED)
@@ -658,14 +621,8 @@ cache_inode_status_t cache_inode_readdir_populate(
 
   /* Open the directory */
   dir_attributes.asked_attributes = pclient->attrmask;
-#ifdef _USE_MFSL
-  fsal_status = MFSL_opendir(&pentry_dir->mobject,
-                             pcontext,
-                             &pclient->mfsl_context, &fsal_dirhandle, &dir_attributes, NULL);
-#else
   fsal_status = FSAL_opendir(&pentry_dir->handle,
                              pcontext, &fsal_dirhandle, &dir_attributes);
-#endif
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
@@ -696,21 +653,11 @@ cache_inode_status_t cache_inode_readdir_populate(
 
   do
     {
-#ifdef _USE_MFSL
-      fsal_status = MFSL_readdir(&fsal_dirhandle,
-                                 begin_cookie,
-                                 pclient->attrmask,
-                                 FSAL_READDIR_SIZE * sizeof(fsal_dirent_t),
-                                 array_dirent,
-                                 &end_cookie,
-                                 &nbfound, &fsal_eod, &pclient->mfsl_context, NULL);
-#else
       fsal_status = FSAL_readdir(&fsal_dirhandle,
                                  begin_cookie,
                                  pclient->attrmask,
                                  FSAL_READDIR_SIZE * sizeof(fsal_dirent_t),
                                  array_dirent, &end_cookie, &nbfound, &fsal_eod);
-#endif
 
       if(FSAL_IS_ERROR(fsal_status))
         {
@@ -738,24 +685,13 @@ cache_inode_status_t cache_inode_readdir_populate(
               cache_inode_fsal_type_convert(array_dirent[iter].attributes.type)) ==
              SYMBOLIC_LINK)
             {
-#ifdef _USE_MFSL
-              mfsl_object_t tmp_mfsl;
-#endif
               /* Let's read the link for caching its value */
               object_attributes.asked_attributes = pclient->attrmask;
               if( CACHE_INODE_KEEP_CONTENT( policy ) )
                 {
-#ifdef _USE_MFSL
-                  tmp_mfsl.handle = array_dirent[iter].handle;
-                  fsal_status = MFSL_readlink(&tmp_mfsl,
-                                              pcontext,
-                                              &pclient->mfsl_context,
-                                              &create_arg.link_content, &object_attributes, NULL);
-#else
                   fsal_status = FSAL_readlink(&array_dirent[iter].handle,
                                               pcontext,
                                               &create_arg.link_content, &object_attributes);
-#endif
                 }
               else
                 {
@@ -829,16 +765,15 @@ cache_inode_status_t cache_inode_readdir_populate(
            * is needed for partial directory reads.
            *
            * to_uint64 should be a lightweight operation--it is in the current
-           * default implementation.  We think the right thing -should- happen
-           * therefore with if _USE_MFSL.
+           * default implementation.
            *
            * I'm ignoring the status because the default operation is a memcmp--
            * we already -have- the cookie. */
 
           if (cache_status != CACHE_INODE_ENTRY_EXISTS)
-              (void) FSAL_cookie_to_uint64(&array_dirent[iter].handle,
-                                           pcontext, &array_dirent[iter].cookie,
-                                           &new_dir_entry->fsal_cookie);
+              FSAL_cookie_to_uint64(&array_dirent[iter].handle,
+                                    pcontext, &array_dirent[iter].cookie,
+                                    &new_dir_entry->fsal_cookie);
         } /* iter */
 
       /* Get prepared for next step */
@@ -850,11 +785,7 @@ cache_inode_status_t cache_inode_readdir_populate(
   while(fsal_eod != TRUE);
 
   /* Close the directory */
-#ifdef _USE_MFSL
-  fsal_status = MFSL_closedir(&fsal_dirhandle, &pclient->mfsl_context, NULL);
-#else
   fsal_status = FSAL_closedir(&fsal_dirhandle);
-#endif
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);

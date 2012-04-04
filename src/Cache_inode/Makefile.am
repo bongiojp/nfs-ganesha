@@ -27,9 +27,7 @@ libcache_inode_la_SOURCES = cache_inode_access.c             \
                             cache_inode_statfs.c             \
                             cache_inode_init.c               \
                             cache_inode_read_conf.c          \
-                            cache_inode_add_data_cache.c     \
                             cache_inode_open_close.c         \
-                            cache_inode_release_data_cache.c \
 			    cache_inode_fsal_hash.c          \
 			    cache_inode_kill_entry.c         \
 			    cache_inode_avl.c                \

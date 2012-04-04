@@ -94,7 +94,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   cache_inode_stability_t  stability = CACHE_INODE_SAFE_WRITE_TO_FS;
   caddr_t                  bufferdata;
   stable_how4              stable_how;
-  cache_content_status_t   content_status;
   state_t                * pstate_found = NULL;
   state_t                * pstate_open;
   state_t                * pstate_iterate;
@@ -110,10 +109,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
      not need to be held during a non-anonymous read, since the open
      state itself prevents a conflict. */
   bool_t                   anonymous = FALSE;
-
-  cache_content_policy_data_t datapol;
-
-  datapol.UseMaxCacheSize = FALSE;
 
   /* Lock are not supported */
   resp->resop = NFS4_OP_WRITE;
@@ -377,40 +372,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           pthread_rwlock_rdlock(&pentry->state_lock);
         }
       return res_WRITE4.status;
-    }
-
-  if((data->pexport->options & EXPORT_OPTION_USE_DATACACHE) &&
-     (cache_content_cache_behaviour(pentry,
-                                    &datapol,
-                                    (cache_content_client_t *) (data->pclient->
-                                                                pcontent_client),
-                                    &content_status) == CACHE_CONTENT_FULLY_CACHED)
-     && (pentry->object.file.pentry_content == NULL))
-    {
-      /* Entry is not in datacache, but should be in, cache it .
-       * Several threads may call this function at the first time and a race condition can occur here
-       * in order to avoid this, cache_inode_add_data_cache is "mutex protected"
-       * The first call will create the file content cache entry, the further will return
-       * with error CACHE_INODE_CACHE_CONTENT_EXISTS which is not a pathological thing here */
-
-      datapol.UseMaxCacheSize = data->pexport->options & EXPORT_OPTION_MAXCACHESIZE;
-      datapol.MaxCacheSize = data->pexport->MaxCacheSize;
-
-      /* Status is set in last argument */
-      cache_inode_add_data_cache(pentry, data->pclient, data->pcontext,
-                                 &cache_status);
-
-      if((cache_status != CACHE_INODE_SUCCESS) &&
-         (cache_status != CACHE_INODE_CACHE_CONTENT_EXISTS))
-        {
-          res_WRITE4.status = NFS4ERR_SERVERFAULT;
-          if (anonymous)
-            {
-              pthread_rwlock_rdlock(&pentry->state_lock);
-            }
-          return res_WRITE4.status;
-        }
-
     }
 
   if((nfs_param.core_param.use_nfs_commit == TRUE) && (arg_WRITE4.stable == UNSTABLE4))
