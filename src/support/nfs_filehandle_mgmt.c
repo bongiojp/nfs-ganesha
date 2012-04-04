@@ -126,9 +126,9 @@
  * @return 1 if successful, 0 otherwise
  *
  */
-int nfs4_FhandleToFSAL(nfs_fh4 * pfh4,
-		       struct fsal_handle_desc *fh_desc,
-                       fsal_op_context_t * pcontext)
+int nfs4_FhandleToFSAL(nfs_fh4 *pfh4,
+                       struct fsal_handle_desc *fh_desc,
+                       fsal_op_context_t *pcontext)
 {
   fsal_status_t fsal_status;
   file_handle_v4_t *pfile_handle;

@@ -173,7 +173,7 @@ int cache_inode_compare_key_fsal(hash_buffer_t *buff1, hash_buffer_t *buff2)
           int rc;
 
           rc = (buff1->len == buff2->len &&
-                !memcmp(buff1->pdata, buff2->pdata, buff1->len)) ? 0 : 1;
+                memcmp(buff1->pdata, buff2->pdata, buff1->len)) ? 0 : 1;
 
           return rc;
         }

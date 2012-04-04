@@ -369,6 +369,5 @@ state_status_t state_del(state_t              * pstate,
 
   *pstatus = STATE_SUCCESS;
 
-  pthread_rwlock_unlock(&pentry->state_lock);
   return *pstatus;
 }                               /* state_del */

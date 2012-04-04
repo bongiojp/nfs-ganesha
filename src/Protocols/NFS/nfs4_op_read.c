@@ -329,7 +329,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                             &cache_status) != CACHE_INODE_SUCCESS)
         {
           if (anonymous)
-            pthread_rwlock_unlock(&pentry->state_lock);
+             {
+               pthread_rwlock_unlock(&pentry->state_lock);
+             }
           res_READ4.status = nfs4_Errno(cache_status);
           return res_READ4.status;
         }
@@ -348,7 +350,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       {
         res_READ4.status = NFS4ERR_DQUOT;
         if (anonymous)
-          pthread_rwlock_unlock(&pentry->state_lock);
+          {
+            pthread_rwlock_unlock(&pentry->state_lock);
+          }
         return res_READ4.status;
       }
 
@@ -371,7 +375,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
 
       res_READ4.status = NFS4_OK;
       if (anonymous)
-        pthread_rwlock_unlock(&pentry->state_lock);
+        {
+          pthread_rwlock_unlock(&pentry->state_lock);
+        }
       return res_READ4.status;
     }
 
@@ -401,7 +407,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
         {
           res_READ4.status = NFS4ERR_SERVERFAULT;
           if (anonymous)
-            pthread_rwlock_unlock(&pentry->state_lock);
+            {
+              pthread_rwlock_unlock(&pentry->state_lock);
+            }
           return res_READ4.status;
         }
 
@@ -412,10 +420,12 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
     {
       res_READ4.status = NFS4ERR_SERVERFAULT;
       if (anonymous)
-        pthread_rwlock_unlock(&pentry->state_lock);
+        {
+          pthread_rwlock_unlock(&pentry->state_lock);
+        }
       return res_READ4.status;
     }
-  memset((char *)bufferdata, 0, size);
+  memset(bufferdata, 0, size);
 
   if(cache_inode_rdwr(pentry,
                       CACHE_INODE_READ,
@@ -431,7 +441,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
     {
       res_READ4.status = nfs4_Errno(cache_status);
       if (anonymous)
-        pthread_rwlock_unlock(&pentry->state_lock);
+        {
+          pthread_rwlock_unlock(&pentry->state_lock);
+        }
       return res_READ4.status;
     }
 
@@ -447,7 +459,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   /* Say it is ok */
   res_READ4.status = NFS4_OK;
   if (anonymous)
-    pthread_rwlock_unlock(&pentry->state_lock);
+    {
+      pthread_rwlock_unlock(&pentry->state_lock);
+    }
 
   return res_READ4.status;
 }                               /* nfs4_op_read */

@@ -506,17 +506,18 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                     {
                       AttrProvided = FALSE;
                     }
+                  pthread_rwlock_wrlock(&pentry_lookup->state_lock);
                   status4 = nfs4_chk_shrdny(op, data, pentry_lookup,
                       read_access, write_access, &openflags, AttrProvided,
                       &sattr, resp);
                   if (status4 != NFS4_OK)
                     {
+                      pthread_rwlock_unlock(&pentry_lookup->state_lock);
                       cause2 = " cache_inode_access";
                       res_OPEN4.status = status4;
                       goto out;
                     }
 
-                  pthread_rwlock_wrlock(&pentry_lookup->state_lock);
                   status4 = nfs4_do_open(op, data, pentry_lookup, pentry_parent,
                       powner, &pfile_state, &filename, openflags, &text);
                   pthread_rwlock_unlock(&pentry_lookup->state_lock);

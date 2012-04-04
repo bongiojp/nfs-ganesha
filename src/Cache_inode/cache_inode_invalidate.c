@@ -24,14 +24,8 @@
  */
 
 /**
- * \file    cache_inode_invalidate.c
- * \author  $Author: leibovic $
- * \date    $Date: 2006/02/16 08:22:29 $
- * \version $Revision: 1.13 $
- * \brief   Renews an entry in the cache inode.
- *
- * cache_inode_invalidate.c : Renews an entry in the cache inode.
- *
+ * @file    cache_inode_invalidate.c
+ * @brief   Invalidate the cached data on a cache entry
  *
  */
 #ifdef HAVE_CONFIG_H
