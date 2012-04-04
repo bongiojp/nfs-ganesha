@@ -624,7 +624,7 @@ int nfs4_check_special_stateid(cache_entry_t *pentry,
     }
 
   /* Acquire lock to enter critical section on this entry */
-  P_r(&pentry->lock);
+/* this routine is called with the lock held */
 
   /* Iterate through file's state to look for conflicts */
   glist_for_each(glist, &pentry->object.file.state_list)
@@ -695,6 +695,5 @@ int nfs4_check_special_stateid(cache_entry_t *pentry,
   // TODO FSF: need to check against existing locks
 
  ssid_out:  // Use this exit point if the lock was already acquired.
-  V_r(&pentry->lock);
   return rc;
 }
