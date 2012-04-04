@@ -468,6 +468,8 @@ HashTable_SetLatched(struct hash_table *ht,
      /* New node for the case of non-overwrite */
      struct rbt_node *mutator = NULL;
 
+     assert(key->pdata != 0x7feffdfb0);
+
      /* In the case of collision */
      if (latch->locator) {
           if (!overwrite) {
@@ -583,12 +585,6 @@ HashTable_DeleteLatched(struct hash_table *ht,
      HashTable_ReleaseLatched(ht, latch);
      return HASHTABLE_SUCCESS;
 } /* HashTable_DeleteLatched */
-
-void HashTable_Release(hash_table_t *ht, void *htoken)
-{
-  if (htoken)
-      V_r((rw_lock_t *) htoken);
-}
 
 /**
  * @brief Remove and free all (key,val) couples from the hash store

@@ -478,7 +478,10 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      typespec = TRUE;
 
      /* Adding the entry in the cache */
-     value.pdata = (caddr_t) entry;
+     key.pdata = entry->fh_desc.start;
+     key.len = entry->fh_desc.len;
+
+     value.pdata = entry;
      value.len = sizeof(cache_entry_t);
 
      if((rc =
