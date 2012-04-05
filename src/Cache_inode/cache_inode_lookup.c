@@ -111,6 +111,8 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
 
      memset(&dirent_key, 0, sizeof(dirent_key));
      memset(&new_entry_fsdata, 0, sizeof(new_entry_fsdata));
+     memset(&object_handle, 0, sizeof(object_handle));
+     memset(&object_attributes, 0, sizeof(object_attributes));
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *pstatus = CACHE_INODE_SUCCESS;

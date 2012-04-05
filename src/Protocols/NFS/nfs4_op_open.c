@@ -530,8 +530,8 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
                   res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 3;
                   if((res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_val =
-                      (uint32_t *) Mem_Alloc(res_OPEN4.OPEN4res_u.resok4.attrset.
-                                             bitmap4_len * sizeof(uint32_t))) == NULL)
+                      Mem_Alloc(res_OPEN4.OPEN4res_u.resok4.attrset.
+                                bitmap4_len * sizeof(uint32_t))) == NULL)
                     {
                       res_OPEN4.status = NFS4ERR_RESOURCE;
                       res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 0;
@@ -539,6 +539,10 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                       goto out;
                     }
 
+                  memset(res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_val,
+                         0,
+                         res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len
+                         * sizeof(uint32_t));
                   res_OPEN4.OPEN4res_u.resok4.cinfo.after
                        = cache_inode_get_changeid4(pentry_parent);
                   res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = FALSE;
@@ -999,8 +1003,8 @@ out_prev:
 
   res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 3;
   if((res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_val =
-      (uint32_t *) Mem_Alloc(res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len *
-                             sizeof(uint32_t))) == NULL)
+      Mem_Alloc(res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len *
+                sizeof(uint32_t))) == NULL)
     {
       res_OPEN4.status = NFS4ERR_SERVERFAULT;
       res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 0;
@@ -1008,6 +1012,10 @@ out_prev:
       goto out;
     }
 
+  memset(res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_val,
+         0,
+         res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len
+         * sizeof(uint32_t));
   res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_val[0]
     = 0; /* No Attributes set */
   res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_val[1]

@@ -84,10 +84,12 @@ int nfs4_op_setattr(struct nfs_argop4 *op,
 {
   fsal_attrib_list_t sattr;
   fsal_attrib_list_t parent_attr;
-  cache_inode_status_t cache_status;
+  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   int rc = 0;
   char __attribute__ ((__unused__)) funcname[] = "nfs4_op_setattr";
 
+  memset(&sattr, 0, sizeof(sattr));
+  memset(&parent_attr, 0, sizeof(parent_attr));
   resp->resop = NFS4_OP_SETATTR;
   res_SETATTR4.status = NFS4_OK;
 

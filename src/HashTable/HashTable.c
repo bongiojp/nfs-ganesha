@@ -174,13 +174,13 @@ static inline hash_error_t
 compute(struct hash_table *ht, struct hash_buff *key,
         uint32_t *index, uint64_t *rbt_hash)
 {
-
      /* Compute the partition index and red-black tree hash */
      if (ht->parameter.hash_func_both) {
           if (!(*(ht->parameter.hash_func_both))(&ht->parameter,
                                                  key, index,
-                                                 rbt_hash))
+                                                 rbt_hash)) {
                return HASHTABLE_ERROR_INVALID_ARGUMENT;
+          }
      } else {
           *index = (*(ht->parameter.hash_func_key))(&ht->parameter,
                                                     key);
@@ -467,8 +467,6 @@ HashTable_SetLatched(struct hash_table *ht,
      struct rbt_node *locator = NULL;
      /* New node for the case of non-overwrite */
      struct rbt_node *mutator = NULL;
-
-     assert(key->pdata != 0x7feffdfb0);
 
      /* In the case of collision */
      if (latch->locator) {
