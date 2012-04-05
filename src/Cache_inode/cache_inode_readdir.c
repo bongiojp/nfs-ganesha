@@ -73,7 +73,6 @@
  * @return the same as *status
  *
  */
-
 cache_inode_status_t
 cache_inode_invalidate_all_cached_dirent(cache_entry_t *entry,
                                          cache_inode_client_t *client,
@@ -664,6 +663,7 @@ cache_inode_status_t cache_inode_readdir_populate(
  * @retval CACHE_INODE_LRU_ERROR if allocation error occured when
  *                               validating the entry
  */
+<<<<<<< HEAD
 cache_inode_status_t
 cache_inode_readdir(cache_entry_t * dir_entry,
                     uint64_t cookie,
@@ -674,6 +674,21 @@ cache_inode_readdir(cache_entry_t * dir_entry,
                     cache_inode_readdir_cb_t cb,
                     void *cb_opaque,
                     cache_inode_status_t *status)
+=======
+cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
+                                         cache_inode_policy_t policy,
+                                         uint64_t cookie,
+                                         unsigned int nbwanted,
+                                         unsigned long *pnbfound,
+                                         uint64_t *pend_cookie,
+                                         cache_inode_endofdir_t *peod_met,
+                                         cache_inode_dir_entry_t **dirent_array,
+                                         hash_table_t *ht,
+                                         int *unlock,
+                                         cache_inode_client_t *pclient,
+                                         fsal_op_context_t *pcontext,
+                                         cache_inode_status_t *pstatus)
+>>>>>>> 9ef3662... Fix the use of int as unsigned long in readdir.
 {
      /* Key for looking up the directory entry corresponding to the
         supplied cookie. */
