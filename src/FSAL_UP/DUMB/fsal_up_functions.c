@@ -41,8 +41,6 @@
 #include "fsal_up.h"
 #include "sal_functions.h"
 
-static cache_inode_policy_t cachepol = CACHE_INODE_POLICY_ATTRS_ONLY_WRITE_THROUGH;
-
 /* Set the FSAL UP functions that will be used to process events.
  * This is called DUMB_FSAL_UP because it only invalidates cache inode
  * entires ... inode entries are not updated or refreshed through this
@@ -105,7 +103,7 @@ fsal_status_t dumb_fsal_up_lock_grant(fsal_up_event_data_t * pevdata)
 
   LogDebug(COMPONENT_FSAL_UP,
            "FSAL_UP_DUMB: calling cache_inode_get()");
-  pentry = cache_inode_get(&pevdata->event_context.fsal_data, cachepol,
+  pentry = cache_inode_get(&pevdata->event_context.fsal_data,
                            &attr, NULL, NULL,
                            &cache_status);
   if(pentry == NULL)
@@ -142,7 +140,7 @@ fsal_status_t dumb_fsal_up_lock_avail(fsal_up_event_data_t * pevdata)
 
   LogDebug(COMPONENT_FSAL_UP,
            "FSAL_UP_DUMB: calling cache_inode_get()");
-  pentry = cache_inode_get(&pevdata->event_context.fsal_data, cachepol,
+  pentry = cache_inode_get(&pevdata->event_context.fsal_data,
                            &attr, NULL, NULL,
                            &cache_status);
   if(pentry == NULL)

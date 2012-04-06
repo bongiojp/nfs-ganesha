@@ -694,7 +694,6 @@ void nfs_set_param_default()
   nfs_param.extern_param.snmp_adm.export_buddy_stats = TRUE;
 #endif
   nfs_param.extern_param.snmp_adm.export_nfs_calls_detail = FALSE;
-  nfs_param.extern_param.snmp_adm.export_cache_inode_calls_detail = FALSE;
   nfs_param.extern_param.snmp_adm.export_fsal_calls_detail = FALSE;
 #endif
 }                               /* nfs_set_param_default */
