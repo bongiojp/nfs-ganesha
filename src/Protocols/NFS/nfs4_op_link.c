@@ -235,7 +235,6 @@ int nfs4_op_link(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   if(cache_inode_link(file_pentry,
                       dir_pentry,
                       &newname,
-                      data->pexport->cache_inode_policy,
                       &attr,
                       data->pclient,
                       data->pcontext, &cache_status) != CACHE_INODE_SUCCESS)

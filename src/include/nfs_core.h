@@ -51,7 +51,6 @@
 #endif
 #include "cache_inode.h"
 #include "sal_data.h"
-#include "cache_content.h"
 #include "nfs_stat.h"
 #include "external_tools.h"
 
@@ -238,9 +237,7 @@ typedef struct nfs_cache_layer_parameter__
 {
   cache_inode_parameter_t cache_param;
   cache_inode_client_parameter_t cache_inode_client_param;
-  cache_content_client_parameter_t cache_content_client_param;
   cache_inode_gc_policy_t gcpol;
-  cache_content_gc_policy_t dcgcpol;
 } nfs_cache_layers_parameter_t;
 
 typedef enum protos
@@ -494,7 +491,6 @@ typedef struct nfs_worker_data__
   struct prealloc_pool ip_stats_pool;
   struct prealloc_pool clientid_pool;
   cache_inode_client_t cache_inode_client;
-  cache_content_client_t cache_content_client;
   hash_table_t *ht_ip_stats;
   pthread_mutex_t request_pool_mutex;
   nfs_tcb_t wcb; /* Worker control block */
@@ -543,7 +539,6 @@ typedef struct fridge_entry__
  * group together all of NFS-Ganesha's statistics
  */
 typedef struct ganesha_stats__ {
-    cache_inode_stat_t      global_cache_inode;
     nfs_worker_stat_t       global_worker_stat;
     hash_stat_t             cache_inode_hstat;
     hash_stat_t             uid_map;

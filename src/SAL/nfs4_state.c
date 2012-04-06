@@ -148,8 +148,6 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
                "Can't allocate a new file state from cache pool");
 
       /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
-
       *pstatus = STATE_MALLOC_ERROR;
       return *pstatus;
     }
@@ -168,8 +166,6 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
                    pentry);
 
           /* stat */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
-
           ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
           *pstatus = STATE_STATE_CONFLICT;
@@ -185,9 +181,6 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
     {
       LogDebug(COMPONENT_STATE,
                "Can't create a new state id for the pentry %p (E)", pentry);
-
-      /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
 
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
@@ -214,9 +207,6 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
       LogDebug(COMPONENT_STATE,
                "Can't create a new state id %s for the pentry %p (F)",
                debug_str, pentry);
-
-      /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_ADD_STATE] += 1;
 
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
@@ -327,9 +317,6 @@ state_status_t state_del(state_t              * pstate,
   /* Remove the entry from the HashTable */
   if(!nfs4_State_Del(pstate->stateid_other))
     {
-      /* stat */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_DEL_STATE] += 1;
-
       LogDebug(COMPONENT_STATE, "Could not delete state %s", debug_str);
 
       *pstatus = STATE_STATE_ERROR;

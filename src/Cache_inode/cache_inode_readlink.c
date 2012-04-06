@@ -88,64 +88,43 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t *entry,
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
 
-     /* stats */
-     (client->stat.nb_call_total)++;
-     (client->stat.func_stats.nb_call[CACHE_INODE_READLINK])++;
-
      if (entry->type != SYMBOLIC_LINK) {
           *status = CACHE_INODE_BAD_TYPE;
-          client->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
           return *status;
      }
 
-     if (CACHE_INODE_KEEP_CONTENT(entry->policy)) {
-          assert(entry->object.symlink);
-          pthread_rwlock_rdlock(&entry->content_lock);
+     assert(entry->object.symlink);
+     pthread_rwlock_rdlock(&entry->content_lock);
+     if (!(entry->flags & CACHE_INODE_TRUST_CONTENT)) {
+          /* Our data are stale.  Drop the lock, get a
+             write-lock, load in new data, and copy it out to
+             the caller. */
+          pthread_rwlock_unlock(&entry->content_lock);
+          pthread_rwlock_wrlock(&entry->content_lock);
+          /* Make sure nobody updated the content while we were
+             waiting. */
           if (!(entry->flags & CACHE_INODE_TRUST_CONTENT)) {
-               /* Our data are stale.  Drop the lock, get a
-                  write-lock, load in new data, and copy it out to
-                  the caller. */
-               pthread_rwlock_unlock(&entry->content_lock);
-               pthread_rwlock_wrlock(&entry->content_lock);
-               /* Make sure nobody updated the content while we were
-                  waiting. */
-               if (!(entry->flags & CACHE_INODE_TRUST_CONTENT)) {
-                    fsal_status
-                         = FSAL_readlink(&entry->handle,
-                                         context,
-                                         &entry->object.symlink->content,
-                                         NULL);
-                    if (!(FSAL_IS_ERROR(fsal_status))) {
-                         atomic_set_int_bits(&entry->flags,
-                                             CACHE_INODE_TRUST_CONTENT);
-                    }
+               fsal_status
+                    = FSAL_readlink(&entry->handle,
+                                    context,
+                                    &entry->object.symlink->content,
+                                    NULL);
+               if (!(FSAL_IS_ERROR(fsal_status))) {
+                    atomic_set_int_bits(&entry->flags,
+                                        CACHE_INODE_TRUST_CONTENT);
                }
           }
-          if (!(FSAL_IS_ERROR(fsal_status))) {
-               fsal_status
-                    = FSAL_pathcpy(link_content,
-                                   &(entry->object.symlink->content));
-          }
-          pthread_rwlock_unlock(&entry->content_lock);
-     } else {
-          /* Content is not cached, call FSAL_readlink here */
-          fsal_status
-               = FSAL_readlink(&entry->handle,
-                               context,
-                               link_content,
-                               NULL);
      }
+     if (!(FSAL_IS_ERROR(fsal_status))) {
+          fsal_status
+               = FSAL_pathcpy(link_content,
+                              &(entry->object.symlink->content));
+     }
+     pthread_rwlock_unlock(&entry->content_lock);
 
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
-          client->stat.func_stats.nb_err_unrecover[CACHE_INODE_READLINK] += 1;
           return *status;
-     }
-
-     if(*status != CACHE_INODE_SUCCESS) {
-          client->stat.func_stats.nb_err_retryable[CACHE_INODE_READLINK] += 1;
-     } else {
-          client->stat.func_stats.nb_success[CACHE_INODE_READLINK] += 1;
      }
 
      return *status;

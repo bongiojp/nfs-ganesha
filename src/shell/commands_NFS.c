@@ -145,7 +145,6 @@
 #include "rpc.h"
 #include "fsal.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 #include "commands.h"
 #include "stuff_alloc.h"
 #include "Getopt.h"

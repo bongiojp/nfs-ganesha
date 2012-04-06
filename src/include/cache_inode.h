@@ -25,12 +25,9 @@
 
 /**
  * \file    cache_inode.h
- * \author  $Author: deniel $
- * \date    $Date: 2006/01/24 11:43:15 $
- * \version $Revision: 1.95 $
  * \brief   Management of the cached inode layer.
  *
- * cache_inode.h : Management of the cached inode layer
+ * Management of the cached inode layer
  *
  *
  */
@@ -75,78 +72,12 @@ extern hash_table_t *fh_to_cache_entry_ht; /*< Global hash table for
 typedef struct cache_entry_t        cache_entry_t;
 typedef struct cache_inode_client_t cache_inode_client_t;
 
-#define FILEHANDLE_MAX_LEN_V2 32 /*< Maximum size of NFSv2 handle */
-#define FILEHANDLE_MAX_LEN_V3 64 /*< Maximum size of NFSv3 handle */
-#define FILEHANDLE_MAX_LEN_V4 128 /*< Maximum size of NFSv4 handle */
+static const size_t FILEHANDLE_MAX_LEN_V2 = 32; /*< Maximum size of NFSv2 handle */
+static const size_t FILEHANDLE_MAX_LEN_V3 = 64; /*< Maximum size of NFSv3 handle */
+static const size_t FILEHANDLE_MAX_LEN_V4 = 128; /*< Maximum size of NFSv4 handle */
 
-#define CACHE_INODE_UNSTABLE_BUFFERSIZE \
-  100*1024*1024 /*< Size for Ganesha unstable write buffers*/
-
-/**
- * A macro returning true if the given policy would indicate storing
- * content (such as symlink content).
- */
-
-#define CACHE_INODE_KEEP_CONTENT( __policy ) \
-  ((__policy == CACHE_INODE_POLICY_FULL_WRITE_THROUGH) || \
-   (__policy == CACHE_INODE_POLICY_FULL_WRITE_BACK ) ) ? 1 : 0
-
-#define CONF_LABEL_CACHE_INODE_GCPOL  "CacheInode_GC_Policy"
-#define CONF_LABEL_CACHE_INODE_CLIENT "CacheInode_Client"
-#define CONF_LABEL_CACHE_INODE_HASH   "CacheInode_Hash"
-
-#define CACHE_INODE_DUMP_LEN 1024
-
-extern char *cache_inode_function_names[];
-#define CACHE_INODE_ACCESS               0
-#define CACHE_INODE_GETATTR              1
-#define CACHE_INODE_MKDIR                2
-#define CACHE_INODE_REMOVE               3
-#define CACHE_INODE_STATFS               4
-#define CACHE_INODE_LINK                 5
-#define CACHE_INODE_READDIR              6
-#define CACHE_INODE_RENAME               7
-#define CACHE_INODE_SYMLINK              8
-#define CACHE_INODE_CREATE               9
-#define CACHE_INODE_LOOKUP              10
-#define CACHE_INODE_LOOKUPP             11
-#define CACHE_INODE_READLINK            12
-#define CACHE_INODE_TRUNCATE            13
-#define CACHE_INODE_GET                 14
-#define CACHE_INODE_RELEASE             15
-#define CACHE_INODE_SETATTR             16
-#define CACHE_INODE_NEW_ENTRY           17
-#define CACHE_INODE_READ_DATA           18
-#define CACHE_INODE_WRITE_DATA          19
-#define CACHE_INODE_ADD_DATA_CACHE      20
-#define CACHE_INODE_RELEASE_DATA_CACHE  21
-#define CACHE_INODE_RENEW_ENTRY         22
-#define CACHE_INODE_COMMIT              23
-#define CACHE_INODE_ADD_STATE           24
-#define CACHE_INODE_DEL_STATE           25
-#define CACHE_INODE_GET_STATE           26
-#define CACHE_INODE_SET_STATE           27
-
-#define CACHE_INODE_NB_COMMAND      28
-
-/**
- * Caching policies.
- */
-
-typedef enum cache_inode_policy__
-{
-  CACHE_INODE_POLICY_FULL_WRITE_THROUGH = 0, /*< Caches everything (attrs,
-                                               directory content and
-                                               symlink content  */
-  CACHE_INODE_POLICY_FULL_WRITE_BACK = 1, /*< Caches everything, but with an
-                                              asynchronous logic behind */
-  CACHE_INODE_POLICY_ATTRS_ONLY_WRITE_THROUGH = 2, /*< Caches only attributes,
-                                                       no directory content
-                                                       nor symlink content */
-  CACHE_INODE_POLICY_NO_CACHE = 3, /*< Nothing is cached at all */
-  CACHE_INODE_JOKER_POLICY = 4  /*< This policy is used when policy is unknown
-                                    or doesn't matter */
-} cache_inode_policy_t ;
+static const size_t CACHE_INODE_UNSTABLE_BUFFERSIZE =
+  100*1024*1024; /*< Size for Ganesha unstable write buffers*/
 
 /**
  * Constants to determine whether inode data, such as
@@ -193,27 +124,6 @@ typedef struct cache_inode_lru__
                      we can lock the deque and decrement the correct
                      counter when moving or deleting the entry. */
 } cache_inode_lru_t;
-
-/**
- * Structure to track number of calls to and number of errors from
- * cache_inode functions.
- */
-
-typedef struct cache_inode_stat__
-{
-  struct func_inode_stats__
-  {
-    uint32_t nb_call[CACHE_INODE_NB_COMMAND]; /*< Total number of calls per
-                                                  functions */
-    uint32_t nb_success[CACHE_INODE_NB_COMMAND]; /*< Succesfull calls per
-                                                     function  */
-    uint32_t nb_err_retryable[CACHE_INODE_NB_COMMAND]; /*< Failed/retryable
-                                                         calls per function */
-    uint32_t nb_err_unrecover[CACHE_INODE_NB_COMMAND]; /*< Failed/unrecoverable
-                                                         calls per function */
-  } func_stats;
-  uint32_t nb_call_total; /*< Total number of calls */
-} cache_inode_stat_t;
 
 /**
  * Structure to hold hash table paramaters
@@ -398,12 +308,6 @@ typedef struct cache_inode_dir_entry__
  * through the functions atomic_set_it_bits and
  * atomic_clear_int_bits.
  *
- * The policy field is unprotected.
- *
- * @todo ACE: When is the policy field expected to change?  Does it
- * last the lifetime of the cache entry?  Even if it can change,
- * setting or equality testing a word is atomic.
- *
  * The change_time and attr_time fields are unprotected and must only
  * be used for simple comparisons or servicing requests returning
  * change_info4.
@@ -424,7 +328,6 @@ struct cache_entry_t
                           can be easily stashed somewhere. */
   cache_inode_file_type_t type; /*< The type of the entry */
   uint32_t flags; /*< Flags for this entry */
-  cache_inode_policy_t policy; /*< The current cache policy for this entry */
   time_t change_time; /*< The time of the last operation ganesha knows
                           about.  We can ue this for change_info4, but
                           atomic MUST BE SET TO FALSE.  Don't use it
@@ -487,10 +390,10 @@ typedef struct cache_inode_fsal_data__
   struct fsal_handle_desc fh_desc;              /**< FSAL handle descriptor  */
 } cache_inode_fsal_data_t;
 
-#define SMALL_CLIENT_INDEX 0x20000000 /*< Index below which a thread
-                                          is a request worker thread */
-#define NLM_THREAD_INDEX 0x40000000 /*< Index at or above which a
-                                        thread is an NLM worker. */
+static const int SMALL_CLIENT_INDEX = 0x20000000; /*< Index below which a thread
+                                               is a request worker thread */
+static const int NLM_THREAD_INDEX = 0x40000000; /*< Index at or above which a
+                                             thread is an NLM worker. */
 
 /**
  * Cache_inode resources to be used by a given worker thread.
@@ -516,7 +419,6 @@ struct cache_inode_client_t
   uint32_t nb_pre_state_v4; /*< Number of preallocated NFSv4 File States */
   fsal_attrib_mask_t attrmask; /*< Mask of the supported attributes
                                    for the underlying FSAL */
-  cache_inode_stat_t stat;/*< Cache inode statistics for this client */
   cache_inode_expire_type_t
     expire_type_attr; /*< Cache inode expiration type for attributes */
   cache_inode_expire_type_t
@@ -568,32 +470,49 @@ typedef union cache_inode_create_arg__
 /*
  * Flags
  */
-#define CACHE_INODE_FLAG_NONE 0x00 /*< The null flag */
-#define CACHE_INODE_FLAG_CREATE 0x01 /*< Indicate that this inode
-                                         newly created, rather than
-                                         just being loaded into the
-                                         cache */
-#define CACHE_INODE_FLAG_LOCK 0x02 /*< Instruct the called function to
-                                       take a lock on the entry */
-#define CACHE_INODE_FLAG_ATTR_HOLD 0x04 /*< For a function called with
-                                            the attribute lock held,
-                                            do not release the
-                                            attribute lock before
-                                            returning */
-#define CACHE_INODE_FLAG_CONTENT_HOLD 0x08 /*< For a function called
-                                               with the content lock
-                                               held, do not release
-                                               the content lock before
-                                               returning */
-#define CACHE_INODE_FLAG_ATTR_HAVE 0x10 /*< For a function, indicates
-                                            that the attribute lock is
-                                            held */
-#define CACHE_INODE_FLAG_CONTENT_HAVE 0x20 /*< For a function, indicates
-                                               that the content lock is
-                                               held */
-#define CACHE_INODE_FLAG_EXREF 0x40 /*< Take an additional reference */
-#define CACHE_INODE_FLAG_REALLYCLOSE 0x80 /*< Close a file even with
-                                              caching enabled */
+static const uint32_t CACHE_INODE_FLAG_NONE = 0x00; /*< The null flag */
+static const uint32_t CACHE_INODE_FLAG_CREATE = 0x01; /*< Indicate that this
+                                                   inode newly
+                                                   created, rather
+                                                   than just being
+                                                   loaded into the
+                                                   cache */
+static const uint32_t CACHE_INODE_FLAG_LOCK = 0x02; /*< Instruct the called
+                                                 function to take a
+                                                 lock on the entry */
+static const uint32_t CACHE_INODE_FLAG_ATTR_HOLD = 0x04; /*< For a function
+                                                      called with the
+                                                      attribute lock
+                                                      held, do not
+                                                      release the
+                                                      attribute lock
+                                                      before
+                                                      returning */
+static const uint32_t CACHE_INODE_FLAG_CONTENT_HOLD = 0x08; /*< For a
+                                                         function
+                                                         called with
+                                                         the content
+                                                         lock held, do
+                                                         not release
+                                                         the content
+                                                         lock before
+                                                         returning */
+static const uint32_t CACHE_INODE_FLAG_ATTR_HAVE = 0x10; /*< For a function,
+                                                      indicates that
+                                                      the attribute
+                                                      lock is held */
+static const uint32_t CACHE_INODE_FLAG_CONTENT_HAVE = 0x20; /*< For a
+                                                         function,
+                                                         indicates
+                                                         that the
+                                                         content lock
+                                                         is held */
+static const uint32_t CACHE_INODE_FLAG_EXREF = 0x40; /*< Take an additional
+                                                  reference */
+static const uint32_t CACHE_INODE_FLAG_REALLYCLOSE = 0x80; /*< Close a file
+                                                        even with
+                                                        caching
+                                                        enabled */
 
 /*
  * Prototypes for the functions
@@ -663,15 +582,6 @@ typedef bool_t(*cache_inode_readdir_cb_t)(
 
 const char *cache_inode_err_str(cache_inode_status_t err);
 
-#define inc_func_call(pclient, x)                       \
-    pclient->stat.func_stats.nb_call[x] += 1
-#define inc_func_success(pclient, x)                    \
-    pclient->stat.func_stats.nb_success[x] += 1
-#define inc_func_err_retryable(pclient, x)              \
-    pclient->stat.func_stats.nb_err_retryable[x] += 1
-#define inc_func_err_unrecover(pclient, x)              \
-    pclient->stat.func_stats.nb_err_unrecover[x] += 1
-
 cache_inode_status_t cache_inode_clean_entry(cache_entry_t *pentry);
 int cache_inode_compare_key_fsal(hash_buffer_t *buff1, hash_buffer_t *buff2);
 void cache_inode_release_symlink(cache_entry_t * pentry,
@@ -686,7 +596,6 @@ int cache_inode_client_init(cache_inode_client_t *client,
                             struct nfs_worker_data__ *pworker_data);
 
 cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * fsdata,
-                               cache_inode_policy_t policy,
                                fsal_attrib_list_t * attr,
                                cache_inode_client_t * pclient,
                                fsal_op_context_t * context,
@@ -732,7 +641,6 @@ cache_inode_status_t cache_inode_close(cache_entry_t *entry,
 cache_entry_t *cache_inode_create(cache_entry_t *pentry_parent,
                                   fsal_name_t *pname,
                                   cache_inode_file_type_t type,
-                                  cache_inode_policy_t policy,
                                   fsal_accessmode_t mode,
                                   cache_inode_create_arg_t *pcreate_arg,
                                   fsal_attrib_list_t *pattr,
@@ -748,13 +656,11 @@ cache_inode_status_t cache_inode_getattr(cache_entry_t *pentry,
 
 cache_entry_t *cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                                        fsal_name_t *pname,
-                                       cache_inode_policy_t policy,
                                        cache_inode_client_t *pclient,
                                        fsal_op_context_t *pcontext,
                                        cache_inode_status_t *pstatus);
 cache_entry_t *cache_inode_lookup(cache_entry_t *pentry_parent,
                                   fsal_name_t *pname,
-                                  cache_inode_policy_t policy,
                                   fsal_attrib_list_t *pattr,
                                   cache_inode_client_t *pclient,
                                   fsal_op_context_t *pcontext,
@@ -779,7 +685,6 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t *pentry,
 cache_inode_status_t cache_inode_link(cache_entry_t *pentry_src,
                                       cache_entry_t *pentry_dir_dest,
                                       fsal_name_t *plink_name,
-                                      cache_inode_policy_t policy,
                                       fsal_attrib_list_t *pattr,
                                       cache_inode_client_t *pclient,
                                       fsal_op_context_t *pcontext,
@@ -858,7 +763,6 @@ cache_inode_status_t cache_inode_error_convert(fsal_status_t fsal_status);
 cache_entry_t *cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                                      fsal_attrib_list_t *attr,
                                      cache_inode_file_type_t type,
-                                     cache_inode_policy_t policy,
                                      cache_inode_create_arg_t *create_arg,
                                      cache_inode_client_t *client,
                                      fsal_op_context_t *context,
@@ -887,10 +791,39 @@ cache_inode_status_t cache_inode_rdwr(cache_entry_t *entry,
                                       cache_inode_stability_t stable,
                                       cache_inode_status_t *status);
 
-#define cache_inode_read( a, b, c, d, e, f, g, h, i, j, k ) \
-     cache_inode_rdwr( a, CACHE_INODE_READ, b, c, d, e, f, g, h, i, j, k )
-#define cache_inode_write( a, b, c, d, e, f, g, h, i, j, k ) \
-     cache_inode_rdwr( a, CACHE_INODE_WRITE, b, c, d, e, f, g, h, i, j. k )
+static inline cache_inode_status_t
+cache_inode_read(cache_entry_t *entry,
+                 uint64_t offset,
+                 size_t io_size,
+                 size_t *bytes_moved,
+                 void *buffer,
+                 bool_t *eof,
+                 cache_inode_client_t *client,
+                 fsal_op_context_t *context,
+                 cache_inode_stability_t stable,
+                 cache_inode_status_t *status)
+{
+  return cache_inode_rdwr(entry, CACHE_INODE_READ, offset, io_size,
+                          bytes_moved, buffer, eof, client, context,
+                          stable, status);
+}
+
+static inline cache_inode_status_t
+cache_inode_write(cache_entry_t *entry,
+                  uint64_t offset,
+                  size_t io_size,
+                  size_t *bytes_moved,
+                  void *buffer,
+                  bool_t *eof,
+                  cache_inode_client_t *client,
+                  fsal_op_context_t *context,
+                  cache_inode_stability_t stable,
+                  cache_inode_status_t *status)
+{
+  return cache_inode_rdwr(entry, CACHE_INODE_WRITE, offset, io_size,
+                          bytes_moved, buffer, eof, client, context,
+                          stable, status);
+}
 
 cache_inode_status_t cache_inode_commit(cache_entry_t *entry,
                                         uint64_t offset,
@@ -902,13 +835,11 @@ cache_inode_status_t cache_inode_commit(cache_entry_t *entry,
 
 cache_inode_status_t cache_inode_readdir_populate(
      cache_entry_t *pentry_dir,
-     cache_inode_policy_t policy,
      cache_inode_client_t *pclient,
      fsal_op_context_t *pcontext,
      cache_inode_status_t *pstatus);
 cache_inode_status_t cache_inode_readdir(
      cache_entry_t * dir_entry,
-     cache_inode_policy_t policy,
      uint64_t cookie,
      unsigned int nbwanted,
      unsigned int *nbfound,
@@ -927,7 +858,6 @@ cache_inode_status_t cache_inode_add_cached_dirent(
      fsal_op_context_t *pcontext,
      cache_inode_status_t *pstatus);
 cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t *pfsdata,
-                                     cache_inode_policy_t policy,
                                      cache_inode_client_t *pclient,
                                      fsal_op_context_t *pcontext,
                                      cache_inode_status_t *pstatus);
@@ -1255,4 +1185,5 @@ atomic_set_hyper_bits(uint64_t *var,
 {
      __sync_fetch_and_or(var, bits);
 }
-#endif                          /*  _CACHE_INODE_H */
+
+#endif /*  _CACHE_INODE_H */

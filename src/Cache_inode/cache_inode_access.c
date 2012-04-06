@@ -91,10 +91,6 @@ cache_inode_access_sw(cache_entry_t *pentry,
      /* Set the return default to CACHE_INODE_SUCCESS */
      *pstatus = CACHE_INODE_SUCCESS;
 
-     /* stats */
-     pclient->stat.nb_call_total += 1;
-     inc_func_call(pclient, CACHE_INODE_ACCESS);
-
      /*
       * We do no explicit access test in FSAL for FSAL_F_OK: it is
       * considered that if an entry resides in the cache_inode, then a
@@ -142,7 +138,6 @@ cache_inode_access_sw(cache_entry_t *pentry,
 
           if(FSAL_IS_ERROR(fsal_status)) {
                *pstatus = cache_inode_error_convert(fsal_status);
-               inc_func_err_retryable(pclient, CACHE_INODE_ACCESS);
           } else {
                *pstatus = CACHE_INODE_SUCCESS;
           }

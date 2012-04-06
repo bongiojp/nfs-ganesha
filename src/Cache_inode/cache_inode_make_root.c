@@ -61,14 +61,13 @@
  *
  * Inserts the root of a FS in the cache. This function will be called at junction traversal.
  *
- * @param pfsdata [IN] FSAL data for the root. 
+ * @param pfsdata [IN] FSAL data for the root.
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
- * @param pcontext [IN] FSAL credentials. Unused here. 
+ * @param pcontext [IN] FSAL credentials. Unused here.
  * @param pstatus [OUT] returned status.
  */
 
 cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
-                                     cache_inode_policy_t policy,
                                      cache_inode_client_t * pclient,
                                      fsal_op_context_t * pcontext,
                                      cache_inode_status_t * pstatus)
@@ -86,7 +85,6 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
   if((pentry = cache_inode_new_entry(pfsdata,
                                      NULL,
                                      DIRECTORY,
-                                     policy,
                                      NULL,
                                      pclient,
                                      pcontext,

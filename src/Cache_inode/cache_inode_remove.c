@@ -169,10 +169,6 @@ cache_inode_status_t cache_inode_remove(cache_entry_t *pentry,
      cache_inode_status_t status;
      fsal_accessflags_t access_mask = 0;
 
-     /* stats */
-     (pclient->stat.nb_call_total)++;
-     (pclient->stat.func_stats.nb_call[CACHE_INODE_REMOVE])++;
-
      /* Get the attribute lock and check access */
      pthread_rwlock_wrlock(&pentry->attr_lock);
 
@@ -210,12 +206,6 @@ cache_inode_status_t cache_inode_remove(cache_entry_t *pentry,
 unlock_attr:
 
      pthread_rwlock_unlock(&pentry->attr_lock);
-
-     if (*pstatus == CACHE_INODE_SUCCESS) {
-          (pclient->stat.func_stats.nb_success[CACHE_INODE_REMOVE])++;
-     } else {
-          (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_REMOVE])++;
-     }
 
      return *pstatus;
 }                               /* cache_inode_remove */
@@ -263,7 +253,6 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
      if ((to_remove_entry
           = cache_inode_lookup_impl(entry,
                                     name,
-                                    CACHE_INODE_JOKER_POLICY,
                                     client,
                                     context,
                                     status)) == NULL) {
@@ -345,8 +334,5 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
 
 out:
 
-     if (*status != CACHE_INODE_SUCCESS) {
-          (client->stat.func_stats.nb_err_unrecover[CACHE_INODE_REMOVE])++;
-     }
      return *status;
 }

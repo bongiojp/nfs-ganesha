@@ -145,18 +145,12 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
 
-  /* stats */
-  pclient->stat.nb_call_total += 1;
-  pclient->stat.func_stats.nb_call[CACHE_INODE_RENAME] += 1;
-
   /* Are we working on directories ? */
   if((pentry_dirsrc->type != DIRECTORY)
      || (pentry_dirdest->type != DIRECTORY))
     {
       /* Bad type .... */
       *pstatus = CACHE_INODE_BAD_TYPE;
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
-
       return *pstatus;
     }
 
@@ -190,12 +184,9 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   if((pentry_lookup_src
       = cache_inode_lookup_impl(pentry_dirsrc,
                                 poldname,
-                                pentry_dirsrc->policy,
                                 pclient,
                                 pcontext,
                                 pstatus)) == NULL) {
-    /* Source object does not exist */
-    pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
     /* If FSAL FH is staled, then this was managed in cache_inode_lookup */
     if(*pstatus != CACHE_INODE_FSAL_ESTALE)
       *pstatus = CACHE_INODE_NOT_FOUND;
@@ -222,7 +213,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   if((pentry_lookup_dest
       = cache_inode_lookup_impl(pentry_dirdest,
                                 pnewname,
-                                CACHE_INODE_JOKER_POLICY,
                                 pclient,
                                 pcontext,
                                 pstatus)) != NULL)
@@ -243,7 +233,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
             }
 
           /* Return EISDIR */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
           *pstatus = CACHE_INODE_IS_A_DIRECTORY;
           return *pstatus;
         }
@@ -252,7 +241,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
          pentry_lookup_src->type == DIRECTORY)
         {
           /* Return ENOTDIR */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
           *pstatus = CACHE_INODE_NOT_A_DIRECTORY;
 
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
@@ -270,9 +258,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         {
           /* There is in fact only one file (may be one of the
              arguments is a hard link to the other) */
-
-          /* Return SUCCESS */
-          pclient->stat.func_stats.nb_success[CACHE_INODE_RENAME] += 1;
 
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
           if(pentry_dirsrc != pentry_dirdest)
@@ -295,7 +280,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
            != CACHE_INODE_SUCCESS))
         {
           /* The entry is a non-empty directory */
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
           *pstatus = CACHE_INODE_DIR_NOT_EMPTY;
 
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
@@ -361,7 +345,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   else
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
 
       pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
       if(pentry_dirsrc != pentry_dirdest)
@@ -388,7 +371,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         }
 
       *pstatus = CACHE_INODE_BAD_TYPE;
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
 
       pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
       if(pentry_dirsrc != pentry_dirdest)
@@ -408,7 +390,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
 
       pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
       if(pentry_dirsrc != pentry_dirdest)
@@ -445,7 +426,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
 
       if(status != CACHE_INODE_SUCCESS)
         {
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
           *pstatus = status;
 
           /* Unlock the pentry and exits */
@@ -469,7 +449,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                                              pclient, pcontext, pstatus);
       if(status != CACHE_INODE_SUCCESS)
         {
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
           *pstatus = status;
 
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
@@ -487,7 +466,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                                           pclient, &status)
          != CACHE_INODE_SUCCESS)
         {
-          pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_RENAME] += 1;
           *pstatus = status;
 
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
@@ -502,7 +480,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
 
   /* stat */
   if(*pstatus != CACHE_INODE_SUCCESS)
-    pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_RENAME] += 1;
 
   /* unlock entries */
 

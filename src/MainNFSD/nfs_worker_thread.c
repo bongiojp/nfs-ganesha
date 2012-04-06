@@ -61,7 +61,6 @@
 #include "rquota.h"
 #include "nfs_core.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 #include "nfs_exports.h"
 #include "nfs_creds.h"
 #include "nfs_proto_functions.h"
@@ -1969,18 +1968,6 @@ void *worker_thread(void *IndexArg)
       LogFatal(COMPONENT_DISPATCH, "Error initing MFSL");
     }
 #endif
-
-  /* Init the Cache content client for this worker */
-  if(cache_content_client_init(&pmydata->cache_content_client,
-                               nfs_param.cache_layers_param.cache_content_client_param,
-                               thr_name))
-    {
-      /* Failed init */
-      LogFatal(COMPONENT_DISPATCH,
-               "Cache Content client could not be initialized");
-    }
-  LogFullDebug(COMPONENT_DISPATCH,
-               "Cache Content client successfully initialized");
 
   LogInfo(COMPONENT_DISPATCH, "Worker successfully initialized");
 

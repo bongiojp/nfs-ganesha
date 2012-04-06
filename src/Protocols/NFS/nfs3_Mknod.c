@@ -248,13 +248,12 @@ int nfs3_Mknod(nfs_arg_t * parg,
        * Lookup node to see if it exists.  If so, use it.  Otherwise
        * create a new one.
        */
-      node_pentry = cache_inode_lookup( parent_pentry,
-                                        &file_name,
-                                        pexport->cache_inode_policy,
-                                        &attr,
-                                        pclient,
-                                        pcontext,
-                                        &cache_status_lookup);
+      node_pentry = cache_inode_lookup(parent_pentry,
+                                       &file_name,
+                                       &attr,
+                                       pclient,
+                                       pcontext,
+                                       &cache_status_lookup);
 
       if(cache_status_lookup == CACHE_INODE_NOT_FOUND)
         {
@@ -264,7 +263,6 @@ int nfs3_Mknod(nfs_arg_t * parg,
           if((node_pentry = cache_inode_create(parent_pentry,
                                                &file_name,
                                                nodetype,
-                                               pexport->cache_inode_policy,
                                                mode,
                                                &create_arg,
                                                &attr,

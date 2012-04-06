@@ -155,7 +155,6 @@ cache_content_status_t cache_content_crash_recover(unsigned short exportid,
                   fsal_data.fh_desc = inode_entry.fh_desc;
 
                   if((pentry = cache_inode_get(&fsal_data,
-                                               CACHE_INODE_JOKER_POLICY,
                                                &fsal_attr,
                                                pclient_inode,
                                                pcontext, &cache_inode_status)) == NULL)

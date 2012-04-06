@@ -95,10 +95,6 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
 
-     /* stats */
-     (client->stat.nb_call_total)++;
-     (client->stat.func_stats.nb_call[CACHE_INODE_LOOKUPP])++;
-
      /* Try the weakref to the parent first.  This increments the
         refcount. */
      parent = cache_inode_weakref_get(&entry->object.dir.parent,
@@ -125,9 +121,6 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
 
           if(FSAL_IS_ERROR(fsal_status)) {
                *status = cache_inode_error_convert(fsal_status);
-               /* stats */
-               (client->stat.func_stats
-                .nb_err_unrecover[CACHE_INODE_LOOKUPP])++;
                return NULL;
           }
 
@@ -142,8 +135,6 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
           /* Call cache_inode_get to populate the cache with the
              parent entry.  This increments the refcount. */
           if((parent = cache_inode_get(&fsdata,
-                                       /* Same policy as child */
-                                       entry->policy,
                                        &object_attributes,
                                        client,
                                        context,
@@ -153,13 +144,6 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
 
           /* Link in a weak reference */
           entry->object.dir.parent = parent->weakref;
-     }
-
-     /* stat */
-     if(*status != CACHE_INODE_SUCCESS) {
-          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_LOOKUPP])++;
-     } else {
-          (client->stat.func_stats.nb_success[CACHE_INODE_LOOKUPP])++;
      }
 
      return parent;

@@ -116,8 +116,6 @@ cache_inode_commit(cache_entry_t *entry,
                                          CACHE_INODE_FLAG_CONTENT_HAVE |
                                          CACHE_INODE_FLAG_CONTENT_HOLD,
                                          status) != CACHE_INODE_SUCCESS) {
-                         ++(client->stat.func_stats
-                            .nb_err_unrecover[CACHE_INODE_COMMIT]);
                          goto out;
                     }
                     opened = TRUE;
@@ -142,9 +140,6 @@ cache_inode_commit(cache_entry_t *entry,
                                       status);
                     opened = FALSE;
                }
-               ++(client->stat.func_stats
-                  .nb_err_unrecover[CACHE_INODE_COMMIT]);
-
                *status = CACHE_INODE_FSAL_ERROR;
                goto out;
           }
@@ -160,8 +155,6 @@ cache_inode_commit(cache_entry_t *entry,
                LogEvent(COMPONENT_CACHE_INODE,
                         "cache_inode_commit: cache_inode_close = %d",
                         *status);
-               ++(client->stat.func_stats
-                  .nb_err_unrecover[CACHE_INODE_COMMIT]);
           }
      } else {
           /* Ok, it looks like we're using the Ganesha write

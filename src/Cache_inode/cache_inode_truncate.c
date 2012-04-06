@@ -85,16 +85,10 @@ cache_inode_truncate_impl(cache_entry_t *pentry,
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
 
-  /* stats */
-  pclient->stat.nb_call_total += 1;
-  pclient->stat.func_stats.nb_call[CACHE_INODE_TRUNCATE] += 1;
-
   /* Only regular files can be truncated */
   if(pentry->type != REGULAR_FILE)
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
-      /* stats */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
       return *pstatus;
     }
 
@@ -107,19 +101,11 @@ cache_inode_truncate_impl(cache_entry_t *pentry,
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
-      /* stats */
-      pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_TRUNCATE] += 1;
       return *pstatus;
     }
 
   /* Returns the attributes */
   *pattr = pentry->attributes;
-
-  /* stat */
-  if(*pstatus != CACHE_INODE_SUCCESS)
-    pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_TRUNCATE] += 1;
-  else
-    pclient->stat.func_stats.nb_success[CACHE_INODE_TRUNCATE] += 1;
 
   return *pstatus;
 }                               /* cache_inode_truncate_sw */

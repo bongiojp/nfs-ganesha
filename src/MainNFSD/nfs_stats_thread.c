@@ -87,7 +87,6 @@ void set_max_latency(nfs_request_stat_item_t *cur_stat, unsigned int val)
  */
 void stats_collect (ganesha_stats_t                 *ganesha_stats)
 {
-    cache_inode_stat_t     *global_cache_inode_stat = &ganesha_stats->global_cache_inode;
     hash_stat_t            *cache_inode_stat = &ganesha_stats->cache_inode_hstat;
     nfs_worker_stat_t      *global_worker_stat = &ganesha_stats->global_worker_stat;
     fsal_statistics_t      *global_fsal_stat = &ganesha_stats->global_fsal;
@@ -95,45 +94,6 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
     buddy_stats_t *global_buddy_stat = &ganesha_stats->global_buddy;
 #endif
     unsigned int           i, j;
-
-
-    /* Zeroing the cache_stats */
-    global_cache_inode_stat->nb_call_total = 0;
-
-    memset(global_cache_inode_stat->func_stats.nb_err_unrecover, 0,
-             sizeof(unsigned int) * CACHE_INODE_NB_COMMAND);
-
-    /* Merging the cache inode stats for every thread */
-    for (i = 0; i < nfs_param.core_param.nb_worker; i++) {
-        global_cache_inode_stat->nb_call_total +=
-            workers_data[i].cache_inode_client.stat.nb_call_total;
-
-          for (j = 0; j < CACHE_INODE_NB_COMMAND; j++) {
-              if (i == 0) {
-                  global_cache_inode_stat->func_stats.nb_success[j] =
-                      workers_data[i].cache_inode_client.stat.func_stats.nb_success[j];
-                  global_cache_inode_stat->func_stats.nb_call[j] =
-                      workers_data[i].cache_inode_client.stat.func_stats.nb_call[j];
-                  global_cache_inode_stat->func_stats.nb_err_retryable[j] =
-                      workers_data[i].cache_inode_client.stat.func_stats.
-                      nb_err_retryable[j];
-                  global_cache_inode_stat->func_stats.nb_err_unrecover[j] =
-                      workers_data[i].cache_inode_client.stat.func_stats.
-                      nb_err_unrecover[j];
-                } else {
-                  global_cache_inode_stat->func_stats.nb_success[j] +=
-                      workers_data[i].cache_inode_client.stat.func_stats.nb_success[j];
-                  global_cache_inode_stat->func_stats.nb_call[j] +=
-                      workers_data[i].cache_inode_client.stat.func_stats.nb_call[j];
-                  global_cache_inode_stat->func_stats.nb_err_retryable[j] +=
-                      workers_data[i].cache_inode_client.stat.func_stats.
-                      nb_err_retryable[j];
-                  global_cache_inode_stat->func_stats.nb_err_unrecover[j] +=
-                      workers_data[i].cache_inode_client.stat.func_stats.
-                      nb_err_unrecover[j];
-              }
-          }
-    }
 
     /* This is done only on worker[0]: the hashtable is shared and worker 0 always exists */
     HashTable_GetStats(fh_to_cache_entry_ht, cache_inode_stat);
@@ -492,7 +452,6 @@ void *stats_thread(void *addr)
   int reopen_stats = FALSE;
 
   ganesha_stats_t        ganesha_stats;
-  cache_inode_stat_t     *global_cache_inode_stat = &ganesha_stats.global_cache_inode;
   nfs_worker_stat_t      *global_worker_stat = &ganesha_stats.global_worker_stat;
   hash_stat_t            *cache_inode_stat = &ganesha_stats.cache_inode_hstat;
   hash_stat_t            *uid_map_hstat = &ganesha_stats.uid_map;
@@ -617,19 +576,6 @@ void *stats_thread(void *addr)
 
       /* collect statistics */
       stats_collect(&ganesha_stats);
-
-      /* Printing the cache_inode stat */
-      fprintf(stats_file, "CACHE_INODE_CALLS,%s;%u",
-              strdate,
-              global_cache_inode_stat->nb_call_total);
-
-      for(j = 0; j < CACHE_INODE_NB_COMMAND; j++)
-        fprintf(stats_file, "|%u,%u,%u,%u",
-                global_cache_inode_stat->func_stats.nb_call[j],
-                global_cache_inode_stat->func_stats.nb_success[j],
-                global_cache_inode_stat->func_stats.nb_err_retryable[j],
-                global_cache_inode_stat->func_stats.nb_err_unrecover[j]);
-      fprintf(stats_file, "\n");
 
       /* Pinting the cache inode hash stat */
       /* This is done only on worker[0]: the hashtable is shared and worker 0 always exists */

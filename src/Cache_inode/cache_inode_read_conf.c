@@ -58,6 +58,11 @@
 #include <pthread.h>
 #include <string.h>
 
+static const char *CONF_LABEL_CACHE_INODE_GCPOL = "CacheInode_GC_Policy";
+static const char *CONF_LABEL_CACHE_INODE_CLIENT = "CacheInode_Client";
+static const char *CONF_LABEL_CACHE_INODE_HASH = "CacheInode_Hash";
+
+
 /**
  *
  * cache_inode_read_conf_hash_parameter: read the configuration for the hash in Cache_inode layer.

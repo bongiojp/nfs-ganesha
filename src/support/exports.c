@@ -54,7 +54,6 @@
 #include "mount.h"
 #include "nfs_core.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 #include "nfs_file_handle.h"
 #include "nfs_exports.h"
 #include "nfs_tools.h"
@@ -75,7 +74,6 @@
  * this cache_inode_client will be used to handle the root of each entry (created when reading export file) */
 cache_inode_client_t small_client;
 cache_inode_client_parameter_t small_client_param;
-cache_content_client_t recover_datacache_client;
 
 #define STRCMP strcasecmp
 
@@ -111,7 +109,6 @@ cache_content_client_t recover_datacache_client;
 #define CONF_EXPORT_USE_DATACACHE      "Cache_Data"
 #define CONF_EXPORT_FS_SPECIFIC        "FS_Specific"
 #define CONF_EXPORT_FS_TAG             "Tag"
-#define CONF_EXPORT_CACHE_POLICY       "Cache_Inode_Policy"
 #define CONF_EXPORT_MAX_OFF_WRITE      "MaxOffsetWrite"
 #define CONF_EXPORT_MAX_OFF_READ       "MaxOffsetRead"
 #define CONF_EXPORT_MAX_CACHE_SIZE     "MaxCacheSize"
@@ -661,7 +658,6 @@ static int BuildExportEntry(config_item_t block, exportlist_t ** pp_export)
   unsigned int set_options = 0;
 
   int err_flag   = FALSE;
-  int err_policy = FALSE;
 
   /* allocates export entry */
   p_entry = (exportlist_t *) Mem_Alloc(sizeof(exportlist_t));
@@ -712,15 +708,14 @@ static int BuildExportEntry(config_item_t block, exportlist_t ** pp_export)
     p_entry->options |= EXPORT_OPTION_NFSV4;
   p_entry->options |= EXPORT_OPTION_UDP | EXPORT_OPTION_TCP;
 
-  p_entry->filesystem_id.major = (fsal_u64_t) 666;
-  p_entry->filesystem_id.minor = (fsal_u64_t) 666;
+  p_entry->filesystem_id.major = 666;
+  p_entry->filesystem_id.minor = 666;
 
-  p_entry->MaxWrite = (fsal_size_t) 16384;
-  p_entry->MaxRead = (fsal_size_t) 16384;
-  p_entry->PrefWrite = (fsal_size_t) 16384;
-  p_entry->PrefRead = (fsal_size_t) 16384;
-  p_entry->PrefReaddir = (fsal_size_t) 16384;
-  p_entry->cache_inode_policy = CACHE_INODE_POLICY_FULL_WRITE_THROUGH ;
+  p_entry->MaxWrite = 16384;
+  p_entry->MaxRead = 16384;
+  p_entry->PrefWrite = 16384;
+  p_entry->PrefRead = 16384;
+  p_entry->PrefReaddir = 16384;
 
   init_glist(&p_entry->exp_state_list);
 #ifdef _USE_NLM
@@ -1857,47 +1852,6 @@ static int BuildExportEntry(config_item_t block, exportlist_t ** pp_export)
           set_options |= FLAG_EXPORT_FS_TAG;
 
         }
-      else if( !STRCMP(var_name, CONF_EXPORT_CACHE_POLICY ))
-        {
-          /* check if it has not already been set */
-          if((set_options & FLAG_EXPORT_CACHE_POLICY) == FLAG_EXPORT_CACHE_POLICY)
-            {
-              DEFINED_TWICE_WARNING(CONF_EXPORT_CACHE_POLICY);
-              continue;
-            }
-          else if( !STRCMP( var_value, "WriteThrough" ) )
-           {
-              p_entry->cache_inode_policy = CACHE_INODE_POLICY_FULL_WRITE_THROUGH ; 
-              err_policy = FALSE  ;
-           } 
-          else if( !STRCMP( var_value, "WriteBack" ) )         
-           {
-              p_entry->cache_inode_policy = CACHE_INODE_POLICY_FULL_WRITE_BACK ; 
-              err_policy = FALSE  ;
-           } 
-          else if( !STRCMP( var_value, "AttrsOnlyWriteThrough" ) )
-           {
-              p_entry->cache_inode_policy = CACHE_INODE_POLICY_ATTRS_ONLY_WRITE_THROUGH ; 
-              err_policy = FALSE  ;
-           } 
-          else if( !STRCMP( var_value, "NoCache" ) )             
-           {
-              p_entry->cache_inode_policy = CACHE_INODE_POLICY_NO_CACHE ; 
-              err_policy = FALSE  ;
-           } 
-          else
-             err_policy = TRUE ;
-
-        
-          if( err_policy == TRUE ) 
-           {
-             err_flag = TRUE ;
-             
-             LogCrit(COMPONENT_CONFIG, "Invalid Cache_Inode_Policy value : %s", var_value ) ;
-           }
-
-          set_options |=  FLAG_EXPORT_CACHE_POLICY ;
-        }
       else if(!STRCMP(var_name, CONF_EXPORT_MAX_OFF_WRITE))
         {
           long long int offset;
@@ -2944,16 +2898,6 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
         LogInfo(COMPONENT_INIT,
                 "small cache inode client successfully initialized");
 
-      /* creating the datacache client for recovering data cache */
-      if(cache_content_client_init
-         (&recover_datacache_client,
-          nfs_param.cache_layers_param.cache_content_client_param,
-          "recovering"))
-        {
-          LogFatal(COMPONENT_INIT,
-                   "cache content client (for datacache recovery) could not be allocated");
-        }
-
       /* Get the context for FSAL super user */
 #ifdef _USE_SHARED_FSAL
       for( i = 0 ; i < nfs_param.nb_loaded_fsal ; i++ )
@@ -3080,7 +3024,6 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
              entry MUST put the extra reference. */
 
           if((pentry = cache_inode_make_root(&fsdata,
-                                             pcurrent->cache_inode_policy,
                                              &small_client,
 #ifdef _USE_SHARED_FSAL
                                              &context[pcurrent->fsalid],

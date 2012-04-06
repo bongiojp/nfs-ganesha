@@ -86,9 +86,6 @@ cache_inode_setattr(cache_entry_t *entry,
 {
      fsal_status_t fsal_status = {0, 0};
 
-     ++(client->stat.nb_call_total);
-     ++(client->stat.func_stats.nb_call[CACHE_INODE_SETATTR]);
-
      if ((entry->type == UNASSIGNED) ||
          (entry->type == RECYCLED)) {
           LogCrit(COMPONENT_CACHE_INODE,
@@ -113,8 +110,6 @@ cache_inode_setattr(cache_entry_t *entry,
                                       NULL, NULL);
           if (FSAL_IS_ERROR(fsal_status)) {
                *status = cache_inode_error_convert(fsal_status);
-               ++(client->stat.func_stats
-                  .nb_err_unrecover[CACHE_INODE_SETATTR]);
                goto unlock;
           }
      }
@@ -124,7 +119,6 @@ cache_inode_setattr(cache_entry_t *entry,
                                  &entry->attributes);
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
-          ++(client->stat.func_stats.nb_err_unrecover[CACHE_INODE_SETATTR]);
           goto unlock;
      }
      cache_inode_fixup_md(entry);
@@ -134,7 +128,6 @@ cache_inode_setattr(cache_entry_t *entry,
      *attr = entry->attributes;
 
      *status = CACHE_INODE_SUCCESS;
-     ++(client->stat.func_stats.nb_success[CACHE_INODE_SETATTR]);
 
 unlock:
      pthread_rwlock_unlock(&entry->attr_lock);

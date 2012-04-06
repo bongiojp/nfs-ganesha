@@ -244,7 +244,6 @@ cache_entry_t *nfs_FhandleToCache(u_long rq_vers,
     }
 
   if((pentry = cache_inode_get(&fsal_data,
-                               pexport->cache_inode_policy,
                                &attr, pclient, pcontext, &cache_status)) == NULL)
     {
       switch (rq_vers)

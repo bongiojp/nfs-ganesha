@@ -1680,9 +1680,9 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
                                &fsdata.fh_desc);
 
       if((pentry = cache_inode_make_root(&fsdata,
-                                         data->pexport->cache_inode_policy,
-                                         ((cache_inode_client_t *) data->pclient),
-                                         data->pcontext, &cache_status)) == NULL)
+                                         data->pclient,
+                                         data->pcontext,
+                                         &cache_status)) == NULL)
         {
           LogMajor(COMPONENT_NFS_V4_PSEUDO,
                    "PSEUDO FS JUNCTION TRAVERSAL: /!\\ | Allocate root entry in cache inode failed, for %s, id=%d",
@@ -1964,9 +1964,9 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
 			       &fsdata.fh_desc);
 
       if((pentry = cache_inode_make_root(&fsdata,
-                                         data->pexport->cache_inode_policy,
-                                         ((cache_inode_client_t *) data->pclient),
-                                         data->pcontext, &cache_status)) == NULL)
+                                         data->pclient,
+                                         data->pcontext,
+                                         &cache_status)) == NULL)
         {
           LogMajor(COMPONENT_NFS_V4_PSEUDO,
                    "PSEUDO FS JUNCTION TRAVERSAL: /!\\ | Allocate root entry in cache inode failed, for %s, id=%d",
@@ -2160,12 +2160,12 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
               return res_READDIR4.status;
             }
           /* Add the entry to the cache as a root. There has to be a better way. */
-	  fsdata.fh_desc.start = (caddr_t) &fsal_handle;
-	  fsdata.fh_desc.len = 0;
+          fsdata.fh_desc.start = (caddr_t) &fsal_handle;
+          fsdata.fh_desc.len = 0;
           if((pentry = cache_inode_make_root(&fsdata,
-                                     data->pexport->cache_inode_policy,
-                                     ((cache_inode_client_t *) data->pclient),
-                                     data->pcontext, &cache_status)) == NULL)
+                                             data->pclient,
+                                             data->pcontext,
+                                             &cache_status)) == NULL)
             {
               LogMajor(COMPONENT_NFS_V4_PSEUDO,
                    "PSEUDO FS JUNCTION TRAVERSAL: /!\\ | Allocate root entry in cache inode failed, for %s, id=%d",

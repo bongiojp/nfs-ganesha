@@ -95,8 +95,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                  cache_inode_stability_t stable,
                  cache_inode_status_t *status)
 {
-     /* Index into function call stat arrays */
-     size_t statindex = 0;
      /* Error return from FSAL calls */
      fsal_status_t fsal_status = {0, 0};
      /* Required open mode to successfully read or write */
@@ -114,22 +112,16 @@ cache_inode_rdwr(cache_entry_t *entry,
           .offset = offset
      };
 
-     client->stat.nb_call_total += 1;
-     /* Set falgs for a read or write, as appropriate */
+     /* Set flags for a read or write, as appropriate */
      if (io_direction == CACHE_INODE_READ) {
-          statindex = CACHE_INODE_READ_DATA;
           openflags = FSAL_O_RDONLY;
-          client->stat.func_stats.nb_call[CACHE_INODE_READ_DATA] += 1;
      } else {
-          statindex = CACHE_INODE_WRITE_DATA;
           openflags = FSAL_O_WRONLY;
-          client->stat.func_stats.nb_call[CACHE_INODE_WRITE_DATA] += 1;
      }
 
      /* IO is done only on REGULAR_FILEs */
      if (entry->type != REGULAR_FILE) {
           *status = CACHE_INODE_BAD_TYPE;
-          client->stat.func_stats.nb_err_unrecover[statindex] += 1;
           goto out;
      }
 
@@ -145,7 +137,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                     Mem_Alloc_Label(CACHE_INODE_UNSTABLE_BUFFERSIZE,
                                     "Cache_Inode Unstable Buffer")) == NULL) {
                     *status = CACHE_INODE_MALLOC_ERROR;
-                    client->stat.func_stats.nb_err_unrecover[statindex] += 1;
                     goto out;
                }
 
@@ -203,8 +194,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                                          CACHE_INODE_FLAG_CONTENT_HAVE |
                                          CACHE_INODE_FLAG_CONTENT_HOLD,
                                          status) != CACHE_INODE_SUCCESS) {
-                         client->stat.func_stats
-                              .nb_err_unrecover[statindex] += 1;
                          goto out;
                     }
                     opened = TRUE;
@@ -270,7 +259,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                     *status = cache_inode_error_convert(fsal_status);
                }
 
-               client->stat.func_stats.nb_err_unrecover[statindex] += 1;
                goto out;
           }
 
@@ -287,7 +275,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                     LogEvent(COMPONENT_CACHE_INODE,
                              "cache_inode_rdwr: cache_inode_close = %d",
                              *status);
-                    client->stat.func_stats.nb_err_unrecover[statindex] += 1;
                     goto out;
                }
           }
@@ -305,7 +292,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                                                    context,
                                                    client))
               != CACHE_INODE_SUCCESS) {
-               client->stat.func_stats.nb_err_unrecover[statindex] += 1;
                goto out;
           }
      } else {

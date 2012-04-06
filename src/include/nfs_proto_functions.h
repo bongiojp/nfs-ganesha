@@ -52,7 +52,6 @@
 #include "LRU_List.h"
 #include "fsal.h"
 #include "cache_inode.h"
-#include "cache_content.h"
 #include "nfs_exports.h"
 #include "nfs_creds.h"
 #include "nfs_file_handle.h"

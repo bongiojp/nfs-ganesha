@@ -247,7 +247,6 @@ int nfs_Link(nfs_arg_t * parg,
               if(cache_inode_link(target_pentry,
                                   parent_pentry,
                                   &link_name,
-                                  pexport->cache_inode_policy,
                                   &attr,
                                   pclient,
                                   pcontext, &cache_status) == CACHE_INODE_SUCCESS)

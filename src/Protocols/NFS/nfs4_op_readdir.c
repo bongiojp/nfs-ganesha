@@ -213,7 +213,6 @@ nfs4_op_readdir(struct nfs_argop4 *op,
 
      /* Perform the readdir operation */
      if (cache_inode_readdir(dir_entry,
-                             data->pexport->cache_inode_policy,
                              cookie,
                              estimated_num_entries,
                              &num_entries,

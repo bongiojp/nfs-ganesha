@@ -96,10 +96,6 @@ cache_inode_getattr(cache_entry_t *pentry,
      /* Set the return default to CACHE_INODE_SUCCESS */
      *pstatus = CACHE_INODE_SUCCESS;
 
-     /* stats */
-     pclient->stat.nb_call_total += 1;
-     inc_func_call(pclient, CACHE_INODE_GETATTR);
-
 /* Lock (and refresh if necessary) the attributes, copy them out, and
    unlock. */
 
@@ -116,14 +112,6 @@ cache_inode_getattr(cache_entry_t *pentry,
      pthread_rwlock_unlock(&pentry->attr_lock);
 
 out:
-
-    /* Stat */
-    if(*pstatus != CACHE_INODE_SUCCESS) {
-         inc_func_err_retryable(pclient, CACHE_INODE_GETATTR);
-    } else {
-         inc_func_success(pclient, CACHE_INODE_GETATTR);
-    }
-
 
     return *pstatus;
 }

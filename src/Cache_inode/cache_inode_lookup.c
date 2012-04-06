@@ -89,7 +89,6 @@
 cache_entry_t *
 cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                         fsal_name_t *pname,
-                        cache_inode_policy_t policy,
                         cache_inode_client_t *pclient,
                         fsal_op_context_t *pcontext,
                         cache_inode_status_t *pstatus)
@@ -116,14 +115,10 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *pstatus = CACHE_INODE_SUCCESS;
-     /* stats */
-     (pclient->stat.nb_call_total)++;
-     (pclient->stat.func_stats.nb_call[CACHE_INODE_LOOKUP])++;
 
      if(pentry_parent->type != DIRECTORY) {
           *pstatus = CACHE_INODE_NOT_A_DIRECTORY;
           /* stats */
-          (pclient->stat.func_stats.nb_err_unrecover[CACHE_INODE_LOOKUP])++;
           return NULL;
      }
 
@@ -140,7 +135,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           pentry =
                cache_inode_lookupp_impl(pentry_parent, pclient, pcontext,
                                         pstatus);
-     } else if(CACHE_INODE_KEEP_CONTENT(policy)) {
+     } else {
           /* We first try avltree_lookup by name.  If that fails, we
            * dispatch to the FSAL. */
 
@@ -170,8 +165,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           }
      }
 
-      if(pentry == NULL)
-        {
+     if (pentry == NULL) {
           LogDebug(COMPONENT_CACHE_INODE, "Cache Miss detected");
 
           memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
@@ -182,8 +176,6 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                            &object_attributes);
           if(FSAL_IS_ERROR(fsal_status)) {
                *pstatus = cache_inode_error_convert(fsal_status);
-               (pclient->stat.func_stats.
-                nb_err_unrecover[CACHE_INODE_LOOKUP])++;
                return NULL;
           }
 
@@ -191,21 +183,14 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
 
           /* If entry is a symlink, this value for be cached */
           if(type == SYMBOLIC_LINK) {
-               if(CACHE_INODE_KEEP_CONTENT(policy)) {
-                    fsal_status =
-                         FSAL_readlink(&object_handle,
-                                       pcontext,
-                                       &create_arg.link_content,
-                                       &object_attributes);
-               } else {
-                    fsal_status.major = ERR_FSAL_NO_ERROR;
-                    fsal_status.minor = 0;
-               }
+               fsal_status =
+                    FSAL_readlink(&object_handle,
+                                  pcontext,
+                                  &create_arg.link_content,
+                                  &object_attributes);
 
                if(FSAL_IS_ERROR(fsal_status)) {
                     *pstatus = cache_inode_error_convert(fsal_status);
-                    (pclient->stat.func_stats
-                     .nb_err_unrecover[CACHE_INODE_LOOKUP])++;
                     return NULL;
                }
           }
@@ -221,53 +206,38 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
               = cache_inode_new_entry(&new_entry_fsdata,
                                       &object_attributes,
                                       type,
-                                      policy,
                                       &create_arg,
                                       pclient,
                                       pcontext,
                                       CACHE_INODE_FLAG_EXREF,
                                       pstatus)) == NULL) {
-               (pclient->stat.func_stats
-                .nb_err_unrecover[CACHE_INODE_LOOKUP])++;
                return NULL;
           }
 
-          if (CACHE_INODE_KEEP_CONTENT(policy)) {
-               if (broken_dirent) {
-                    /* Directory entry existed, but the weak reference
-                       was broken.  Just update with the new one. */
-                    broken_dirent->entry = pentry->weakref;
-                    cache_status = CACHE_INODE_SUCCESS;
-               } else {
-                    /* Entry was found in the FSAL, add this entry to
-                     * the parent directory */
-                    cache_status
-                         = cache_inode_add_cached_dirent(pentry_parent,
-                                                         pname,
-                                                         pentry,
-                                                         &new_dir_entry,
-                                                         pclient,
-                                                         pcontext,
-                                                         pstatus);
-                    if(cache_status != CACHE_INODE_SUCCESS &&
-                       cache_status != CACHE_INODE_ENTRY_EXISTS) {
-                         /* stats */
-                         (pclient->stat.func_stats
-                          .nb_err_unrecover[CACHE_INODE_LOOKUP])++;
-                         return NULL;
-                    }
+          if (broken_dirent) {
+               /* Directory entry existed, but the weak reference
+                  was broken.  Just update with the new one. */
+               broken_dirent->entry = pentry->weakref;
+               cache_status = CACHE_INODE_SUCCESS;
+          } else {
+               /* Entry was found in the FSAL, add this entry to the
+                  parent directory */
+               cache_status
+                    = cache_inode_add_cached_dirent(pentry_parent,
+                                                    pname,
+                                                    pentry,
+                                                    &new_dir_entry,
+                                                    pclient,
+                                                    pcontext,
+                                                    pstatus);
+               if(cache_status != CACHE_INODE_SUCCESS &&
+                  cache_status != CACHE_INODE_ENTRY_EXISTS) {
+                    return NULL;
                }
           }
      }
 
-     /* stat */
-     if (*pstatus != CACHE_INODE_SUCCESS) {
-          (pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_LOOKUP])++;
-     } else {
-          (pclient->stat.func_stats.nb_success[CACHE_INODE_LOOKUP])++;
-     }
-
-  return pentry;
+     return pentry;
 } /* cache_inode_lookup_impl */
 
 /**
@@ -294,7 +264,6 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
 cache_entry_t *
 cache_inode_lookup(cache_entry_t *pentry_parent,
                    fsal_name_t *pname,
-                   cache_inode_policy_t policy,
                    fsal_attrib_list_t *pattr,
                    cache_inode_client_t *pclient,
                    fsal_op_context_t *pcontext,
@@ -317,7 +286,6 @@ cache_inode_lookup(cache_entry_t *pentry_parent,
      pthread_rwlock_rdlock(&pentry_parent->content_lock);
      entry = cache_inode_lookup_impl(pentry_parent,
                                      pname,
-                                     policy,
                                      pclient,
                                      pcontext,
                                      pstatus);

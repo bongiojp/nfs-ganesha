@@ -289,7 +289,6 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
   /* Lookup oldfile to see if it exists (refcount +1) */
   if((tst_entry_src = cache_inode_lookup(src_entry,
                                          &oldname,
-                                         data->pexport->cache_inode_policy,
                                          &attr_tst_src,
                                          data->pclient,
                                          data->pcontext,
@@ -303,7 +302,6 @@ int nfs4_op_rename(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
    * I expect to get NO_ERROR or ENOENT, anything else means an error */
   tst_entry_dst = cache_inode_lookup(dst_entry,
                                      &newname,
-                                     data->pexport->cache_inode_policy,
                                      &attr_tst_dst,
                                      data->pclient,
                                      data->pcontext,

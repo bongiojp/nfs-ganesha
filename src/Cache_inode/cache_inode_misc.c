@@ -57,37 +57,6 @@
 #include <string.h>
 #include <assert.h>
 
-char *cache_inode_function_names[] = {
-  "cache_inode_access",
-  "cache_inode_getattr",
-  "cache_inode_mkdir",
-  "cache_inode_remove",
-  "cache_inode_statfs",
-  "cache_inode_link",
-  "cache_inode_readdir",
-  "cache_inode_rename",
-  "cache_inode_symlink",
-  "cache_inode_create",
-  "cache_inode_lookup",
-  "cache_inode_lookupp",
-  "cache_inode_readlink",
-  "cache_inode_truncate",
-  "cache_inode_get",
-  "cache_inode_release",
-  "cache_inode_setattr",
-  "cache_inode_new_entry",
-  "cache_inode_read_data",
-  "cache_inode_write_data",
-  "cache_inode_add_data_cache",
-  "cache_inode_release_data_cache",
-  "cache_inode_renew_entry",
-  "cache_inode_commit"
-  "cache_inode_add_state",
-  "cache_inode_add_state",
-  "cache_inode_get_state",
-  "cache_inode_set_state",
-};
-
 cache_inode_gc_policy_t cache_inode_gc_policy;
 
 const char *cache_inode_err_str(cache_inode_status_t err)
@@ -159,20 +128,17 @@ int cache_inode_compare_key_fsal(hash_buffer_t *buff1, hash_buffer_t *buff2)
     return (buff2->pdata == NULL) ? 0 : 1;
   else
     {
-      if(buff2->pdata == NULL)
+      if(buff2->pdata == NULL) {
         return -1;              /* left member is the greater one */
-      else
-        {
-          if(buff2->pdata == NULL)
-            return -1;              /* left member is the greater one */
-          int rc;
+      }
+      int rc;
 
-          rc = (buff1->len == buff2->len &&
-                memcmp(buff1->pdata, buff2->pdata, buff1->len)) ? 0 : 1;
+      rc = (((buff1->len == buff2->len) &&
+             (memcmp(buff1->pdata, buff2->pdata, buff1->len) == 0)) ?
+            0 :
+            1);
 
-          return rc;
-        }
-
+      return rc;
     }
   /* This line should never be reached */
 }                               /* cache_inode_compare_key_fsal */
@@ -233,27 +199,21 @@ cache_entry_t *
 cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                       fsal_attrib_list_t *attr,
                       cache_inode_file_type_t type,
-                      cache_inode_policy_t policy,
                       cache_inode_create_arg_t *create_arg,
                       cache_inode_client_t *client,
                       fsal_op_context_t *context,
-                      unsigned int flags,
+                      uint32_t flags,
                       cache_inode_status_t *status)
 {
 
      cache_entry_t *entry = NULL;
      hash_buffer_t key, value;
-     fsal_status_t fsal_status = {0, 0};
      int rc = 0;
      struct hash_latch latch;
      bool_t lrurefed = FALSE;
      bool_t weakrefed = FALSE;
      bool_t locksinited = FALSE;
      bool_t typespec = FALSE;
-
-     /* stats */
-     client->stat.nb_call_total++;
-     (client->stat.func_stats.nb_call[CACHE_INODE_NEW_ENTRY])++;
 
      key.pdata = fsdata->fh_desc.start;
      key.len = fsdata->fh_desc.len;
@@ -274,7 +234,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           /* Release the subtree hash table mutex acquired in
              HashTable_GetEx */
           HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
-          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
           goto out;
      }
      HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
@@ -285,7 +244,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           LogCrit(COMPONENT_CACHE_INODE,
                   "cache_inode_new_entry: cache_inode_lru_get failed");
           *status = CACHE_INODE_MALLOC_ERROR;
-          (client->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
           goto out;
      }
      assert(entry->lru.refcount == LRU_SENTINEL_REFCOUNT);
@@ -318,7 +276,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                   "cache_inode_new_entry: pthread_rwlock_init "
                   "returned %d (%s)", rc, strerror(rc));
           *status = CACHE_INODE_INIT_ENTRY_FAILED;
-          (client->stat.func_stats.nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
           goto out;
      }
      locksinited = TRUE;
@@ -327,7 +284,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
      entry->type = type;
      entry->flags = 0;
-     entry->policy = policy;
      init_glist(&entry->state_list);
 
      /* Set the attributes*/
@@ -339,8 +295,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
               CACHE_INODE_SUCCESS) {
 
                /* Deconstruct the entry */
-               (client->stat.func_stats.
-                nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
                goto out;
           }
      } else {
@@ -352,8 +306,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      switch (type) {
      case REGULAR_FILE:
           LogDebug(COMPONENT_CACHE_INODE,
-                   "cache_inode_new_entry: Adding a REGULAR_FILE, entry=%p "
-                   "policy=%u", entry, policy);
+                   "cache_inode_new_entry: Adding a REGULAR_FILE, entry=%p",
+                   entry);
 
           /* No locks, yet. */
           init_glist(&entry->object.file.lock_list);
@@ -366,8 +320,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
      case DIRECTORY:
           LogDebug(COMPONENT_CACHE_INODE,
-                   "cache_inode_new_entry: Adding a DIRECTORY, entry=%p "
-                   "policy=%u", entry, policy);
+                   "cache_inode_new_entry: Adding a DIRECTORY, entry=%p",
+                   entry);
 
           /* If the directory is newly created, it is empty.  Because
              we know its content, we consider it read. */
@@ -389,23 +343,19 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           break;
      case SYMBOLIC_LINK:
           LogDebug(COMPONENT_CACHE_INODE,
-                   "cache_inode_new_entry: Adding a SYMBOLIC_LINK pentry=%p "
-                   "policy=%u", entry, policy);
-          if (CACHE_INODE_KEEP_CONTENT(policy)) {
-               GetFromPool(entry->object.symlink, &client->pool_entry_symlink,
-                           cache_inode_symlink_t);
-               if (entry->object.symlink == NULL) {
-                    LogDebug(COMPONENT_CACHE_INODE,
-                             "Can't allocate entry symlink from symlink pool");
+                   "cache_inode_new_entry: Adding a SYMBOLIC_LINK pentry=%p ",
+                   entry);
+          GetFromPool(entry->object.symlink, &client->pool_entry_symlink,
+                      cache_inode_symlink_t);
+          if (entry->object.symlink == NULL) {
+               LogDebug(COMPONENT_CACHE_INODE,
+                        "Can't allocate entry symlink from symlink pool");
 
-                    *status = CACHE_INODE_MALLOC_ERROR;
-                    (client->stat.func_stats
-                     .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
-                    goto out;
-               }
-               FSAL_pathcpy(&entry->object.symlink->content,
-                            &create_arg->link_content);
+               *status = CACHE_INODE_MALLOC_ERROR;
+               goto out;
           }
+          FSAL_pathcpy(&entry->object.symlink->content,
+                       &create_arg->link_content);
           break;
 
      case SOCKET_FILE:
@@ -414,56 +364,12 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      case CHARACTER_FILE:
           LogDebug(COMPONENT_CACHE_INODE,
                    "cache_inode_new_entry: Adding a special file of type %d "
-                   "entry=%p policy=%u", type, entry, policy);
+                   "entry=%p", type, entry);
           break;
 
-          /* Does this actually work/get called from anywhere? */
      case FS_JUNCTION:
-          LogDebug(COMPONENT_CACHE_INODE,
-                   "cache_inode_new_entry: Adding a FS_JUNCTION pentry=%p "
-                   "policy=%u", entry, policy);
-
-          fsal_status = FSAL_lookupJunction(
-               (fsal_handle_t *)&fsdata->fh_desc.start,
-               context,
-               &entry->handle, NULL);
-          if (FSAL_IS_ERROR(fsal_status)) {
-               *status = cache_inode_error_convert(fsal_status);
-               LogMajor(COMPONENT_CACHE_INODE,
-                        "cache_inode_new_entry: FSAL_lookupJunction failed");
-               *status = CACHE_INODE_INIT_ENTRY_FAILED;
-               /* stat */
-               (client->stat.func_stats
-                .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
-               goto out;
-          }
-
-          /* Refresh again, since we may have a new handle now. */
-          if (cache_inode_refresh_attrs(entry,
-                                        context,
-                                        client) !=
-              CACHE_INODE_SUCCESS) {
-
-               LogMajor(COMPONENT_CACHE_INODE,
-                        "cache_inode_new_entry: Unable to get junction "
-                        "attributes ");
-               *status = CACHE_INODE_INIT_ENTRY_FAILED;
-               /* stat */
-               (client->stat.func_stats
-                .nb_err_retryable[CACHE_INODE_NEW_ENTRY])++;
-               goto out;
-          }
-
-          /* XXX Fake FS_JUNCTION into directory */
-          entry->type = DIRECTORY;
-
-          atomic_clear_int_bits(&entry->flags,
-                                CACHE_INODE_TRUST_CONTENT |
-                                CACHE_INODE_DIR_POPULATED);
-          entry->object.dir.nbactive = 0;
-          entry->object.dir.referral = NULL;
-          /* Initalize AVL tree */
-          cache_inode_avl_init(entry);
+          /* I don't think this ever actually gets called */
+          abort();
           break;
 
      default:
@@ -472,7 +378,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           LogMajor(COMPONENT_CACHE_INODE,
                    "cache_inode_new_entry: unknown type %u provided",
                    type);
-          (client->stat.func_stats.nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
           goto out;
      }
      typespec = TRUE;
@@ -493,8 +398,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                   "rc=%d", rc);
           if (rc != HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
                *status = CACHE_INODE_HASH_SET_ERROR;
-               (client->stat.func_stats
-                .nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
                goto out;
           } else {
                LogDebug(COMPONENT_CACHE_INODE,
@@ -509,8 +412,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                if ((rc = HashTable_Get(fh_to_cache_entry_ht, &key, &value))
                    != HASHTABLE_SUCCESS ) {
                     *status = CACHE_INODE_HASH_SET_ERROR;
-                    (client->stat.func_stats.
-                     nb_err_unrecover[CACHE_INODE_NEW_ENTRY])++;
                     goto out;
                }
 
@@ -541,7 +442,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      LogDebug(COMPONENT_CACHE_INODE,
               "cache_inode_new_entry: New entry %p added", entry);
      *status = CACHE_INODE_SUCCESS;
-     (client->stat.func_stats.nb_success[CACHE_INODE_NEW_ENTRY])++;
 
 out:
      if (*status != CACHE_INODE_SUCCESS) {
@@ -848,116 +748,6 @@ void cache_inode_print_dir(cache_entry_t * cache_entry_root)/* release internal 
 
   LogFullDebug(COMPONENT_CACHE_INODE, "------------------");
 }                               /* cache_inode_print_dir */
-
-/**
- *
- * cache_inode_dump_content: dumps the content of a pentry to a local file
- * (used for File Content index files).
- *
- * Dumps the content of a pentry to a local file (used for File Content index
- * files).
- *
- * @param path [IN] the full path to the file that will contain the data.
- * @param pentry [IN] the input pentry.
- *
- * @return CACHE_INODE_BAD_TYPE if pentry is not related to a REGULAR_FILE
- * @return CACHE_INODE_INVALID_ARGUMENT if path is inconsistent
- * @return CACHE_INODE_SUCCESS if operation succeded.
- *
- */
-cache_inode_status_t cache_inode_dump_content(char *path, cache_entry_t * pentry)
-{
-  FILE *stream = NULL;
-
-  char buff[CACHE_INODE_DUMP_LEN];
-
-  if(pentry->type != REGULAR_FILE)
-    return CACHE_INODE_BAD_TYPE;
-
-  /* Open the index file */
-  if((stream = fopen(path, "w")) == NULL)
-    return CACHE_INODE_INVALID_ARGUMENT;
-
-  /* Dump the information */
-  fprintf(stream, "internal:export_id=%d\n", 0);
-
-  snprintHandle(buff, CACHE_INODE_DUMP_LEN, &(pentry->handle));
-  fprintf(stream, "file: FSAL handle=%s", buff);
-
-  /* Close the handle */
-  fclose(stream);
-
-  return CACHE_INODE_SUCCESS;
-}                               /* cache_inode_dump_content */
-
-/**
- *
- * cache_inode_reload_content: reloads the content of a pentry from a local file (used File Content crash recovery).
- *
- * Reloeads the content of a pentry from a local file (used File Content crash recovery).
- *
- * @param path [IN] the full path to the file that will contain the metadata.
- * @param pentry [IN] the input pentry.
- *
- * @return CACHE_INODE_BAD_TYPE if pentry is not related to a REGULAR_FILE
- * @return CACHE_INODE_SUCCESS if operation succeded.
- *
- */
-cache_inode_status_t cache_inode_reload_content(char *path, cache_entry_t * pentry)
-{
-  FILE *stream = NULL;
-
-  char buff[CACHE_INODE_DUMP_LEN+1];
-
-  /* Open the index file */
-  if((stream = fopen(path, "r")) == NULL)
-    return CACHE_INODE_INVALID_ARGUMENT;
-
-  /* The entry is a file (only file inode are dumped), in state VALID for the gc (not garbageable) */
-  pentry->type = REGULAR_FILE;
-
-  /* BUG: what happens if the fscanf's fail? */
-  /* Read the information */
-  #define XSTR(s) STR(s)
-  #define STR(s) #s
-
-  if(fscanf(stream, "internal:export_id=%" XSTR(CACHE_INODE_DUMP_LEN) "s\n",
-            buff) != 1)
-    goto bad_entry;
-
-  if (fscanf(stream, "file: FSAL handle=%" XSTR(CACHE_INODE_DUMP_LEN) "s",
-             buff) != 1)
-    goto bad_entry;
-  #undef STR
-  #undef XSTR
-
-/* FIXME: handles are now variable length. get the length of the handle
- * from the file and then scan the handle to that size and fill out pentry->fh_desc.
- * current config turns off file caching (for now).
- */
-  if(sscanHandle(&(pentry->handle), buff) < 0)
-    {
-      /* expected = 2*sizeof(fsal_handle_t) in hexa representation */
-      LogCrit(COMPONENT_CACHE_INODE,
-              "Error recovering cache content index %s: Invalid handle length. Expected length=%u, Found=%u",
-               path, (unsigned int)(2 * sizeof(fsal_handle_t)),
-               (unsigned int)strlen(buff));
-
-      fclose(stream);
-      return CACHE_INODE_INCONSISTENT_ENTRY;
-    }
-
-  /* Close the handle */
-  fclose(stream);
-
-  return CACHE_INODE_SUCCESS;
-
-bad_entry:
-  LogCrit(COMPONENT_CACHE_INODE,
-	  "Inconsitent cache context index %s", path);
-  fclose(stream);
-  return CACHE_INODE_INCONSISTENT_ENTRY;
-}                               /* cache_inode_reload_content */
 
 /**
  *

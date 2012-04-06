@@ -108,12 +108,11 @@ int nfs3_Pathconf(nfs_arg_t * parg,
     return NFS_REQ_DROP;
 
   /* Get the entry in the cache_inode */
-  if((pentry = cache_inode_get( &fsal_data,
-                                pexport->cache_inode_policy,
-                                &attr,
-                                pclient,
-                                pcontext,
-                                &cache_status)) == NULL)
+  if((pentry = cache_inode_get(&fsal_data,
+                               &attr,
+                               pclient,
+                               pcontext,
+                               &cache_status)) == NULL)
     {
       /* Stale NFS FH ? */
       pres->res_pathconf3.status = NFS3ERR_STALE;

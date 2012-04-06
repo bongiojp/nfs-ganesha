@@ -92,7 +92,6 @@
 cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                                       cache_entry_t * pentry_dir_dest,
                                       fsal_name_t * plink_name,
-                                      cache_inode_policy_t policy,
                                       fsal_attrib_list_t * pattr,
                                       cache_inode_client_t * pclient,
                                       fsal_op_context_t * pcontext,
@@ -108,10 +107,6 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *pstatus = CACHE_INODE_SUCCESS;
-
-     /* stats */
-     pclient->stat.nb_call_total += 1;
-     pclient->stat.func_stats.nb_call[CACHE_INODE_LINK] += 1;
 
      /* The file to be hardlinked can't be a DIRECTORY */
      if (pentry_src->type == DIRECTORY) {
@@ -210,13 +205,6 @@ out:
 
      if (destdirlock) {
           pthread_rwlock_unlock(&pentry_dir_dest->content_lock);
-     }
-
-     /* stats */
-     if(*pstatus != CACHE_INODE_SUCCESS) {
-          pclient->stat.func_stats.nb_err_retryable[CACHE_INODE_LINK] += 1;
-     } else {
-          pclient->stat.func_stats.nb_success[CACHE_INODE_LINK] += 1;
      }
 
      return *pstatus;

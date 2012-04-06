@@ -415,7 +415,6 @@ nfs_Readdir(nfs_arg_t *arg,
 
      /* Call readdir */
      if (cache_inode_readdir(dir_entry,
-                             export->cache_inode_policy,
                              cache_inode_cookie,
                              asked_num_entries,
                              &num_entries,

@@ -181,7 +181,6 @@ int nfs_Lookup(nfs_arg_t * parg,
       if((pentry_file
           = cache_inode_lookup(pentry_dir,
                                &name,
-                               pexport->cache_inode_policy,
                                &attr,
                                pclient,
                                pcontext,

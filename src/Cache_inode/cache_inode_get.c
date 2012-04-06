@@ -79,7 +79,6 @@
  */
 cache_entry_t *
 cache_inode_get(cache_inode_fsal_data_t *fsdata,
-                cache_inode_policy_t policy,
                 fsal_attrib_list_t *attr,
                 cache_inode_client_t *client,
                 fsal_op_context_t *context,
@@ -99,9 +98,6 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
-
-     ++(client->stat.nb_call_total);
-     ++(client->stat.func_stats.nb_call[CACHE_INODE_GET]);
 
      /* Turn the input to a hash key on our own.
       */
@@ -141,7 +137,6 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
                         "fsal_status=%u,%u ", *status,
                         fsal_status.major,
                         fsal_status.minor);
-               ++(client->stat.func_stats.nb_err_unrecover[CACHE_INODE_GET]);
                return NULL;
           }
 
@@ -149,30 +144,22 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
           if (!FSAL_TEST_MASK(fsal_attributes.supported_attributes,
                              FSAL_ATTR_TYPE)) {
                *status = CACHE_INODE_FSAL_ERROR;
-               ++(client->stat.func_stats.nb_err_unrecover[CACHE_INODE_GET]);
                return NULL;
           }
 
           /* Get the cache_inode file type */
           type = cache_inode_fsal_type_convert(fsal_attributes.type);
           if (type == SYMBOLIC_LINK) {
-               if (CACHE_INODE_KEEP_CONTENT(policy)) {
-                    FSAL_CLEAR_MASK(fsal_attributes.asked_attributes);
-                    FSAL_SET_MASK(fsal_attributes.asked_attributes,
-                                  client->attrmask);
-                    fsal_status =
-                         FSAL_readlink(file_handle, context,
-                                       &create_arg.link_content,
-                                       &fsal_attributes);
-               } else {
-                    fsal_status.major = ERR_FSAL_NO_ERROR;
-                    fsal_status.minor = 0;
-               }
+               FSAL_CLEAR_MASK(fsal_attributes.asked_attributes);
+               FSAL_SET_MASK(fsal_attributes.asked_attributes,
+                             client->attrmask);
+               fsal_status =
+                    FSAL_readlink(file_handle, context,
+                                  &create_arg.link_content,
+                                  &fsal_attributes);
 
                if (FSAL_IS_ERROR(fsal_status)) {
                     *status = cache_inode_error_convert(fsal_status);
-                    ++(client->stat.func_stats
-                       .nb_err_unrecover[CACHE_INODE_GET]);
                     return NULL;
                }
           }
@@ -180,13 +167,11 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
                = cache_inode_new_entry(fsdata,
                                        &fsal_attributes,
                                        type,
-                                       policy,
                                        &create_arg,
                                        client,
                                        context,
                                        CACHE_INODE_FLAG_EXREF, /* This is a population, not a creation */
                                        status)) == NULL) {
-               ++(client->stat.func_stats.nb_err_unrecover[CACHE_INODE_GET]);
                return NULL;
           }
 
@@ -202,14 +187,12 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
           LogCrit(COMPONENT_CACHE_INODE,
                   "cache_inode_get returning CACHE_INODE_INVALID_ARGUMENT "
                   "- this should not have happened");
-          ++(client->stat.func_stats.nb_err_unrecover[CACHE_INODE_GET]);
           return NULL;
           break;
      }
 
      /* Want to ASSERT pclient at this point */
      *status = CACHE_INODE_SUCCESS;
-     ++(client->stat.func_stats.nb_success[CACHE_INODE_GET]);
 
      /* This is the replacement for cache_inode_renew_entry.  Rather
         than calling that function at the start of every cache_inode

@@ -82,7 +82,6 @@ cache_entry_t *
 cache_inode_create(cache_entry_t *parent,
                    fsal_name_t *name,
                    cache_inode_file_type_t type,
-                   cache_inode_policy_t policy,
                    fsal_accessmode_t mode,
                    cache_inode_create_arg_t *create_arg,
                    fsal_attrib_list_t *attr,
@@ -109,17 +108,12 @@ cache_inode_create(cache_entry_t *parent,
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
 
-     ++(client->stat.nb_call_total);
-     inc_func_call(client, CACHE_INODE_CREATE);
-
      if ((type != REGULAR_FILE) && (type != DIRECTORY) &&
          (type != SYMBOLIC_LINK) && (type != SOCKET_FILE) &&
          (type != FIFO_FILE) && (type != CHARACTER_FILE) &&
          (type != BLOCK_FILE)) {
           *status = CACHE_INODE_BAD_TYPE;
 
-          /* stats */
-          inc_func_err_unrecover(client, CACHE_INODE_CREATE);
           entry = NULL;
           goto out;
         }
@@ -127,7 +121,6 @@ cache_inode_create(cache_entry_t *parent,
      /* Check if an entry of the same name exists */
      entry = cache_inode_lookup(parent,
                                 name,
-                                policy,
                                 attr,
                                 client,
                                 context,
@@ -138,11 +131,9 @@ cache_inode_create(cache_entry_t *parent,
                /* Incompatible types, returns NULL */
                cache_inode_lru_unref(entry, client,
                                      LRU_FLAG_NONE);
-               inc_func_err_unrecover(client, CACHE_INODE_CREATE);
                entry = NULL;
                goto out;
           } else {
-               inc_func_success(client, CACHE_INODE_CREATE);
                goto out;
           }
      }
@@ -202,7 +193,6 @@ cache_inode_create(cache_entry_t *parent,
      default:
           /* we should never go there */
           *status = CACHE_INODE_INCONSISTENT_ENTRY;
-          inc_func_err_unrecover(client, CACHE_INODE_CREATE);
           entry = NULL;
           goto out;
           break;
@@ -211,7 +201,6 @@ cache_inode_create(cache_entry_t *parent,
      /* Check for the result */
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
-          inc_func_err_unrecover(client, CACHE_INODE_CREATE);
           entry = NULL;
           goto out;
      }
@@ -224,7 +213,6 @@ cache_inode_create(cache_entry_t *parent,
      entry = cache_inode_new_entry(&fsal_data,
                                    &object_attributes,
                                    type,
-                                   policy,
                                    create_arg,
                                    client,
                                    context,
@@ -234,7 +222,6 @@ cache_inode_create(cache_entry_t *parent,
      if (entry == NULL) {
           *status = CACHE_INODE_INSERT_ERROR;
 
-          inc_func_err_unrecover(client, CACHE_INODE_CREATE);
           return NULL;
      }
 
@@ -248,7 +235,6 @@ cache_inode_create(cache_entry_t *parent,
                                    status);
      pthread_rwlock_unlock(&parent->content_lock);
      if (*status != CACHE_INODE_SUCCESS) {
-          inc_func_err_unrecover(client, CACHE_INODE_CREATE);
           cache_inode_lru_unref(entry, client,
                                 LRU_FLAG_NONE);
           entry = NULL;
@@ -269,7 +255,6 @@ cache_inode_create(cache_entry_t *parent,
      /* Copy up the child attributes */
      *attr = object_attributes;
 
-     inc_func_success(client, CACHE_INODE_CREATE);
      *status = CACHE_INODE_SUCCESS;
 
 out:
