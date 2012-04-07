@@ -267,14 +267,14 @@ cache_inode_close(cache_entry_t *entry,
           goto out;
      }
 
-     if (!(flags & CACHE_INODE_FLAG_CONTENT_HAVE)) {
-          pthread_rwlock_wrlock(&entry->content_lock);
-     }
-
      /* If nothing is opened, do nothing */
      if (entry->object.file.open_fd.openflags == FSAL_O_CLOSED) {
           *status = CACHE_INODE_SUCCESS;
           return *status;
+     }
+
+     if (!(flags & CACHE_INODE_FLAG_CONTENT_HAVE)) {
+          pthread_rwlock_wrlock(&entry->content_lock);
      }
 
      /* If state is held in the file, do not close it.  This should
