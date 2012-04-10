@@ -189,7 +189,7 @@ cache_inode_commit(cache_entry_t *entry,
           } else {
                if (offset < udata->offset) {
                     *status = CACHE_INODE_INVALID_ARGUMENT;
-                    return *status;
+                    goto out;
                }
 
                cache_inode_rdwr(entry,

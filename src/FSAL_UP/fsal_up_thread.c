@@ -299,7 +299,7 @@ void *fsal_up_thread(void *Arg)
   SetNameFunction(thr_name);
 
 #ifndef _NO_BUDDY_SYSTEM
-  if((rc = BuddyInit(&nfs_param.buddy_param_fsal_up)) != BUDDY_SUCCESS)
+  if(BuddyInit(&nfs_param.buddy_param_fsal_up) != BUDDY_SUCCESS)
     {
       /* Failed init */
       LogFatal(COMPONENT_FSAL_UP,

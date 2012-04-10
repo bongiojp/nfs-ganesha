@@ -101,6 +101,50 @@ cache_inode_status_t cache_inode_rename_cached_dirent(cache_entry_t * pentry_par
   return *pstatus;
 }                               /* cache_inode_rename_cached_dirent */
 
+static inline void src_dest_lock(cache_entry_t * pentry_dirsrc,
+                                 cache_entry_t * pentry_dirdest)
+{
+  /* Get the locks on both entries. If src and dest are
+   * the same, take only one lock.  Locks are acquired with lost
+   * cache_entry first to avoid deadlocks. */
+
+  if(pentry_dirsrc == pentry_dirdest)
+    pthread_rwlock_wrlock(&pentry_dirsrc->content_lock);
+  else
+    {
+      if(pentry_dirsrc < pentry_dirdest)
+        {
+          pthread_rwlock_wrlock(&pentry_dirsrc->content_lock);
+          pthread_rwlock_wrlock(&pentry_dirdest->content_lock);
+        }
+      else
+        {
+          pthread_rwlock_wrlock(&pentry_dirdest->content_lock);
+          pthread_rwlock_wrlock(&pentry_dirsrc->content_lock);
+        }
+    }
+}
+
+static inline void src_dest_unlock(cache_entry_t * pentry_dirsrc,
+                                   cache_entry_t * pentry_dirdest)
+{
+  if(pentry_dirsrc == pentry_dirdest)
+    pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
+  else
+    {
+      if(pentry_dirsrc < pentry_dirdest)
+        {
+          pthread_rwlock_unlock(&pentry_dirdest->content_lock);
+          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
+        }
+      else
+        {
+          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
+          pthread_rwlock_unlock(&pentry_dirdest->content_lock);
+        }
+    }
+}
+
 /**
  *
  * cache_inode_rename: renames an entry in the cache. 
@@ -160,25 +204,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
    * and it will have the same conclusion !!!
    */
 
-  /* Get the locks on both entries. If the same.  If src and dest are
-   * the same, take only one lock.  Locks are acquired with lost
-   * cache_entry first to avoid deadlocks. */
-
-  if(pentry_dirsrc == pentry_dirdest)
-    pthread_rwlock_wrlock(&pentry_dirsrc->content_lock);
-  else
-    {
-      if(pentry_dirsrc < pentry_dirdest)
-        {
-          pthread_rwlock_wrlock(&pentry_dirsrc->content_lock);
-          pthread_rwlock_wrlock(&pentry_dirdest->content_lock);
-        }
-      else
-        {
-          pthread_rwlock_wrlock(&pentry_dirdest->content_lock);
-          pthread_rwlock_wrlock(&pentry_dirsrc->content_lock);
-        }
-    }
+  src_dest_lock(pentry_dirsrc, pentry_dirdest);
 
   /* Check for object existence in source directory */
   if((pentry_lookup_src
@@ -191,11 +217,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     if(*pstatus != CACHE_INODE_FSAL_ESTALE)
       *pstatus = CACHE_INODE_NOT_FOUND;
 
-    pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-    if (pentry_dirsrc != pentry_dirdest)
-      {
-        pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-      }
+      src_dest_unlock(pentry_dirsrc, pentry_dirdest);
 
       if(*pstatus != CACHE_INODE_FSAL_ESTALE)
         LogDebug(COMPONENT_CACHE_INODE,
@@ -226,12 +248,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       if(pentry_lookup_dest->type == DIRECTORY &&
          pentry_lookup_src->type != DIRECTORY)
         {
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           /* Return EISDIR */
           *pstatus = CACHE_INODE_IS_A_DIRECTORY;
           return *pstatus;
@@ -242,13 +259,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         {
           /* Return ENOTDIR */
           *pstatus = CACHE_INODE_NOT_A_DIRECTORY;
-
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }
 
@@ -259,12 +270,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           /* There is in fact only one file (may be one of the
              arguments is a hard link to the other) */
 
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           LogDebug(COMPONENT_CACHE_INODE,
                    "Rename (%p,%s)->(%p,%s) : rename the object on itself",
                    pentry_dirsrc, poldname->name, pentry_dirdest,
@@ -282,12 +288,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           /* The entry is a non-empty directory */
           *pstatus = CACHE_INODE_DIR_NOT_EMPTY;
 
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           LogDebug(COMPONENT_CACHE_INODE,
                    "Rename (%p,%s)->(%p,%s) : destination is a non-empty directory",
                    pentry_dirsrc, poldname->name, pentry_dirdest,
@@ -309,12 +310,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           LogDebug(COMPONENT_CACHE_INODE,
                    "Rename : unable to remove destination");
 
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }
     }                           /* if( pentry_lookup_dest != NULL ) */
@@ -325,12 +321,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           LogDebug(COMPONENT_CACHE_INODE,
                    "Rename : stale destnation");
 
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }
     }
@@ -346,12 +337,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     {
       *pstatus = CACHE_INODE_BAD_TYPE;
 
-      pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-      if(pentry_dirsrc != pentry_dirdest)
-        {
-          pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-        }
-
+      src_dest_unlock(pentry_dirsrc, pentry_dirdest);
       return *pstatus;
     }
 
@@ -364,17 +350,8 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     }
   else
     {
-      pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-      if(pentry_dirsrc != pentry_dirdest)
-        {
-          pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-        }
-
+      src_dest_unlock(pentry_dirsrc, pentry_dirdest);
       *pstatus = CACHE_INODE_BAD_TYPE;
-
-      pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-      if(pentry_dirsrc != pentry_dirdest)
-        pthread_rwlock_unlock(&pentry_dirdest->content_lock);
 
       return *pstatus;
     }
@@ -390,12 +367,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
-
-      pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-      if(pentry_dirsrc != pentry_dirdest)
-        {
-             pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-        }
+      src_dest_unlock(pentry_dirsrc, pentry_dirdest);
       return *pstatus;
     }
 
@@ -429,8 +401,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           *pstatus = status;
 
           /* Unlock the pentry and exits */
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }
     }
@@ -451,12 +422,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         {
           *pstatus = status;
 
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }
 
@@ -468,26 +434,12 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         {
           *pstatus = status;
 
-          pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          if(pentry_dirsrc != pentry_dirdest)
-            {
-              pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-            }
-
+          src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }
     }
 
-  /* stat */
-  if(*pstatus != CACHE_INODE_SUCCESS)
-
   /* unlock entries */
-
-  pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-  if(pentry_dirsrc != pentry_dirdest)
-    {
-      pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-    }
-
+  src_dest_unlock(pentry_dirsrc, pentry_dirdest);
   return *pstatus;
 }                               /* cache_inode_rename */

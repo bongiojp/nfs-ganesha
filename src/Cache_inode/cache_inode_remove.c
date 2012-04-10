@@ -283,9 +283,6 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
 
      /* Remove the entry from parent dir_entries avl */
      cache_inode_remove_cached_dirent(entry, name, client, status);
-     if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
-          pthread_rwlock_unlock(&entry->content_lock);
-     }
 
      LogFullDebug(COMPONENT_CACHE_INODE,
                   "cache_inode_remove_cached_dirent: status=%d", *status);
@@ -333,6 +330,9 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
      }
 
 out:
+     if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
+          pthread_rwlock_unlock(&entry->content_lock);
+     }
 
      return *status;
 }

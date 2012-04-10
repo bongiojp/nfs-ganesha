@@ -1158,7 +1158,6 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
   char *str_name = ".";
   char item_path[FSAL_MAX_PATH_LEN];
   cache_entry_t *pentry_tmp = NULL;
-  int dir_pentry_unlock = FALSE;
 
   int rc = 0;
   char glob_path[FSAL_MAX_PATH_LEN];
@@ -1434,13 +1433,8 @@ int fn_Cache_inode_ls(int argc, /* IN : number of args in argv */
                   context->cache_status);
           /* after successful cache_inode_readdir, pentry_tmp may be
            * read locked */
-          if (dir_pentry_unlock)
-              pthread_rwlock_unlock(&pentry_tmp->content_lock);
           return context->cache_status;
         }
-
-      if (dir_pentry_unlock)
-        pthread_rwlock_unlock(&pentry_tmp->content_lock);
 
       for(i = 0; i < nbfound; i++)
         {
