@@ -647,7 +647,6 @@ cache_inode_status_t cache_inode_readdir_populate(
  * @param dir_entry [IN] Entry for the parent directory to be read.
  * @param policy [IN] Caching policy.
  * @param cookie [IN] Cookie for the readdir operation (basically the offset).
- * @param nbwanted [IN] Maximum number of directory entries wanted.
  * @param nbfound [OUT] Number of entries returned.
  * @param eod_met [OUT] A flag to know if end of directory was met
  *                      during this call.
@@ -667,7 +666,6 @@ cache_inode_status_t cache_inode_readdir_populate(
 cache_inode_status_t
 cache_inode_readdir(cache_entry_t * dir_entry,
                     uint64_t cookie,
-                    unsigned int nbwanted,
                     unsigned int *nbfound,
                     bool_t *eod_met,
                     cache_inode_client_t *client,
@@ -676,35 +674,25 @@ cache_inode_readdir(cache_entry_t * dir_entry,
                     void *cb_opaque,
                     cache_inode_status_t *status)
 {
-     cache_inode_dir_entry_t dirent_key[1], *dirent;
+     /* Key for looking up the directory entry corresponding to the
+        supplied cookie. */
+     cache_inode_dir_entry_t dirent_key[1];
+     /* The entry being examined */
+     cache_inode_dir_entry_t *dirent = NULL;
+     /* The node in the tree being traversed */
      struct avltree_node *dirent_node;
-     fsal_accessflags_t access_mask = 0;
-     int i = 0;
-
-     /* Guide to parameters:
-      * the first cookie is parameter 'cookie'
-      * number of entries queried is set by parameter 'nbwanted'
-      * number of found entries before eod is return is '*nbfound'
-      * '*eod_met' is set if end of directory is encountered */
+     /* The access mask corresponding to permission to list directory
+        entries */
+     const fsal_accessflags_t access_mask
+          = (FSAL_MODE_MASK_SET(FSAL_R_OK) |
+             FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_LIST_DIR));
+     /* True if the most recently traversed directory entry has been
+        added to the caller's result. */
+     bool_t in_result = TRUE;
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
      dirent = NULL;
-
-     LogFullDebug(COMPONENT_CACHE_INODE,
-                  "--> Cache_inode_readdir: parameters are cookie=%"PRIu64
-                  "nbwanted=%u", cookie, nbwanted);
-
-     /* Sanity check */
-     if (nbwanted == 0) {
-          /* Asking for nothing is not a crime !!!!!
-           * build a 'dummy' return in this case */
-          *status = CACHE_INODE_SUCCESS;
-          *nbfound = 0;
-          *eod_met = FALSE;
-
-          return *status;
-     }
 
      /* readdir can be done only with a directory */
      if (dir_entry->type != DIRECTORY) {
@@ -715,9 +703,6 @@ cache_inode_readdir(cache_entry_t * dir_entry,
      cache_inode_lock_trust_attrs(dir_entry, context, client);
      /* Check if user (as specified by the credentials) is authorized to read
       * the directory or not */
-     access_mask = (FSAL_MODE_MASK_SET(FSAL_R_OK) |
-                    FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_LIST_DIR));
-
      if (cache_inode_access_no_mutex(dir_entry,
                                      access_mask,
                                      client,
@@ -792,14 +777,9 @@ cache_inode_readdir(cache_entry_t * dir_entry,
      *nbfound = 0;
      *eod_met = FALSE;
 
-     for(i = 0; i < nbwanted; ++i) {
+     while (in_result && dirent_node) {
           cache_entry_t *entry = NULL;
           cache_inode_status_t lookup_status = 0;
-          bool_t more_wanted = TRUE;
-
-          if (!dirent_node) {
-               break;
-          }
 
           dirent = avltree_container_of(dirent_node,
                                         cache_inode_dir_entry_t,
@@ -841,29 +821,28 @@ cache_inode_readdir(cache_entry_t * dir_entry,
                        dirent->hk.k, dirent->hk.p);
 
           cache_inode_lock_trust_attrs(entry, context, client);
-          more_wanted = cb(cb_opaque,
-                           dirent->name.name,
-                           &entry->handle,
-                           &entry->attributes,
-                           dirent->hk.k);
+          in_result = cb(cb_opaque,
+                         dirent->name.name,
+                         &entry->handle,
+                         &entry->attributes,
+                         dirent->hk.k);
           (*nbfound)++;
           pthread_rwlock_unlock(&entry->attr_lock);
           cache_inode_lru_unref(entry, client, 0);
-          if (!more_wanted) {
+          if (!in_result) {
                break;
           }
           dirent_node = avltree_next(dirent_node);
      }
 
-     if ((*nbfound > 0) && (!dirent)) {
-          LogCrit(COMPONENT_CACHE_INODE, "cache_inode_readdir: "
-                  "UNEXPECTED CASE: dirent is NULL whereas nbfound > 0");
-          *status = CACHE_INODE_INCONSISTENT_ENTRY;
-          goto unlock_dir;
-     }
+     /* We have reached the last node and every node traversed was
+        added to the result */;
 
-     if (!dirent_node)
+     if (!dirent_node && in_result) {
           *eod_met = TRUE;
+     } else {
+          *eod_met = FALSE;
+     }
 
 unlock_dir:
 

@@ -129,7 +129,6 @@ nfs3_Readdirplus(nfs_arg_t *arg,
      cookieverf3 cookie_verifier;
      unsigned int num_entries = 0;
      unsigned long estimated_num_entries = 0;
-     unsigned long asked_num_entries = 0;
      cache_inode_file_type_t dir_filetype = 0;
      bool_t eod_met = FALSE;
      cache_inode_status_t cache_status = 0;
@@ -235,13 +234,10 @@ nfs3_Readdirplus(nfs_arg_t *arg,
      res->res_readdirplus3.READDIRPLUS3res_u.resok.reply.entries = NULL;
      res->res_readdirplus3.READDIRPLUS3res_u.resok.reply.eof = FALSE;
 
-     /* Fudge space for "." and "..", if necessary */
+     /* Fudge cookie for "." and "..", if necessary */
      if (begin_cookie > 1) {
-          asked_num_entries = estimated_num_entries;
           cache_inode_cookie = begin_cookie;
      } else {
-          asked_num_entries
-               = ((estimated_num_entries > 2) ? estimated_num_entries - 2 : 0);
           cache_inode_cookie = 0;
      }
 
@@ -312,7 +308,6 @@ nfs3_Readdirplus(nfs_arg_t *arg,
      /* Call readdir */
      if (cache_inode_readdir(dir_entry,
                              cache_inode_cookie,
-                             asked_num_entries,
                              &num_entries,
                              &eod_met,
                              client,
@@ -341,17 +336,10 @@ nfs3_Readdirplus(nfs_arg_t *arg,
      }
      LogFullDebug(COMPONENT_NFS_READDIR,
                   "Readdirplus3 -> Call to cache_inode_readdir( cookie=%"
-                  PRIu64", asked=%lu ) -> num_entries = %u",
-                  cache_inode_cookie, asked_num_entries, num_entries);
+                  PRIu64") -> num_entries = %u",
+                  cache_inode_cookie, num_entries);
 
-     if (eod_met) {
-          LogFullDebug(COMPONENT_NFS_READDIR,
-                       "+++++++++++++++++++++++++++++++++++++++++> "
-                       "EOD MET ");
-     }
-
-     if ((num_entries == 0) && (asked_num_entries != 0) &&
-         (begin_cookie > 1)) {
+     if ((num_entries == 0) && (begin_cookie > 1)) {
           res->res_readdirplus3.status = NFS3_OK;
           res->res_readdirplus3.READDIRPLUS3res_u
                .resok.reply.entries = NULL;
@@ -367,14 +355,8 @@ nfs3_Readdirplus(nfs_arg_t *arg,
      } else {
           res->res_readdirplus3.READDIRPLUS3res_u
                .resok.reply.entries = cb_opaque.entries;
-          if (eod_met && (cb_opaque.count >= num_entries)) {
-               /* End of directory */
-               LogFullDebug(COMPONENT_NFS_READDIR,
-                            "======================================> EOD met");
-               res->res_readdirplus3.READDIRPLUS3res_u.resok.reply.eof = TRUE;
-          } else {
-               res->res_readdirplus3.READDIRPLUS3res_u.resok.reply.eof = FALSE;
-          }
+          res->res_readdirplus3.READDIRPLUS3res_u.resok.reply.eof
+               = eod_met;
      }
 
      nfs_SetPostOpAttr(export,

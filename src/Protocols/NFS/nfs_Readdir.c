@@ -156,7 +156,6 @@ nfs_Readdir(nfs_arg_t *arg,
      cookieverf3 cookie_verifier;
      unsigned int num_entries;
      unsigned long estimated_num_entries = 0;
-     unsigned long asked_num_entries = 0;
      cache_inode_file_type_t dir_filetype = 0;
      bool_t eod_met = FALSE;
      cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
@@ -287,16 +286,10 @@ nfs_Readdir(nfs_arg_t *arg,
           goto out;
      }
 
-     /* Trim the number of entries we request by the space required
-        for "." and ".." entries. */
+     /* Adjust the cookie we supply to cache_inode */
      if (cookie > 1)  /* it is not the cookie for "." nor ".." */ {
-          asked_num_entries = estimated_num_entries;
           cache_inode_cookie = cookie;
      } else {
-          asked_num_entries =
-               (estimated_num_entries > 2 - cookie ?
-                estimated_num_entries + cookie - 2 :
-                0);
           cache_inode_cookie = 0;
      }
 
@@ -416,7 +409,6 @@ nfs_Readdir(nfs_arg_t *arg,
      /* Call readdir */
      if (cache_inode_readdir(dir_entry,
                              cache_inode_cookie,
-                             asked_num_entries,
                              &num_entries,
                              &eod_met,
                              client,
@@ -425,7 +417,7 @@ nfs_Readdir(nfs_arg_t *arg,
                               nfs2_readdir_callback :
                               nfs3_readdir_callback),
                              req->rq_vers == NFS_V2 ?
-                             (void* ) &cb2 :
+                             (void *) &cb2 :
                              (void *) &cb3,
                              &cache_status) != CACHE_INODE_SUCCESS) {
           if (nfs_RetryableError(cache_status)) {
@@ -448,23 +440,14 @@ nfs_Readdir(nfs_arg_t *arg,
      LogFullDebug(COMPONENT_NFS_READDIR,
                   "-- Readdir -> Call to "
                   "cache_inode_readdir(cookie=%"PRIu64
-                  ", asked=%lu) -> num_entries = %u",
+                  " -> num_entries = %u",
                   cache_inode_cookie,
-                  asked_num_entries,
                   num_entries);
 
-     if (eod_met) {
-          LogFullDebug(COMPONENT_NFS_READDIR,
-                       "+++++++++++++++++++++++++++++++++++++++++> "
-                       "EOD MET ");
-     }
-
      if (req->rq_vers == NFS_V2) {
-          RES_READDIR2_OK.eof = (eod_met && (cb2.count >=
-                                             num_entries));
+          RES_READDIR2_OK.eof = eod_met;
      } else if (req->rq_vers == NFS_V3) {
-          RES_READDIR3_OK.reply.eof
-               = (eod_met && (cb3.count >= num_entries));
+          RES_READDIR3_OK.reply.eof = eod_met;
           nfs_SetPostOpAttr(export,
                             &dir_attr,
                             &(RES_READDIR3_OK.dir_attributes));

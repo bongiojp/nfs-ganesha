@@ -593,9 +593,13 @@ typedef enum cache_inode_status_t
 /**
  * \brief Type of callback for cache_inode_readdir
  *
- * This callback provides the upperl evel protocol handling function
+ * This callback provides the upper level protocol handling function
  * with one directory entry at a time.  It may use the opaque to keep
  * track of the structure it is filling, space used, and so forth.
+ *
+ * This function should return TRUE if the entry has been added to the
+ * caller's responde, or FALSE if the structure is fulled and the
+ * structure has not been added.
  */
 
 typedef bool_t(*cache_inode_readdir_cb_t)(
@@ -866,7 +870,6 @@ cache_inode_status_t cache_inode_readdir_populate(
 cache_inode_status_t cache_inode_readdir(
      cache_entry_t * dir_entry,
      uint64_t cookie,
-     unsigned int nbwanted,
      unsigned int *nbfound,
      bool_t *eod_met,
      cache_inode_client_t *client,

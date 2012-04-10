@@ -200,8 +200,8 @@ nfs4_op_readdir(struct nfs_argop4 *op,
 
      /* Prepare to read the entries */
 
-     entries = (entry4*) Mem_Alloc(estimated_num_entries *
-                                  sizeof(entry4));
+     entries = Mem_Alloc(estimated_num_entries *
+                         sizeof(entry4));
      memset(entries, 0, estimated_num_entries * sizeof(entry4));
 
      cb_data.entries = entries;
@@ -214,7 +214,6 @@ nfs4_op_readdir(struct nfs_argop4 *op,
      /* Perform the readdir operation */
      if (cache_inode_readdir(dir_entry,
                              cookie,
-                             estimated_num_entries,
                              &num_entries,
                              &eod_met,
                              data->pclient,
@@ -239,12 +238,7 @@ nfs4_op_readdir(struct nfs_argop4 *op,
                = entries = NULL;
      }
 
-     if (eod_met &&
-         (cb_data.count == num_entries)) {
-          res_READDIR4.READDIR4res_u.resok4.reply.eof = TRUE;
-     } else {
-          res_READDIR4.READDIR4res_u.resok4.reply.eof = FALSE;
-     }
+     res_READDIR4.READDIR4res_u.resok4.reply.eof = eod_met;
 
      /* Do not forget to set the verifier */
      memcpy(res_READDIR4.READDIR4res_u.resok4.cookieverf,
