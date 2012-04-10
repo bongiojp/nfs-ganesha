@@ -89,7 +89,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   char __attribute__ ((__unused__)) funcname[] = "nfs4_op_read";
 
   fsal_size_t              size;
-  fsal_size_t              read_size;
+  fsal_size_t              read_size, check_size;
   fsal_off_t               offset;
   fsal_boolean_t           eof_met;
   caddr_t                  bufferdata;
@@ -105,6 +105,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   fsal_attrib_list_t       attr;
   cache_entry_t          * pentry = NULL;
   int                      rc = 0;
+  fsal_staticfsinfo_t    * pstaticinfo = NULL ;
 
   cache_content_policy_data_t datapol;
 
@@ -194,6 +195,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
 
   /* NB: After this point, if pstate_found == NULL, then the stateid
      is all-0 or all-1 */
+  pstaticinfo = data->pcontext->export_context->fe_static_fs_info;
 
   if(pstate_found != NULL)
     {
@@ -328,13 +330,23 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       }
 
   /* Do not read more than FATTR4_MAXREAD */
-  if((data->pexport->options & EXPORT_OPTION_MAXREAD) == EXPORT_OPTION_MAXREAD &&
-     size > data->pexport->MaxRead)
+  /* We should check against the value we returned in getattr. This was not
+   * the case before the following check_size code was added.
+   */
+  if( ((data->pexport->options & EXPORT_OPTION_MAXREAD) == EXPORT_OPTION_MAXREAD))
+    check_size = data->pexport->MaxRead;
+  else
+    check_size = pstaticinfo->maxread;
+  if( size > check_size )
     {
       /* the client asked for too much data,
        * this should normally not happen because
        * client will get FATTR4_MAXREAD value at mount time */
-      size = data->pexport->MaxRead;
+      
+      LogFullDebug(COMPONENT_NFS_V4,
+               "NFS4_OP_READ: read requested size = %llu  read allowed size = %llu",
+               size, check_size);
+      size = check_size;
     }
 
   /* If size == 0 , no I/O is to be made and everything is alright */
