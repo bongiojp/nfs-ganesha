@@ -563,6 +563,11 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                     }
                   V(powner->so_mutex);
 
+                  if (data->current_entry) {
+                    cache_inode_put(data->current_entry, data->pclient);
+                    data->current_entry = NULL;
+                  }
+
                   status4 = nfs4_create_fh(data, pentry_lookup, &text);
                   if(status4 != NFS4_OK)
                     {
@@ -571,10 +576,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                       goto out;
                     }
 
-                  if (data->current_entry) {
-                    cache_inode_put(data->current_entry, data->pclient);
-                    data->current_entry = NULL;
-                  }
                   data->current_entry = pentry_lookup;
                   data->current_filetype = REGULAR_FILE;
 
@@ -643,6 +644,12 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                 }
                               V(powner->so_mutex);
 
+                              if (data->current_entry) {
+                                  cache_inode_put(data->current_entry,
+                                                  data->pclient);
+                                  data->current_entry = NULL;
+                              }
+
                               status4 = nfs4_create_fh(data,
                                                        pentry_lookup,
                                                        &text);
@@ -655,11 +662,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                   goto out;
                                 }
 
-                              if (data->current_entry) {
-                                  cache_inode_put(data->current_entry,
-                                                  data->pclient);
-                                  data->current_entry = NULL;
-                              }
                               data->current_entry = pentry_lookup;
                               data->current_filetype = REGULAR_FILE;
 
