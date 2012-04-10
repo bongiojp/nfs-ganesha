@@ -88,8 +88,6 @@ cache_inode_status_t cache_inode_rename_cached_dirent(cache_entry_t * pentry_par
       return *pstatus;
     }
 
-  /* BUGAZOMEU: Ne pas oublier de jarter un dir dont toutes les
-     entrees sont inactives */
   if((removed_pentry = cache_inode_operate_cached_dirent(pentry_parent,
                                                          oldname,
                                                          newname,
@@ -101,12 +99,12 @@ cache_inode_status_t cache_inode_rename_cached_dirent(cache_entry_t * pentry_par
   return *pstatus;
 }                               /* cache_inode_rename_cached_dirent */
 
-static inline void src_dest_lock(cache_entry_t * pentry_dirsrc,
-                                 cache_entry_t * pentry_dirdest)
+static inline void src_dest_lock(cache_entry_t *pentry_dirsrc,
+                                 cache_entry_t *pentry_dirdest)
 {
-  /* Get the locks on both entries. If src and dest are
-   * the same, take only one lock.  Locks are acquired with lost
-   * cache_entry first to avoid deadlocks. */
+  /* Get the locks on both entries. If src and dest are the same, take
+   * only one lock.  Locks are acquired with lowest cache_entry first
+   * to avoid deadlocks. */
 
   if(pentry_dirsrc == pentry_dirdest)
     pthread_rwlock_wrlock(&pentry_dirsrc->content_lock);
@@ -148,7 +146,7 @@ static inline void src_dest_unlock(cache_entry_t * pentry_dirsrc,
 /**
  *
  * cache_inode_rename: renames an entry in the cache. 
- * 
+ *
  * Renames an entry in the cache. This operation is used for moving an object into a different directory.
  *
  * @param pentry_dirsrc [IN] entry pointer for the source directory
@@ -160,7 +158,7 @@ static inline void src_dest_unlock(cache_entry_t * pentry_dirsrc,
  * @param pclient [INOUT] ressource allocated by the client for the nfs management.
  * @param pcontext [IN] FSAL credentials 
  * @param pstatus [OUT] returned status.
- * 
+ *
  * @return CACHE_INODE_SUCCESS  operation is a success \n
  * @return CACHE_INODE_LRU_ERROR allocation error occured when validating the entry\n
  * @return CACHE_INODE_NOT_FOUND source object does not exist
@@ -190,8 +188,8 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   *pstatus = CACHE_INODE_SUCCESS;
 
   /* Are we working on directories ? */
-  if((pentry_dirsrc->type != DIRECTORY)
-     || (pentry_dirdest->type != DIRECTORY))
+  if ((pentry_dirsrc->type != DIRECTORY)
+      || (pentry_dirdest->type != DIRECTORY))
     {
       /* Bad type .... */
       *pstatus = CACHE_INODE_BAD_TYPE;
@@ -217,18 +215,18 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     if(*pstatus != CACHE_INODE_FSAL_ESTALE)
       *pstatus = CACHE_INODE_NOT_FOUND;
 
-      src_dest_unlock(pentry_dirsrc, pentry_dirdest);
+    src_dest_unlock(pentry_dirsrc, pentry_dirdest);
 
-      if(*pstatus != CACHE_INODE_FSAL_ESTALE)
-        LogDebug(COMPONENT_CACHE_INODE,
-                 "Rename (%p,%s)->(%p,%s) : source doesn't exist",
-                 pentry_dirsrc, poldname->name,
-                 pentry_dirdest, pnewname->name);
-      else
-        LogDebug(COMPONENT_CACHE_INODE, "Rename : stale source");
+    if(*pstatus != CACHE_INODE_FSAL_ESTALE)
+      LogDebug(COMPONENT_CACHE_INODE,
+               "Rename (%p,%s)->(%p,%s) : source doesn't exist",
+               pentry_dirsrc, poldname->name,
+               pentry_dirdest, pnewname->name);
+    else
+      LogDebug(COMPONENT_CACHE_INODE, "Rename : stale source");
 
-      return *pstatus;
-    }
+    return *pstatus;
+  }
 
   /* Check if an object with the new name exists in the destination
      directory */
@@ -296,7 +294,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           return *pstatus;
         }
 
-      /* get ride of this entry by trying removing it */
+      /* get rid of this entry by trying removing it */
 
       status = cache_inode_remove_impl(pentry_dirdest,
                                        pnewname,
@@ -379,15 +377,16 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     *pattr_dst = *pattrdest;
 
   /* At this point, we know that:
-   *  - both pentry_dir_src and pentry_dir_dest are directories 
+   *  - both pentry_dir_src and pentry_dir_dest are directories
    *  - pentry_dir_src/oldname exists
    *  - pentry_dir_dest/newname does not exists or has just been removed */
 
   if(pentry_dirsrc == pentry_dirdest)
     {
-      /* if the rename operation is made within the same dir, then we use an optimization:
-       * cache_inode_rename_dirent is used instead of adding/removing dirent. This limits
-       * the use of resource in this case */
+      /* if the rename operation is made within the same dir, then we
+       * use an optimization: cache_inode_rename_dirent is used
+       * instead of adding/removing dirent. This limits the use of
+       * resource in this case */
 
       LogDebug(COMPONENT_CACHE_INODE,
                "Rename (%p,%s)->(%p,%s) : source and target directory are the same",
@@ -399,7 +398,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       if(status != CACHE_INODE_SUCCESS)
         {
           *pstatus = status;
-
           /* Unlock the pentry and exits */
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
@@ -421,7 +419,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       if(status != CACHE_INODE_SUCCESS)
         {
           *pstatus = status;
-
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }
@@ -433,7 +430,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
          != CACHE_INODE_SUCCESS)
         {
           *pstatus = status;
-
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           return *pstatus;
         }

@@ -147,20 +147,35 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
 
      /* If no active entry, do nothing */
      if (pentry_parent->object.dir.nbactive == 0) {
+       if (pentry_parent->flags & (CACHE_INODE_TRUST_CONTENT |
+                                   CACHE_INODE_DIR_POPULATED)) {
+         /* We cannot serve negative lookups. */
+          *pstatus = CACHE_INODE_SUCCESS;
+       } else {
           *pstatus = CACHE_INODE_NOT_FOUND;
+       }
           return NULL;
      }
 
      FSAL_namecpy(&dirent_key->name, pname);
      dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
      if (!dirent) {
-          *pstatus = CACHE_INODE_NOT_FOUND; /* Right error code (see above)? */
-          return NULL;
+       if (pentry_parent->flags & (CACHE_INODE_TRUST_CONTENT |
+                                   CACHE_INODE_DIR_POPULATED)) {
+         /* We cannot serve negative lookups. */
+         *pstatus = CACHE_INODE_SUCCESS;
+       } else {
+         *pstatus = CACHE_INODE_NOT_FOUND;
+       }
+       return NULL;
      }
 
-     /* XXX CHeck for trustworthy cached information */
+     /* We perform operations anyway even if
+        CACHE_INODE_TRUST_CONTENT is clear.  That way future upcalls
+        can call in to this function to update the content to be
+        correct.  We just don't ever return a not found or exists
+        error. */
 
-     /* Did we find something */
      if(pentry != NULL) {
           /* Yes, we did ! */
           switch (dirent_op) {
@@ -179,8 +194,13 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
                                                      dirent_key, 1);
                if (dirent2) {
                     /* rename would cause a collision */
-                    *pstatus = CACHE_INODE_ENTRY_EXISTS;
-
+                    if (pentry_parent->flags &
+                        CACHE_INODE_TRUST_CONTENT) {
+                      /* We are not up to date. */
+                      *pstatus = CACHE_INODE_SUCCESS;
+                    } else {
+                      *pstatus = CACHE_INODE_ENTRY_EXISTS;
+                    }
                } else {
                     /* try to rename in-place */
                     cache_inode_avl_remove(pentry_parent, dirent);
@@ -188,18 +208,29 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
                     if (cache_inode_avl_qp_insert(pentry_parent,
                                                   dirent) == -1) {
                          /* collision, tree state unchanged--unlikely */
-                         *pstatus = CACHE_INODE_ENTRY_EXISTS;
+                         if (pentry_parent->flags &
+                             CACHE_INODE_TRUST_CONTENT) {
+                           /* We are not up to date. */
+                           *pstatus = CACHE_INODE_SUCCESS;
+                         } else {
+                           *pstatus = CACHE_INODE_ENTRY_EXISTS;
+                         }
                          /* still, try to revert the change in place */
                          FSAL_namecpy(&dirent->name, pname);
                          if (cache_inode_avl_qp_insert(pentry_parent, dirent) == -1) {
                               LogDebug(COMPONENT_NFS_READDIR,
                                        "DIRECTORY: failed renaming dirent (%s, %s)",
                                        pname->name, newname->name);
-                              /* XXX force an invalidate -- not sure
-                               * what type, yet XXX fix */
+                              /* We are inconsistent and no longer
+                                 valid. */
+                              atomic_clear_int_bits(&pentry_parent->flags,
+                                                    CACHE_INODE_TRUST_CONTENT |
+                                                    CACHE_INODE_DIR_POPULATED);
+                              cache_inode_release_dirents(pentry_parent,
+                                                          pclient);
                          }
                     } else {
-                         *pstatus = CACHE_INODE_SUCCESS;
+                      *pstatus = CACHE_INODE_SUCCESS;
                     }
                } /* !found */
                break;
@@ -214,7 +245,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
      }
 
      if (*pstatus == CACHE_INODE_SUCCESS) {
-          /* As noted, if a mutating operation was performed, we must
+       /* As noted, if a mutating operation was performed, we must
            * invalidate cached cookies. */
           cache_inode_release_dirents(pentry_parent, pclient);
 
@@ -345,8 +376,6 @@ cache_inode_status_t cache_inode_remove_cached_dirent(
       return *pstatus;
     }
 
-  /* BUGAZOMEU: Ne pas oublier de jarter un dir dont toutes les entrees sont
-   * inactives */
   if((removed_pentry = cache_inode_operate_cached_dirent(pentry_parent,
                                                          pname,
                                                          NULL,
@@ -357,40 +386,6 @@ cache_inode_status_t cache_inode_remove_cached_dirent(
 
   return CACHE_INODE_SUCCESS;
 }                               /* cache_inode_remove_cached_dirent */
-
-
-#if 0 // unused code
-static void debug_print_dirents(cache_entry_t *dir_pentry)
-{
-    struct avltree_node *dirent_node;
-    cache_inode_dir_entry_t *dirent;
-    int size, ix;
-
-    size = avltree_size(&dir_pentry->object.dir.avl);
-
-    LogDebug(COMPONENT_CACHE_INODE, "cookie avl size: %d", size);
-
-    ix = 0;
-    dirent_node = avltree_first(&dir_pentry->object.dir.avl);
-    while (dirent_node) {
-        dirent = avltree_container_of(dirent_node,
-                                      cache_inode_dir_entry_t, 
-                                      node_hk);
-
-        LogDebug(COMPONENT_CACHE_INODE,
-                "cookie: ix %d %p (%s, %"PRIu64" %d, %"PRIu64")",
-                ix,
-                dirent,
-                dirent->name.name,
-                dirent->hk.k,
-                dirent->hk.p,
-                dirent->fsal_cookie);
-
-        dirent_node = avltree_next(dirent_node);
-        ++ix;
-    }
-}
-#endif
 
 /**
  *
