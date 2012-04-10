@@ -500,7 +500,7 @@ nfs3_readdirplus_callback(void* opaque,
                        attrs,
                        &tracker->entries[tracker->count].name_attributes);
      ++(tracker->count);
-     return FALSE;
+     return TRUE;
 } /* nfs3_readdirplus_callback */
 
 /**
