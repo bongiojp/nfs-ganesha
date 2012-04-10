@@ -107,9 +107,9 @@ cache_inode_kill_entry(cache_entry_t *entry,
              "Using cache_inode_kill_entry for entry %p", entry);
 
      fsaldata.fh_desc = entry->fh_desc;
-     (void) FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
-                              FSAL_DIGEST_SIZEOF,
-                              &fsaldata.fh_desc);
+     FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
+                       FSAL_DIGEST_SIZEOF,
+                       &fsaldata.fh_desc);
 
      /* Use the handle to build the key */
      key.pdata = fsaldata.fh_desc.start;

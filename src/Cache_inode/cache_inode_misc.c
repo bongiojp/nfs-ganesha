@@ -209,17 +209,18 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      cache_entry_t *entry = NULL;
      hash_buffer_t key, value;
      int rc = 0;
-     struct hash_latch latch;
      bool_t lrurefed = FALSE;
      bool_t weakrefed = FALSE;
      bool_t locksinited = FALSE;
      bool_t typespec = FALSE;
+     bool_t latched = FALSE;
+     struct hash_latch latch;
 
      key.pdata = fsdata->fh_desc.start;
      key.len = fsdata->fh_desc.len;
 
      /* Check if the entry doesn't already exists */
-     if (HashTable_GetLatch(fh_to_cache_entry_ht, &key, &value, FALSE,
+     if (HashTable_GetLatch(fh_to_cache_entry_ht, &key, &value, TRUE,
                             &latch) == HASHTABLE_SUCCESS) {
           /* Entry is already in the cache, do not add it */
           entry = value.pdata;
@@ -236,7 +237,10 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
           goto out;
      }
-     HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
+     /* We hold the latch from this point, doing all initialization
+        that does not require I/O, inserting the entry and releasing
+        the latch before we continue. */
+     latched = TRUE;
 
      /* Pull an entry off the LRU */
      entry = cache_inode_lru_get(client, status, LRU_REQ_FLAG_REF);
@@ -285,23 +289,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      entry->type = type;
      entry->flags = 0;
      init_glist(&entry->state_list);
-
-     /* Set the attributes*/
-     if(attr == NULL) {
-          /* This sets the two times and the trust flag, too. */
-          if (cache_inode_refresh_attrs(entry,
-                                        context,
-                                        client) !=
-              CACHE_INODE_SUCCESS) {
-
-               /* Deconstruct the entry */
-               goto out;
-          }
-     } else {
-          /* Use the supplied attributes and fix up metadata */
-          entry->attributes = *attr;
-          cache_inode_fixup_md(entry);
-     }
 
      switch (type) {
      case REGULAR_FILE:
@@ -382,48 +369,60 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      }
      typespec = TRUE;
 
-     /* Adding the entry in the cache */
+     /* As we are about to insert the entry into the table, acquire
+        the attribute lock so soemone doesn't grab it before we start
+        filling it. */
+
+     /* Adding the entry in the hash table */
      key.pdata = entry->fh_desc.start;
      key.len = entry->fh_desc.len;
 
      value.pdata = entry;
      value.len = sizeof(cache_entry_t);
 
+     pthread_rwlock_wrlock(&entry->attr_lock);
+
      if((rc =
-         HashTable_Test_And_Set(fh_to_cache_entry_ht, &key, &value,
-                                HASHTABLE_SET_HOW_SET_NO_OVERWRITE))
+         HashTable_SetLatched(fh_to_cache_entry_ht, &key, &value,
+                              &latch, FALSE, NULL, NULL))
         != HASHTABLE_SUCCESS) {
-          LogWarn(COMPONENT_CACHE_INODE,
+          /* Since we have it latched a collission is impossible.
+             Something serious has happened.*/
+          LogCrit(COMPONENT_CACHE_INODE,
                   "cache_inode_new_entry: entry could not be added to hash, "
                   "rc=%d", rc);
-          if (rc != HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
-               *status = CACHE_INODE_HASH_SET_ERROR;
-               goto out;
-          } else {
-               LogDebug(COMPONENT_CACHE_INODE,
-                        "cache_inode_new_entry: concurrency detected "
-                        "during cache insertion");
-               /* This situation occurs when several threads try to
-                * init the same uncached entry at the same time. The
-                * first creates the entry and the others got
-                * HASHTABLE_ERROR_KEY_ALREADY_EXISTS In this case, the
-                * already created entry (by the very first thread) is
-                * returned */
-               if ((rc = HashTable_Get(fh_to_cache_entry_ht, &key, &value))
-                   != HASHTABLE_SUCCESS ) {
-                    *status = CACHE_INODE_HASH_SET_ERROR;
-                    goto out;
-               }
-
-               /* conditionally take an extra reference */
-               if (flags & CACHE_INODE_FLAG_EXREF)
-                    cache_inode_lru_ref(entry, client, LRU_REQ_INITIAL);
-
-               entry = (cache_entry_t *) value.pdata;
-               *status = CACHE_INODE_SUCCESS;
-               goto out;
-          }
+          pthread_rwlock_unlock(&entry->attr_lock);
+          *status = CACHE_INODE_HASH_SET_ERROR;
+          goto out;
      }
+     latched = FALSE;
+
+     /* Set the attributes*/
+     if(attr == NULL) {
+          /* This sets the two times and the trust flag, too. */
+          if ((*status = cache_inode_refresh_attrs(entry,
+                                                   context,
+                                                   client))
+              != CACHE_INODE_SUCCESS) {
+               cache_inode_status_t kill_status = CACHE_INODE_SUCCESS;
+
+               /* Because the entry is in the hash table, we cannot
+                  go through the normal deconstruction procedure in
+                  the event that attribute update fails, as some
+                  other process may have acquired a reference since
+                  then.  Instead we use the same
+                  cache_inode_kill_entry we would use for stale
+                  entries. */
+               pthread_rwlock_unlock(&entry->attr_lock);
+               cache_inode_kill_entry(entry, client, &kill_status, 0);
+               return NULL;
+          }
+     } else {
+          /* Use the supplied attributes and fix up metadata */
+          entry->attributes = *attr;
+          cache_inode_fixup_md(entry);
+     }
+     pthread_rwlock_unlock(&entry->attr_lock);
 
      /* conditionally take an extra reference */
      if (flags & CACHE_INODE_FLAG_EXREF)
@@ -464,6 +463,9 @@ out:
           }
           if (weakrefed) {
                cache_inode_weakref_delete(&entry->weakref);
+          }
+          if (latched) {
+               HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
           }
           if (lrurefed) {
                cache_inode_lru_unref(entry, client, LRU_FLAG_NONE);
