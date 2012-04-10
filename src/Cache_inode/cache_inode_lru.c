@@ -21,7 +21,8 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  *
  * -------------
  */
@@ -40,6 +41,9 @@
 #include <time.h>
 #include <pthread.h>
 #include <assert.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <stdio.h>
 #include "stuff_alloc.h"
 #include "nlm_list.h"
 #include "fsal.h"
@@ -50,11 +54,11 @@
 
 /**
  *
- * \file cache_inode_lru.c
- * \author Matt Benjamin
- * \brief Constant-time cache inode cache management implementation
+ * @file cache_inode_lru.c
+ * @author Matt Benjamin
+ * @brief Constant-time cache inode cache management implementation
  *
- * \section DESCRIPTION
+ * @section DESCRIPTION
  *
  * This module implements a constant-time cache management strategy
  * based on LRU.  Some ideas are taken from 2Q [Johnson and Shasha 1994]
@@ -141,18 +145,12 @@ static pthread_cond_t lru_cv;
 static const uint32_t LRU_STATE_NONE = 0x00;
 static const uint32_t LRU_STATE_RECLAIMING = 0x01;
 
-static struct lru_state
-{
-     uint64_t entries_hiwat;
-     uint64_t entries_lowat;
-     uint32_t fds_hiwat;
-     uint32_t flags;
-     uint64_t last_count;
-     uint64_t threadwait;
-} lru_state;
-
 static const uint32_t LRU_SLEEPING = 0x00000001;
 static const uint32_t LRU_SHUTDOWN = 0x00000002;
+
+static const uint32_t FD_FALLBACK_LIMIT = 0x400;
+
+struct lru_state lru_state;
 
 static struct lru_thread_state
 {
@@ -302,25 +300,109 @@ lru_move_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
  */
 void cache_inode_lru_pkginit(void)
 {
+     /* The attributes governing the LRU reaper thread. */
      pthread_attr_t attr_thr;
-     int ix = 0, code = 0;
+     /* Index for initializing lanes */
+     size_t ix = 0;
+     /* Return code from system calls */
+     int code = 0;
+     /* Rlimit for open file descriptors */
+     struct rlimit rlim = {
+          .rlim_cur = RLIM_INFINITY,
+          .rlim_max = RLIM_INFINITY
+     };
 
      open_fd_count = 0;
 
      /* Repurpose some GC policy */
      lru_state.flags = LRU_STATE_NONE;
 
-     /* Set high and low watermarks */
+     /* Set high and low watermark for cache entries.  This seems a
+        bit fishy, so come back and revisit this. */
      lru_state.entries_hiwat
-          = (75 * cache_inode_gc_policy.hwmark_nb_entries) / 100;
+          = cache_inode_gc_policy.entries_hwmark;
      lru_state.entries_lowat
-          = (50 * cache_inode_gc_policy.hwmark_nb_entries) / 100;
-     lru_state.fds_hiwat
-          = (75 * cache_inode_gc_policy.max_fd) / 100;
+          = cache_inode_gc_policy.entries_lwmark;
+
+     /* Find out the system-imposed file descriptor limit */
+     if (getrlimit(RLIMIT_NOFILE, &rlim) != 0) {
+          code = errno;
+          LogCrit(COMPONENT_CACHE_INODE_LRU,
+                  "Call to getrlimit failed with error %d.  "
+                  "This should not happen.  Assigning default of %d.",
+                  code, FD_FALLBACK_LIMIT);
+          lru_state.fds_system_imposed = FD_FALLBACK_LIMIT;
+     } else {
+          if (rlim.rlim_cur < rlim.rlim_max) {
+               /* Save the old soft value so we can fall back to it
+                  if setrlimit fails. */
+               rlim_t old_soft = rlim.rlim_cur;
+               LogInfo(COMPONENT_CACHE_INODE_LRU,
+                       "Attempting to increase soft limit from %jd "
+                       "to hard limit of %jd",
+                       rlim.rlim_cur, rlim.rlim_max);
+               rlim.rlim_cur = rlim.rlim_max;
+               if (setrlimit(RLIMIT_NOFILE, &rlim) < 0) {
+                    code = errno;
+                    LogWarn(COMPONENT_CACHE_INODE_LRU,
+                            "Attempt to raise soft FD limit to hard FD limit "
+                            "failed with error %d.  Sticking to soft limit.",
+                            code);
+                    rlim.rlim_cur = old_soft;
+               }
+          }
+          if (rlim.rlim_cur == RLIM_INFINITY) {
+               FILE *const nr_open = fopen("/proc/sys/fs/nr_open",
+                                           "r");
+               if (!(nr_open &&
+                     (fscanf(nr_open,
+                             "%"SCNu32"\n",
+                             &lru_state.fds_system_imposed) == 1) &&
+                     (fclose(nr_open) == 0))) {
+                    code = errno;
+                    LogMajor(COMPONENT_CACHE_INODE_LRU,
+                             "The rlimit on open file descriptors is infinite "
+                             "and the attempt to find the system maximum "
+                             "failed with error %d.  "
+                             "Assigning the default fallback of %d which is "
+                             "almost certainly too small.  If you are on a "
+                             "Linux system, this should never happen.  If "
+                             "you are running some other system, please set "
+                             "an rlimit on file descriptors (for example, "
+                             "with ulimit) for this process and consider "
+                             "editing " __FILE__ "to add support for finding "
+                             "your system's maximum.", code,
+                             FD_FALLBACK_LIMIT);
+                    lru_state.fds_system_imposed = FD_FALLBACK_LIMIT;
+               }
+          } else {
+               lru_state.fds_system_imposed = rlim.rlim_cur;
+          }
+          LogInfo(COMPONENT_CACHE_INODE_LRU,
+                  "Setting the system-imposed limit on FDs to %d.",
+                  lru_state.fds_system_imposed);
+     }
+
+
+     lru_state.fds_hard_limit = (cache_inode_gc_policy.fd_limit_percent *
+                                 lru_state.fds_system_imposed) / 100;
+     lru_state.fds_hiwat = (cache_inode_gc_policy.fd_hwmark_percent *
+                            lru_state.fds_system_imposed) / 100;
+     lru_state.fds_lowat = (cache_inode_gc_policy.fd_lwmark_percent *
+                            lru_state.fds_system_imposed) / 100;
+     lru_state.futility = 0;
+
+     lru_state.per_lane_work
+          = (cache_inode_gc_policy.reaper_work / LRU_N_Q_LANES);
+     lru_state.biggest_window = (cache_inode_gc_policy.biggest_window *
+                                 lru_state.fds_system_imposed) / 100;
+
      lru_state.last_count = 0;
 
      lru_state.threadwait
           = 1000 * cache_inode_gc_policy.lru_run_interval;
+
+     lru_state.caching_fds = cache_inode_gc_policy.use_fd_cache;
 
      pthread_mutex_init(&lru_mtx, NULL);
      pthread_cond_init(&lru_cv, NULL);
@@ -358,8 +440,13 @@ void cache_inode_lru_pkginit(void)
 
      /* spawn LRU background thread */
      code = pthread_create(&lru_thread_state.thread_id, &attr_thr, lru_thread,
-                          (void *) NULL);
-     assert(code == 0);
+                          NULL);
+     if (code != 0) {
+          code = errno;
+          LogFatal(COMPONENT_CACHE_INODE_LRU,
+                   "Unable to start lru reaper thread, error code %d.",
+                   code);
+     }
 }
 
 /*
@@ -379,9 +466,23 @@ static inline void cache_inode_lru_clean(cache_entry_t *entry,
                                          cache_inode_client_t *client)
 {
      fsal_status_t fsal_status = {0, 0};
+     cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
+
      /* Clean an LRU entry re-use.  */
      assert((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) ||
             (entry->lru.refcount == (LRU_SENTINEL_REFCOUNT - 1)));
+
+     if (cache_inode_fd(entry)) {
+          cache_inode_close(entry, client, CACHE_INODE_FLAG_REALLYCLOSE,
+                            &cache_status);
+          if (cache_status != CACHE_INODE_SUCCESS) {
+               LogCrit(COMPONENT_CACHE_INODE_LRU,
+                       "Error closing file in cleanup: %d.",
+                       cache_status);
+          } else {
+               --open_fd_count;
+          }
+     }
 
      /* Clean up the associated ressources in the FSAL */
      if (FSAL_IS_ERROR(fsal_status
@@ -715,34 +816,95 @@ unlock:
 #define S_NSECS 1000000000UL    /* nsecs in 1s */
 #define MS_NSECS 1000000UL      /* nsecs in 1ms */
 
-static void
+/**
+ * @brief Sleep in the LRU thread for a specified time
+ *
+ * This function should only be called from the LRU thread.  It sleeps
+ * for the specified time or until woken by lru_wake_thread.
+ *
+ * @param ms [in] The time to sleep, in milliseconds.
+ *
+ * @retval FALSE if the thread wakes by timeout.
+ * @retval TRUE if the thread wakes by signal.
+ */
+
+static bool_t
 lru_thread_delay_ms(unsigned long ms)
 {
-     time_t now;
-     struct timespec then;
-     unsigned long long nsecs;
-
-     now = time(0);
-     nsecs = (S_NSECS * now) + (MS_NSECS * ms);
-     then.tv_sec = nsecs / S_NSECS;
-     then.tv_nsec = nsecs % S_NSECS;
+     time_t now = time(NULL);
+     uint64_t nsecs = (S_NSECS * now) + (MS_NSECS * ms);
+     struct timespec then = {
+          .tv_sec = nsecs / S_NSECS,
+          .tv_nsec = nsecs % S_NSECS
+     };
+     bool_t woke = FALSE;
 
      pthread_mutex_lock(&lru_mtx);
      lru_thread_state.flags |= LRU_SLEEPING;
-     pthread_cond_timedwait(&lru_cv, &lru_mtx, &then);
+     woke = (pthread_cond_timedwait(&lru_cv, &lru_mtx, &then)
+             == ETIMEDOUT);
      lru_thread_state.flags &= ~LRU_SLEEPING;
      pthread_mutex_unlock(&lru_mtx);
+     return woke;
 }
 
-/* Async thread to perform long-term reorganization, compaction,
- * other operations that cannot be performed in constant time. */
-static void *lru_thread(void *arg)
+/**
+ * @brief Function that executes in the lru thread
+ *
+ * This function performs long-term reorganization, compaction, and
+ * other operations that are not performed in-line with referencing
+ * and dereferencing.
+ *
+ * This function is responsible for cleaning the FD cache.  It works
+ * by the following rules:
+ *
+ *  - If the number of open FDs is below the low water mark, do
+ *    nothing.
+ *
+ *  - If the number of open FDs is between the low and high water
+ *    mark, make one pass through the queues, and exit.  Each pass
+ *    consists of taking an entry from L1, examining to see if it is a
+ *    regular file not bearing state with an open FD, closing the open
+ *    FD if it is, and then moving it to L2.  The advantage of the two
+ *    level system is twofold: First, seldom used entries congregate
+ *    in L2 and the promotion behaviour provides some scan
+ *    resistance.  Second, once an entry is examined, it is moved to
+ *    L2, so we won't examine the same cache entry repeatedly.
+ *
+ *  - If the number of open FDs is greater than the high water mark,
+ *    we consider ourselves to be in extremis.  In this case we make a
+ *    number of passes through the queue not to exceed the number of
+ *    passes that would be required to process the number of entries
+ *    equal to a biggest_window percent of the system specified
+ *    maximum.
+ *
+ *  - If we are in extremis, and performing the maximum amount of work
+ *    allowed has not moved the open FD count required_progress%
+ *    toward the high water mark, increment lru_state.futility.  If
+ *    lru_state.futility reaches futility_count, temporarily disable
+ *    FD caching.
+ *
+ *  - Every time we wake through timeout, reset futility_count to 0.
+ *
+ *  - If we fall below the low water mark and FD caching has been
+ *    temporarily disabled, re-enable it.
+ *
+ * @param arg [in] A void pointer, currently ignored.
+ *
+ * @return A void pointer, currently NULL.
+ */
+static void *lru_thread(void *arg __attribute__((unused)))
 {
      /* Index */
      size_t i = 0;
-    /* Temporary holder for flags */
+     /* Temporary holder for flags */
      uint32_t tmpflags = lru_state.flags;
+     /* Client required to make close calls. */
      cache_inode_client_t client;
+     /* True if we are taking extreme measures to reclaim FDs. */
+     bool_t extremis = FALSE;
+     /* True if we were explicitly woke. */
+     bool_t woke = FALSE;
 
      SetNameFunction("lru_thread");
 
@@ -774,8 +936,16 @@ static void *lru_thread(void *arg)
           if (lru_thread_state.flags & LRU_SHUTDOWN)
                break;
 
+          extremis = (open_fd_count > lru_state.fds_hiwat);
           LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                       "top of poll loop");
+                       "Reaper awakes.");
+
+          if (!woke) {
+               /* If we make it all the way through a timed sleep
+                  without being woken, we assume we aren't racing
+                  against the impossible. */
+               lru_state.futility = 0;
+          }
 
           pthread_mutex_lock(&lru_mtx);
           lru_state.last_count = 0;
@@ -801,12 +971,23 @@ static void *lru_thread(void *arg)
                pthread_mutex_unlock(&LRU_2[i].lru_pinned.mtx);
           }
 
+          LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                       "%zu entries in cache.",
+                       lru_state.last_count);
+
           if (tmpflags & LRU_STATE_RECLAIMING) {
-               if (lru_state.last_count < lru_state.entries_lowat)
+               if (lru_state.last_count < lru_state.entries_lowat) {
                     tmpflags &= ~LRU_STATE_RECLAIMING;
+                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                                 "Entry count below low water mark.  "
+                                 "Disabling reclaim.");
+               }
           } else {
                if (lru_state.last_count > lru_state.entries_hiwat) {
                     tmpflags |= LRU_STATE_RECLAIMING;
+                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                                 "Entry count above high water mark.  "
+                                 "Enabling reclaim.");
                }
           }
 
@@ -818,102 +999,166 @@ static void *lru_thread(void *arg)
 
           pthread_mutex_unlock(&lru_mtx);
 
-          /* Do a constant amount of work on every queue.  In this
-             case, if the number of file descriptors we have open is
-             greater than the high water mark, start closing them.
-             So that we don't re-examine the same file multiple
-             times, we examine each file, and then move every
-             examined file to L2 whether it has a file descriptor we
-             can close or not.  This is a preliminary example of the
-             L2 functionality rather than soemthing we expect to be
-             permanent.  (It will have to adapt heavily to the new
+          /* Reap file descriptors.  This is a preliminary example of
+             the L2 functionality rather than soemthing we expect to
+             be permanent.  (It will have to adapt heavily to the new
              FSAL API, for example.) */
 
-          if (open_fd_count > lru_state.fds_hiwat) {
+          if (open_fd_count < lru_state.fds_lowat) {
                LogDebug(COMPONENT_CACHE_INODE_LRU,
-                        "FD count is %zd and high water mark is "
-                        "%d: reaping.",
+                        "FD count is %zd and low water mark is "
+                        "%d: not reaping.",
                         open_fd_count,
-                        lru_state.fds_hiwat);
-               for (i = 0; i < LRU_N_Q_LANES; ++i) {
-                    LogDebug(COMPONENT_CACHE_INODE_LRU,
-                             "Reaping up to %d entries from lane %zd",
-                             LRU_WORK_PER_WAKE,
-                             i);
-                    int workdone = 0;
-                    cache_inode_lru_t *lru = NULL;
-                    size_t formeropen = open_fd_count;
-                    pthread_mutex_lock(&LRU_1[i].lru.mtx);
-                    while ((workdone < LRU_WORK_PER_WAKE) &&
-                           (lru = glist_first_entry(&LRU_1[i].lru.q,
-                                                    cache_inode_lru_t,
-                                                    q))) {
-                         cache_inode_status_t cache_status
-                              = CACHE_INODE_SUCCESS;
-                         cache_entry_t *entry
-                              = container_of(lru, cache_entry_t, lru);
-
-                         pthread_mutex_lock(&lru->mtx);
-                         pthread_rwlock_rdlock(&entry->state_lock);
-                         if (!cache_inode_file_holds_state(entry) &&
-                             (entry->type == REGULAR_FILE)) {
-                              /* We would want the state lock for
-                                 this anyway, so someone doesn't get
-                                 an open while we're disposing of the
-                                 descriptor. */
-                              cache_inode_close(entry, &client,
-                                                CACHE_INODE_FLAG_REALLYCLOSE,
-                                                &cache_status);
-                              if (cache_status != CACHE_INODE_SUCCESS) {
-                                   LogCrit(COMPONENT_CACHE_INODE_LRU,
-                                           "Error closing file in "
-                                           "LRU thread.");
-                              }
-                              /* Move the entry to L2 whatever the
-                                 result of examining it.*/
-                              lru_move_entry(lru,
-                                             LRU_HAVE_LOCKED_SRC |
-                                             LRU_HAVE_LOCKED_ENTRY |
-                                             LRU_ENTRY_L2,
-                                             i);
-                         } else {
-                              /* Highly unlikely, this will probably
-                                 go away if we make the SAL
-                                 responsible for pinning/unpinning. */
-                              lru_move_entry(lru,
-                                             LRU_HAVE_LOCKED_SRC |
-                                             LRU_HAVE_LOCKED_ENTRY |
-                                             LRU_ENTRY_L2 |
-                                             LRU_ENTRY_PINNED,
-                                             i);
-                         }
-                         pthread_rwlock_unlock(&entry->state_lock);
-                         pthread_mutex_unlock(&lru->mtx);
-                         ++workdone;
-                    }
-                    pthread_mutex_unlock(&LRU_1[i].lru.mtx);
-                    LogDebug(COMPONENT_CACHE_INODE_LRU,
-                             "Actually processed %d entries on lane %zd "
-                             "closing %zd descriptors",
-                             workdone,
-                             i,
-                             formeropen - open_fd_count);
+                        lru_state.fds_lowat);
+               if (cache_inode_gc_policy.use_fd_cache &&
+                   !lru_state.caching_fds) {
+                    lru_state.caching_fds = TRUE;
+                    LogInfo(COMPONENT_CACHE_INODE_LRU,
+                            "Re-enabling FD cache.");
                }
           } else {
+               /* The count of open file descriptors before this run
+                  of the reaper. */
+               size_t formeropen = open_fd_count;
+               /* Total work done in all passes so far.  If this
+                  exceeds the window, stop. */
+               size_t totalwork = 0;
+               /* The current count (after reaping) of open FDs */
+               size_t currentopen = 0;
+               /* Work done in the most recent pass of all queues.  if
+                  value is less than the work to do in a single queue,
+                  don't spin through more passes. */
+               size_t workpass = 0;
+
                LogDebug(COMPONENT_CACHE_INODE_LRU,
-                        "FD count is %zd.  Would need to be above %d to reap.",
-                        open_fd_count,
-                        lru_state.fds_hiwat);
+                        "Starting to reap.");
+
+               if (extremis) {
+                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                                 "Open FDs over high water mark, "
+                                 "reapring aggressively.");
+               }
+
+               do {
+                    workpass = 0;
+                    for (i = 0; i < LRU_N_Q_LANES; ++i) {
+                         /* The amount of work done on this lane on
+                            this pass. */
+                         size_t workdone = 0;
+                         /* The current entry being examined. */
+                         cache_inode_lru_t *lru = NULL;
+                         /* Number of entries closed in this run. */
+                         size_t closed = 0;
+
+                         LogDebug(COMPONENT_CACHE_INODE_LRU,
+                                  "Reaping up to %d entries from lane %zd",
+                                  lru_state.per_lane_work,
+                                  i);
+                         pthread_mutex_lock(&LRU_1[i].lru.mtx);
+                         while ((workdone < lru_state.per_lane_work) &&
+                                (lru = glist_first_entry(&LRU_1[i].lru.q,
+                                                         cache_inode_lru_t,
+                                                         q))) {
+                              cache_inode_status_t cache_status
+                                   = CACHE_INODE_SUCCESS;
+                              cache_entry_t *entry
+                                   = container_of(lru, cache_entry_t, lru);
+
+                              pthread_mutex_lock(&lru->mtx);
+                              pthread_rwlock_rdlock(&entry->state_lock);
+                              if (!cache_inode_file_holds_state(entry)) {
+                                   if (cache_inode_fd(entry)) {
+                                        /* We would want the state
+                                           lock for this anyway, so
+                                           someone doesn't get an open
+                                           while we're disposing of
+                                           the descriptor. */
+                                        cache_inode_close(
+                                             entry, &client,
+                                             CACHE_INODE_FLAG_REALLYCLOSE,
+                                             &cache_status);
+                                        if (cache_status
+                                            != CACHE_INODE_SUCCESS) {
+                                             LogCrit(COMPONENT_CACHE_INODE_LRU,
+                                                     "Error closing file in "
+                                                     "LRU thread.");
+                                        } else {
+                                             ++closed;
+                                             --open_fd_count;
+                                        }
+                                   }
+                                   /* Move the entry to L2 whatever the
+                                      result of examining it.*/
+                                   lru_move_entry(lru,
+                                                  LRU_HAVE_LOCKED_SRC |
+                                                  LRU_HAVE_LOCKED_ENTRY |
+                                                  LRU_ENTRY_L2,
+                                                  i);
+                              } else {
+                                   /* Highly unlikely, this will probably
+                                      go away if we make the SAL
+                                      responsible for pinning/unpinning. */
+                                   lru_move_entry(lru,
+                                                  LRU_HAVE_LOCKED_SRC |
+                                                  LRU_HAVE_LOCKED_ENTRY |
+                                                  LRU_ENTRY_L2 |
+                                                  LRU_ENTRY_PINNED,
+                                                  i);
+                              }
+                              pthread_rwlock_unlock(&entry->state_lock);
+                              pthread_mutex_unlock(&lru->mtx);
+                              ++workdone;
+                         }
+                         pthread_mutex_unlock(&LRU_1[i].lru.mtx);
+                         LogDebug(COMPONENT_CACHE_INODE_LRU,
+                                  "Actually processed %zd entries on lane %zd "
+                                  "closing %zd descriptors",
+                                  workdone,
+                                  i,
+                                  closed);
+                         workpass += workdone;
+                    }
+                    totalwork += workpass;
+               } while (extremis &&
+                        (workpass >= lru_state.per_lane_work) &&
+                        (totalwork < lru_state.biggest_window));
+
+               currentopen = open_fd_count;
+               if (extremis &&
+                   ((currentopen > formeropen) ||
+                    (formeropen - currentopen >
+                     (((formeropen - lru_state.fds_hiwat) *
+                       cache_inode_gc_policy.required_progress) /
+                      100)))) {
+                    if (++lru_state.futility >
+                        cache_inode_gc_policy.futility_count) {
+                         LogCrit(COMPONENT_CACHE_INODE_LRU,
+                                 "Futility count exceeded.  The LRU thread is "
+                                 "unable to make progress in reclaiming FDs."
+                                 "Disabling FD cache.");
+                         lru_state.caching_fds = FALSE;
+                    }
+               }
           }
 
           lru_thread_delay_ms(lru_state.threadwait);
      }
 
-     LogCrit(COMPONENT_CACHE_INODE_LRU,
-             "shutdown");
+     LogEvent(COMPONENT_CACHE_INODE_LRU,
+              "Shutting down LRU thread.");
 
-     return (NULL);
+     return NULL;
 }
+
+/**
+ *
+ * @brief Wake the LRU thread to free FDs.
+ *
+ * This function wakes the LRU reaper thread to free FDs and should be
+ * called when we are over the high water mark.
+ *
+ * @param flags [in] Flags to affect the wake (currently none)
+ */
 
 void lru_wake_thread(uint32_t flags)
 {

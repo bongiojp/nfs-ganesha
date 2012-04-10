@@ -446,12 +446,37 @@ struct cache_inode_client_t
 
 typedef struct cache_inode_gc_policy__
 {
-  uint32_t hwmark_nb_entries; /*< High water mark for cache entries */
-  uint32_t lwmark_nb_entries; /*< Low water mark for cache_entries */
+  uint32_t entries_hwmark; /*< High water mark for cache entries */
+  uint32_t entries_lwmark; /*< Low water mark for cache_entries */
   uint32_t lru_run_interval;  /*< Interval in seconds between runs of
                                   the LRU cleaner thread */
-  size_t max_fd; /*< Maximum number of open file descriptors */
   bool_t use_fd_cache; /*< Do we cache fd or not? */
+  uint32_t fd_limit_percent; /*< The percentage of the system-imposed
+                                 maximum of file descriptors at which
+                                 Ganesha will deny requests. */
+  uint32_t fd_hwmark_percent; /*< The percentage of the system-imposed
+                                  maximum of file descriptors above
+                                  which Ganesha will make greater
+                                  efforts at reaping. */
+  uint32_t fd_lwmark_percent; /*< The percentage of the system-imposed
+                                  maximum of file descriptors below
+                                  which Ganesha will not reap file
+                                  descriptonot reap file
+                                  descriptorsrs. */
+  uint32_t reaper_work; /*< Roughly, the amount of work to do on each
+                            pass through the thread under normal
+                            conditions.  (Ideally, a multipel of the
+                            number of lanes.) */
+  uint32_t biggest_window; /*< The largest window (as a percentage of
+                               the system-imposed limit on FDs) of
+                               work that we will do in extremis. */
+  uint32_t required_progress; /*< Percentage of progress toward the
+                                  high water mark required in in a
+                                  pass through the thread when in
+                                  extremis. */
+  uint32_t futility_count; /*< Number of failures to approach the high
+                               watermark before we disable caching,
+                               when in extremis. */
 } cache_inode_gc_policy_t;
 
 /**
@@ -558,7 +583,7 @@ typedef enum cache_inode_status_t
   CACHE_INODE_ASYNC_POST_ERROR      = 32,
   CACHE_INODE_NOT_SUPPORTED         = 33,
   CACHE_INODE_STATE_ERROR           = 34,
-  CACHE_INODE_FSAL_DELAY            = 35,
+  CACHE_INODE_DELAY                 = 35,
   CACHE_INODE_NAME_TOO_LONG         = 36,
   CACHE_INODE_BAD_COOKIE            = 40,
   CACHE_INODE_FILE_BIG              = 41,
@@ -919,7 +944,7 @@ void cache_inode_print_conf_client_parameter(
      FILE *output,
      cache_inode_client_parameter_t param);
 void cache_inode_print_conf_gc_policy(FILE *output,
-                                      cache_inode_gc_policy_t gcpolicy);
+                                      cache_inode_gc_policy_t *gcpolicy);
 void cache_inode_expire_to_str(cache_inode_expire_type_t type,
                                time_t value,
                                char *out);

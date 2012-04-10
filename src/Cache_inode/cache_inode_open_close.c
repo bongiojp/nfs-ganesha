@@ -22,15 +22,13 @@
  *
  * ---------------------------------------
  *
- * \file    cache_inode_open_close.c
- * \author  $Author: deniel $
- * \date    $Date: 2005/11/28 17:02:27 $
- * \version $Revision: 1.20 $
- * \brief   Removes an entry of any type.
+ * @file    cache_inode_open_close.c
+ * @brief   Manage opening and closing files and caching file
+ *          descriptors
  *
- * cache_inode_open_close.c: performs an IO on a REGULAR_FILE.
- *
- *
+ * This file manages the opening and closing files and the file
+ * descriptor cache, in conjunction with the lru_thread in
+ * cache_inode_lru.
  */
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -58,8 +56,6 @@
 #include <time.h>
 #include <pthread.h>
 #include <strings.h>
-
-extern cache_inode_gc_policy_t cache_inode_gc_policy;
 
 /**
  * @brief Returns a file descriptor, if open
@@ -169,6 +165,12 @@ cache_inode_open(cache_entry_t *entry,
      if (entry->type != REGULAR_FILE) {
           *status = CACHE_INODE_BAD_TYPE;
           goto out;
+     }
+
+     if (!cache_inode_lru_fds_available()) {
+          /* This seems the best idea, let the client try again later
+             after the reap. */
+          *status = CACHE_INODE_DELAY;
      }
 
      if (!(flags & CACHE_INODE_FLAG_CONTENT_HAVE)) {
@@ -286,7 +288,7 @@ cache_inode_close(cache_entry_t *entry,
           goto unlock;
      }
 
-     if (!cache_inode_gc_policy.use_fd_cache ||
+     if (!cache_inode_lru_caching_fds() ||
          (flags & CACHE_INODE_FLAG_REALLYCLOSE)) {
           LogDebug(COMPONENT_CACHE_INODE,
                    "cache_inode_close: entry %p", entry);

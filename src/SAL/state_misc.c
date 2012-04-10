@@ -146,7 +146,7 @@ state_status_t cache_inode_status_to_state_status(cache_inode_status_t status)
       case CACHE_INODE_ASYNC_POST_ERROR:      return STATE_ASYNC_POST_ERROR;
       case CACHE_INODE_NOT_SUPPORTED:         return STATE_NOT_SUPPORTED;
       case CACHE_INODE_STATE_ERROR:           return STATE_STATE_ERROR;
-      case CACHE_INODE_FSAL_DELAY:            return STATE_FSAL_DELAY;
+      case CACHE_INODE_DELAY:                 return STATE_FSAL_DELAY;
       case CACHE_INODE_NAME_TOO_LONG:         return STATE_NAME_TOO_LONG;
       case CACHE_INODE_BAD_COOKIE:            return STATE_BAD_COOKIE;
       case CACHE_INODE_FILE_BIG:              return STATE_FILE_BIG;

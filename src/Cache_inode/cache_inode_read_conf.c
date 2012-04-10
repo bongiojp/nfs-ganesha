@@ -398,26 +398,49 @@ cache_inode_status_t cache_inode_read_conf_gc_policy(config_file_t in_config,
                   var_index, CONF_LABEL_CACHE_INODE_GCPOL);
           return CACHE_INODE_INVALID_ARGUMENT;
         }
-
-      else if(!strcasecmp(key_name, "NbEntries_HighWater"))
+      else if(!strcasecmp(key_name, "Entries_HWMark"))
         {
-          ppolicy->hwmark_nb_entries = atoi(key_value);
+          ppolicy->entries_hwmark = atoi(key_value);
         }
-      else if(!strcasecmp(key_name, "NbEntries_LowWater"))
+      else if(!strcasecmp(key_name, "Entries_LWMark"))
         {
-          ppolicy->lwmark_nb_entries = atoi(key_value);
+          ppolicy->entries_lwmark = atoi(key_value);
         }
-      else if(!strcasecmp(key_name, "Max_Fd"))
-        {
-          ppolicy->max_fd = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "Use_OpenClose_cache"))
+      else if(!strcasecmp(key_name, "Cache_FDs"))
         {
           ppolicy->use_fd_cache = StrToBoolean(key_value);
         }
       else if(!strcasecmp(key_name, "LRU_Run_Interval"))
         {
           ppolicy->lru_run_interval = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "FD_Limit_Percent"))
+        {
+          ppolicy->fd_limit_percent = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "FD_HWMark_Percent"))
+        {
+          ppolicy->fd_hwmark_percent = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "FD_LWMark_Percent"))
+        {
+          ppolicy->fd_lwmark_percent = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "Reaper_Work"))
+        {
+          ppolicy->reaper_work = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "Biggest_Window"))
+        {
+          ppolicy->biggest_window = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "Required_Progress"))
+        {
+          ppolicy->required_progress = atoi(key_value);
+        }
+      else if(!strcasecmp(key_name, "Futility_Count"))
+        {
+          ppolicy->futility_count = atoi(key_value);
         }
       else
         {
@@ -493,10 +516,32 @@ void cache_inode_print_conf_client_parameter(FILE * output,
  * @return nothing (void function).
  *
  */
-void cache_inode_print_conf_gc_policy(FILE * output, cache_inode_gc_policy_t gcpolicy)
+void cache_inode_print_conf_gc_policy(FILE * output,
+                                      cache_inode_gc_policy_t *gcpolicy)
 {
-  fprintf(output, "Garbage Policy: NbEntries_HighWater = %d\n",
-          gcpolicy.hwmark_nb_entries);
-  fprintf(output, "Garbage Policy: NbEntries_LowWater  = %d\n",
-          gcpolicy.lwmark_nb_entries);
-}                               /* cache_inode_print_gc_pol */
+     fprintf(output,
+             "CacheInode_GC_Policy: HWMark_Entries = %d\n"
+             "CacheInode_GC_Policy: LWMark_Entries = %d\n"
+             "CacheInode_GC_Policy: Cache_FDs = %s\n"
+             "CacheInode_GC_Policy: LRU_Run_Interval = %d\n"
+             "CacheInode_GC_Policy: FD_Limit_Percent = %d\n"
+             "CacheInode_GC_Policy: FD_HWMark_Percent = %d\n"
+             "CacheInode_GC_Policy: FD_LWMark_Percent = %d\n"
+             "CacheInode_GC_Policy: Reaper_Work = %d\n"
+             "CacheInode_GC_Policy: Biggest_Window = %d\n"
+             "CacheInode_GC_Policy: Required_Progress = %d\n"
+             "CacheInode_GC_Policy: Futility_Count = %d\n",
+             gcpolicy->entries_lwmark,
+             gcpolicy->entries_hwmark,
+             (gcpolicy->use_fd_cache ?
+              "TRUE" :
+              "FALSE"),
+             gcpolicy->lru_run_interval,
+             gcpolicy->fd_limit_percent,
+             gcpolicy->fd_hwmark_percent,
+             gcpolicy->fd_lwmark_percent,
+             gcpolicy->reaper_work,
+             gcpolicy->biggest_window,
+             gcpolicy->required_progress,
+             gcpolicy->futility_count);
+} /* cache_inode_print_gc_policy */

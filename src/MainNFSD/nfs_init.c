@@ -618,11 +618,18 @@ void nfs_set_param_default()
 #endif
 
   /* Cache inode parameters : Garbage collection policy */
-  nfs_param.cache_layers_param.gcpol.hwmark_nb_entries = 10000;
-  nfs_param.cache_layers_param.gcpol.lwmark_nb_entries = 10000;
-  nfs_param.cache_layers_param.gcpol.max_fd = 1000;
+  nfs_param.cache_layers_param.gcpol.entries_hwmark = 100000;
+  nfs_param.cache_layers_param.gcpol.entries_lwmark = 50000;
   nfs_param.cache_layers_param.gcpol.use_fd_cache = TRUE;
   nfs_param.cache_layers_param.gcpol.lru_run_interval = 600;
+  nfs_param.cache_layers_param.gcpol.fd_limit_percent = 99;
+  nfs_param.cache_layers_param.gcpol.fd_hwmark_percent = 90;
+  nfs_param.cache_layers_param.gcpol.fd_lwmark_percent = 50;
+  nfs_param.cache_layers_param.gcpol.reaper_work = 1000;
+  nfs_param.cache_layers_param.gcpol.biggest_window = 40;
+  nfs_param.cache_layers_param.gcpol.required_progress = 5;
+  nfs_param.cache_layers_param.gcpol.futility_count = 8;
+
   nfs_param.cache_layers_param.cache_inode_client_param.nb_prealloc_entry = 1024;
   nfs_param.cache_layers_param.cache_inode_client_param.nb_pre_state_v4 = 512;
   nfs_param.cache_layers_param.cache_inode_client_param.grace_period_attr   = 0;

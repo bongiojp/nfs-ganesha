@@ -66,6 +66,28 @@
  *
  */
 
+struct lru_state
+{
+     uint64_t entries_hiwat;
+     uint64_t entries_lowat;
+     uint32_t fds_system_imposed;
+     uint32_t fds_hard_limit;
+     uint32_t fds_hiwat;
+     uint32_t fds_lowat;
+     /* This is the actual counter of 'futile' attempts at reaping
+        made  in a given time period.  When it reaches the futility
+        count, we turn off caching of file descriptors. */
+     uint32_t futility;
+     uint32_t per_lane_work;
+     uint32_t biggest_window;
+     uint32_t flags;
+     uint64_t last_count;
+     uint64_t threadwait;
+     bool_t caching_fds;
+};
+
+extern struct lru_state lru_state;
+
 #define LRU_FLAG_NONE          0x0000
 
 /* Flags set on LRU entries */
@@ -166,4 +188,39 @@ extern cache_inode_status_t cache_inode_lru_unref(
      uint32_t flags);
 extern void lru_wake_thread();
 
+/**
+ * Return TRUE if there are FDs available to serve open requests,
+ * FALSE otherwise.  This function also wakes the LRU thread if the
+ * current FD count is above the high water mark.
+ */
+
+static inline bool_t
+cache_inode_lru_fds_available(void)
+{
+     if (open_fd_count >= lru_state.fds_hard_limit) {
+          LogCrit(COMPONENT_CACHE_INODE_LRU,
+                  "FD Hard Limit Exceeded.  Disabling FD Cache and waking"
+                  " LRU thread.");
+          lru_state.caching_fds = FALSE;
+          lru_wake_thread();
+          return FALSE;
+     }
+     if (open_fd_count >= lru_state.fds_hiwat) {
+          LogInfo(COMPONENT_CACHE_INODE_LRU,
+                  "FDs above high water mark, waking LRU thread.");
+          lru_wake_thread();
+     }
+
+     return TRUE;
+}
+
+/**
+ * Return true if we are currently caching file descriptors.
+ */
+
+static inline bool_t
+cache_inode_lru_caching_fds(void)
+{
+     return lru_state.caching_fds;
+}
 #endif /* _CACHE_INODE_LRU_H */

@@ -98,7 +98,7 @@ const char *cache_inode_err_str(cache_inode_status_t err)
       case CACHE_INODE_ASYNC_POST_ERROR:      return "CACHE_INODE_ASYNC_POST_ERROR";
       case CACHE_INODE_NOT_SUPPORTED:         return "CACHE_INODE_NOT_SUPPORTED";
       case CACHE_INODE_STATE_ERROR:           return "CACHE_INODE_STATE_ERROR";
-      case CACHE_INODE_FSAL_DELAY:            return "CACHE_INODE_FSAL_DELAY";
+      case CACHE_INODE_DELAY:                 return "CACHE_INODE_FSAL_DELAY";
       case CACHE_INODE_NAME_TOO_LONG:         return "CACHE_INODE_NAME_TOO_LONG";
       case CACHE_INODE_BAD_COOKIE:            return "CACHE_INODE_BAD_COOKIE";
       case CACHE_INODE_FILE_BIG:              return "CACHE_INODE_FILE_BIG";
@@ -562,7 +562,7 @@ cache_inode_status_t cache_inode_error_convert(fsal_status_t fsal_status)
       return CACHE_INODE_NOT_SUPPORTED;
 
     case ERR_FSAL_DELAY:
-      return CACHE_INODE_FSAL_DELAY;
+      return CACHE_INODE_DELAY;
 
     case ERR_FSAL_NAMETOOLONG:
       return CACHE_INODE_NAME_TOO_LONG;

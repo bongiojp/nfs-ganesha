@@ -408,7 +408,7 @@ int nfs_RetryableError(cache_inode_status_t cache_status)
         }
       break;
 
-    case CACHE_INODE_FSAL_DELAY:
+    case CACHE_INODE_DELAY:
       if(nfs_param.core_param.drop_delay_errors)
         {
           /* Drop the request */
@@ -3806,7 +3806,7 @@ nfsstat4 nfs4_Errno(cache_inode_status_t error)
       nfserror = NFS4ERR_NOTSUPP;
       break;
 
-    case CACHE_INODE_FSAL_DELAY:
+    case CACHE_INODE_DELAY:
       nfserror = NFS4ERR_DELAY;
       break;
 
@@ -3938,7 +3938,7 @@ nfsstat3 nfs3_Errno(cache_inode_status_t error)
       nfserror = NFS3ERR_NOTSUPP;
       break;
 
-    case CACHE_INODE_FSAL_DELAY:
+    case CACHE_INODE_DELAY:
       nfserror = NFS3ERR_JUKEBOX;
       break;
 
@@ -4085,7 +4085,7 @@ nfsstat2 nfs2_Errno(cache_inode_status_t error)
     case CACHE_INODE_ASYNC_POST_ERROR:
     case CACHE_INODE_STATE_ERROR:
     case CACHE_INODE_NOT_SUPPORTED:
-    case CACHE_INODE_FSAL_DELAY:
+    case CACHE_INODE_DELAY:
     case CACHE_INODE_BAD_COOKIE:
     case CACHE_INODE_FILE_BIG:
         /* Should not occur */
