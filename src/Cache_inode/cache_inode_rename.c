@@ -53,6 +53,7 @@
 #include <sys/param.h>
 #include <time.h>
 #include <pthread.h>
+#include <assert.h>
 
 /**
  *
@@ -127,18 +128,25 @@ static inline void src_dest_unlock(cache_entry_t * pentry_dirsrc,
                                    cache_entry_t * pentry_dirdest)
 {
   if(pentry_dirsrc == pentry_dirdest)
-    pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
+    {
+      pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
+      assert(pentry_dirsrc->content_lock.__data.__nr_readers < 200);
+    }
   else
     {
       if(pentry_dirsrc < pentry_dirdest)
         {
           pthread_rwlock_unlock(&pentry_dirdest->content_lock);
+          assert(pentry_dirdest->content_lock.__data.__nr_readers < 200);
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
+          assert(pentry_dirsrc->content_lock.__data.__nr_readers < 200);
         }
       else
         {
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
+          assert(pentry_dirsrc->content_lock.__data.__nr_readers < 200);
           pthread_rwlock_unlock(&pentry_dirdest->content_lock);
+          assert(pentry_dirdest->content_lock.__data.__nr_readers < 200);
         }
     }
 }

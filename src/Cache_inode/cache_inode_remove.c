@@ -84,6 +84,7 @@ cache_inode_status_t cache_inode_is_dir_empty_WithLock(cache_entry_t * pentry)
      pthread_rwlock_rdlock(&pentry->content_lock);
      status = cache_inode_is_dir_empty(pentry);
      pthread_rwlock_unlock(&pentry->content_lock);
+     assert(pentry->content_lock.__data.__nr_readers < 200);
 
      return status;
 }                               /* cache_inode_is_dir_empty_WithLock */
@@ -136,6 +137,7 @@ cache_inode_clean_internal(cache_entry_t *entry,
           pthread_rwlock_wrlock(&entry->content_lock);
           cache_inode_release_symlink(entry, &client->pool_entry_symlink);
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
      return CACHE_INODE_SUCCESS;
@@ -332,6 +334,7 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
 out:
      if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
      return *status;

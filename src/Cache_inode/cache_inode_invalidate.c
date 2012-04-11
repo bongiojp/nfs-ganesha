@@ -138,6 +138,7 @@ cache_inode_invalidate(cache_inode_fsal_data_t *fsal_data,
 
      pthread_rwlock_unlock(&entry->attr_lock);
      pthread_rwlock_unlock(&entry->content_lock);
+     assert(entry->content_lock.__data.__nr_readers < 200);
 
 out:
 

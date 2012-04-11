@@ -161,6 +161,7 @@ out:
      if (entry) {
           if (flags & CACHE_INODE_FLAG_ATTR_HAVE) {
                pthread_rwlock_unlock(&entry->attr_lock);
+               assert(entry->content_lock.__data.__nr_readers < 200);
           }
           if (flags & CACHE_INODE_FLAG_CONTENT_HAVE) {
                pthread_rwlock_unlock(&entry->content_lock);

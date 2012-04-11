@@ -58,6 +58,7 @@
 #include <sys/param.h>
 #include <time.h>
 #include <pthread.h>
+#include <assert.h>
 
 /**
  *
@@ -104,6 +105,7 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
           /* If we didn't find it, drop the read lock, get a write
              lock, and make sure nobody filled it in while we waited. */
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
           pthread_rwlock_wrlock(&entry->content_lock);
           parent = cache_inode_weakref_get(&entry->object.dir.parent,
                                            client,
@@ -173,5 +175,7 @@ cache_entry_t *cache_inode_lookupp(cache_entry_t *pentry,
                                    fsal_op_context_t *pcontext,
                                    cache_inode_status_t *pstatus)
 {
+     pthread_rwlock_rdlock(&pentry->content_lock);
      return cache_inode_lookupp_impl(pentry, pclient, pcontext, pstatus);
+     pthread_rwlock_unlock(&pentry->content_lock);
 } /* cache_inode_lookupp */

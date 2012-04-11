@@ -56,6 +56,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <strings.h>
+#include <assert.h>
 
 /**
  * @brief Returns a file descriptor, if open
@@ -229,6 +230,7 @@ unlock:
 
      if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
 out:
@@ -313,6 +315,7 @@ unlock:
 
      if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
 out:

@@ -944,6 +944,7 @@ cache_inode_check_trust(cache_entry_t *entry,
               status = cache_inode_error_convert(fsal_status);
           }
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
           goto out;
      } else if ((entry->type == DIRECTORY) &&
                 (oldmtime < entry->attributes.mtime.seconds)) {
@@ -963,6 +964,7 @@ cache_inode_check_trust(cache_entry_t *entry,
           }
 
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
           goto out;
      }
 

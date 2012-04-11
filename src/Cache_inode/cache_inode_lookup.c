@@ -59,6 +59,7 @@
 #include <sys/param.h>
 #include <time.h>
 #include <pthread.h>
+#include <assert.h>
 
 /**
  *
@@ -151,6 +152,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                }
           }
           pthread_rwlock_unlock(&pentry_parent->content_lock);
+          assert(pentry_parent->content_lock.__data.__nr_readers < 200);
           pthread_rwlock_wrlock(&pentry_parent->content_lock);
           /* Make sure nobody put the entry in the cache while we
              were waiting. */
@@ -290,6 +292,7 @@ cache_inode_lookup(cache_entry_t *pentry_parent,
                                      pcontext,
                                      pstatus);
      pthread_rwlock_unlock(&pentry_parent->content_lock);
+     assert(pentry_parent->content_lock.__data.__nr_readers < 200);
 
      return entry;
 } /* cache_inode_lookup */

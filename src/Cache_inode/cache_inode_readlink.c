@@ -100,6 +100,7 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t *entry,
              write-lock, load in new data, and copy it out to
              the caller. */
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
           pthread_rwlock_wrlock(&entry->content_lock);
           /* Make sure nobody updated the content while we were
              waiting. */
@@ -121,6 +122,7 @@ cache_inode_status_t cache_inode_readlink(cache_entry_t *entry,
                               &(entry->object.symlink->content));
      }
      pthread_rwlock_unlock(&entry->content_lock);
+     assert(entry->content_lock.__data.__nr_readers < 200);
 
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);

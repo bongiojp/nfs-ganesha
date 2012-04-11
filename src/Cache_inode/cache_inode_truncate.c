@@ -54,6 +54,7 @@
 #include <sys/param.h>
 #include <time.h>
 #include <pthread.h>
+#include <assert.h>
 
 /**
  * @brief truncates a regular file specified by its cache entry.
@@ -140,4 +141,5 @@ cache_inode_status_t cache_inode_truncate(cache_entry_t * pentry,
                                    length, pattr, pclient, pcontext, pstatus);
   pthread_rwlock_unlock(&pentry->attr_lock);
   pthread_rwlock_unlock(&pentry->content_lock);
+  assert(pentry->content_lock.__data.__nr_readers < 200);
 } /* cache_inode_truncate */

@@ -55,6 +55,7 @@
 #include <sys/param.h>
 #include <time.h>
 #include <pthread.h>
+#include <assert.h>
 
 /**
  * cache_inode_make_root: Inserts the root of a FS in the cache.
@@ -97,6 +98,7 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
       pthread_rwlock_wrlock(&pentry->content_lock);
       pentry->object.dir.parent = pentry->weakref;
       pthread_rwlock_unlock(&pentry->content_lock);
+      assert(pentry->content_lock.__data.__nr_readers < 200);
     }
 
   return pentry;

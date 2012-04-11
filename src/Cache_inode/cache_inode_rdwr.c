@@ -58,6 +58,7 @@
 #include <sys/param.h>
 #include <time.h>
 #include <pthread.h>
+#include <assert.h>
 
 /**
  * @brief Reads/Writes through the cache layer
@@ -169,6 +170,7 @@ cache_inode_rdwr(cache_entry_t *entry,
           }
           if (content_locked) {
                pthread_rwlock_unlock(&entry->content_lock);
+               assert(entry->content_lock.__data.__nr_readers < 200);
                content_locked = FALSE;
           }
           if (attributes_locked) {
@@ -185,6 +187,7 @@ cache_inode_rdwr(cache_entry_t *entry,
           content_locked = TRUE;
           if (!cache_inode_fd(entry)) {
                pthread_rwlock_unlock(&entry->content_lock);
+               assert(entry->content_lock.__data.__nr_readers < 200);
                pthread_rwlock_wrlock(&entry->content_lock);
                if (!cache_inode_fd(entry)) {
                     if (cache_inode_open(entry,
@@ -252,6 +255,7 @@ cache_inode_rdwr(cache_entry_t *entry,
                                  entry);
 
                     pthread_rwlock_unlock(&entry->content_lock);
+                    assert(entry->content_lock.__data.__nr_readers < 200);
                     pthread_rwlock_wrlock(&entry->content_lock);
                     FSAL_close(&(entry->object.file.open_fd.fd));
                     entry->object.file.open_fd.openflags
@@ -281,6 +285,7 @@ cache_inode_rdwr(cache_entry_t *entry,
 
           if (content_locked) {
                pthread_rwlock_unlock(&entry->content_lock);
+               assert(entry->content_lock.__data.__nr_readers < 200);
                content_locked = FALSE;
           }
      }
@@ -306,6 +311,7 @@ out:
 
      if (content_locked) {
           pthread_rwlock_unlock(&entry->content_lock);
+          assert(entry->content_lock.__data.__nr_readers < 200);
           content_locked = FALSE;
      }
 
