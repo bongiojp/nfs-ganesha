@@ -528,8 +528,6 @@ cache_inode_lru_get(cache_inode_client_t *client,
      /* The lane from which we harvest (or into which we store) the
         new entry.  Usually the lane assigned to this thread. */
      uint32_t lane = 0;
-     /* For searching through lanes */
-     uint32_t index = 0;
      /* The LRU entry */
      cache_inode_lru_t *lru = NULL;
      /* The Cache entry being created */
@@ -537,22 +535,23 @@ cache_inode_lru_get(cache_inode_client_t *client,
 
      /* If we are in reclaim state, try to find an entry to recycle. */
      if (lru_state.flags & LRU_STATE_RECLAIMING) {
-          /* Search through logical L2 entry. */
 
-          for (lane = (client->thread_id + (index = 0)) % LRU_N_Q_LANES;
-               (index < LRU_N_Q_LANES) && !lru;
-               lane = (client->thread_id + (++index)) % LRU_N_Q_LANES) {
-               lru = try_reap_entry(&LRU_2[lane].lru);
-          }
+          /* Search through logical L2 entry. */
+         for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
+             lru = try_reap_entry(&LRU_2[lane].lru);
+             if (lru)
+                 break;
+         }
 
           /* Search through logical L1 if nothing was found in L2
              (fall through, otherwise.) */
-
-          for (lane = (client->thread_id + (index = 0)) % LRU_N_Q_LANES;
-               (index < LRU_N_Q_LANES) && !lru;
-               lane = (client->thread_id + (++index)) % LRU_N_Q_LANES) {
-               lru = try_reap_entry(&LRU_1[lane].lru);
-          }
+         if (! lru) {
+             for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
+                 lru = try_reap_entry(&LRU_1[lane].lru);
+                 if (lru)
+                     break;
+             }
+         }
 
           /* If we found an entry, use it */
           if (lru) {
@@ -896,7 +895,7 @@ lru_thread_delay_ms(unsigned long ms)
 static void *lru_thread(void *arg __attribute__((unused)))
 {
      /* Index */
-     size_t i = 0;
+     size_t lane = 0;
      /* Temporary holder for flags */
      uint32_t tmpflags = lru_state.flags;
      /* Client required to make close calls. */
@@ -947,54 +946,53 @@ static void *lru_thread(void *arg __attribute__((unused)))
                lru_state.futility = 0;
           }
 
-          pthread_mutex_lock(&lru_mtx);
-          lru_state.last_count = 0;
+          uint64_t t_count = 0;
 
           /* First, sum the queue counts.  This lets us know where we
              are relative to our watermarks. */
 
-          for (i = 0; i < LRU_N_Q_LANES; ++i) {
-               pthread_mutex_lock(&LRU_1[i].lru.mtx);
-               lru_state.last_count += LRU_1[i].lru.size;
-               pthread_mutex_unlock(&LRU_1[i].lru.mtx);
+          for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
+               pthread_mutex_lock(&LRU_1[lane].lru.mtx);
+               lru_state.last_count += LRU_1[lane].lru.size;
+               pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
 
-               pthread_mutex_lock(&LRU_1[i].lru_pinned.mtx);
-               lru_state.last_count += LRU_1[i].lru_pinned.size;
-               pthread_mutex_unlock(&LRU_1[i].lru_pinned.mtx);
+               pthread_mutex_lock(&LRU_1[lane].lru_pinned.mtx);
+               lru_state.last_count += LRU_1[lane].lru_pinned.size;
+               pthread_mutex_unlock(&LRU_1[lane].lru_pinned.mtx);
 
-               pthread_mutex_lock(&LRU_2[i].lru.mtx);
-               lru_state.last_count += LRU_2[i].lru.size;
-               pthread_mutex_unlock(&LRU_2[i].lru.mtx);
+               pthread_mutex_lock(&LRU_2[lane].lru.mtx);
+               lru_state.last_count += LRU_2[lane].lru.size;
+               pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
 
-               pthread_mutex_lock(&LRU_2[i].lru_pinned.mtx);
-               lru_state.last_count += LRU_2[i].lru_pinned.size;
-               pthread_mutex_unlock(&LRU_2[i].lru_pinned.mtx);
+               pthread_mutex_lock(&LRU_2[lane].lru_pinned.mtx);
+               lru_state.last_count += LRU_2[lane].lru_pinned.size;
+               pthread_mutex_unlock(&LRU_2[lane].lru_pinned.mtx);
           }
 
           LogFullDebug(COMPONENT_CACHE_INODE_LRU,
                        "%zu entries in cache.",
-                       lru_state.last_count);
+                       t_count);
 
           if (tmpflags & LRU_STATE_RECLAIMING) {
-               if (lru_state.last_count < lru_state.entries_lowat) {
-                    tmpflags &= ~LRU_STATE_RECLAIMING;
-                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                                 "Entry count below low water mark.  "
-                                 "Disabling reclaim.");
+              if (t_count < lru_state.entries_lowat) {
+                  tmpflags &= ~LRU_STATE_RECLAIMING;
+                  LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                               "Entry count below low water mark.  "
+                               "Disabling reclaim.");
                }
           } else {
-               if (lru_state.last_count > lru_state.entries_hiwat) {
-                    tmpflags |= LRU_STATE_RECLAIMING;
-                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                                 "Entry count above high water mark.  "
-                                 "Enabling reclaim.");
+              if (t_count > lru_state.entries_hiwat) {
+                  tmpflags |= LRU_STATE_RECLAIMING;
+                  LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                               "Entry count above high water mark.  "
+                               "Enabling reclaim.");
                }
           }
 
-          /* I think it should be safe to read this unprotected, since
-             the libc manual says almost all platforms have atomic
-             integer load/store. */
+          /* Update global state */
+          pthread_mutex_lock(&lru_mtx);
 
+          lru_state.last_count = t_count;
           lru_state.flags = tmpflags;
 
           pthread_mutex_unlock(&lru_mtx);
@@ -1041,7 +1039,7 @@ static void *lru_thread(void *arg __attribute__((unused)))
 
                do {
                     workpass = 0;
-                    for (i = 0; i < LRU_N_Q_LANES; ++i) {
+                    for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
                          /* The amount of work done on this lane on
                             this pass. */
                          size_t workdone = 0;
@@ -1053,10 +1051,10 @@ static void *lru_thread(void *arg __attribute__((unused)))
                          LogDebug(COMPONENT_CACHE_INODE_LRU,
                                   "Reaping up to %d entries from lane %zd",
                                   lru_state.per_lane_work,
-                                  i);
-                         pthread_mutex_lock(&LRU_1[i].lru.mtx);
+                                  lane);
+                         pthread_mutex_lock(&LRU_1[lane].lru.mtx);
                          while ((workdone < lru_state.per_lane_work) &&
-                                (lru = glist_first_entry(&LRU_1[i].lru.q,
+                                (lru = glist_first_entry(&LRU_1[lane].lru.q,
                                                          cache_inode_lru_t,
                                                          q))) {
                               cache_inode_status_t cache_status
@@ -1093,7 +1091,7 @@ static void *lru_thread(void *arg __attribute__((unused)))
                                                   LRU_HAVE_LOCKED_SRC |
                                                   LRU_HAVE_LOCKED_ENTRY |
                                                   LRU_ENTRY_L2,
-                                                  i);
+                                                  lane);
                               } else {
                                    /* Highly unlikely, this will probably
                                       go away if we make the SAL
@@ -1103,18 +1101,18 @@ static void *lru_thread(void *arg __attribute__((unused)))
                                                   LRU_HAVE_LOCKED_ENTRY |
                                                   LRU_ENTRY_L2 |
                                                   LRU_ENTRY_PINNED,
-                                                  i);
+                                                  lane);
                               }
                               pthread_rwlock_unlock(&entry->state_lock);
                               pthread_mutex_unlock(&lru->mtx);
                               ++workdone;
                          }
-                         pthread_mutex_unlock(&LRU_1[i].lru.mtx);
+                         pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
                          LogDebug(COMPONENT_CACHE_INODE_LRU,
                                   "Actually processed %zd entries on lane %zd "
                                   "closing %zd descriptors",
                                   workdone,
-                                  i,
+                                  lane,
                                   closed);
                          workpass += workdone;
                     }
