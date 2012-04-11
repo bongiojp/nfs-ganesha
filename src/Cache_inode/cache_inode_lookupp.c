@@ -175,7 +175,9 @@ cache_entry_t *cache_inode_lookupp(cache_entry_t *pentry,
                                    fsal_op_context_t *pcontext,
                                    cache_inode_status_t *pstatus)
 {
+     cache_entry_t *parent_entry = NULL;
      pthread_rwlock_rdlock(&pentry->content_lock);
-     return cache_inode_lookupp_impl(pentry, pclient, pcontext, pstatus);
+     parent_entry = cache_inode_lookupp_impl(pentry, pclient, pcontext, pstatus);
      pthread_rwlock_unlock(&pentry->content_lock);
+     return parent_entry;
 } /* cache_inode_lookupp */
