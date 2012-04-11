@@ -436,8 +436,6 @@ struct cache_inode_client_t
   struct nfs_worker_data__ *pworker; /*< Pointer to the information on the
                                          worker I belong to */
   uint64_t thread_id; /*< Integer identifier for the current thread */
-  uint32_t lru_lane; /*< Lane in logical LRU queue on which we prefer
-                         to operate */
 };
 
 /**

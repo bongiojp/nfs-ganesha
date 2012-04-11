@@ -189,6 +189,14 @@ lru_select_queue(uint32_t flags, uint32_t lane)
      }
 }
 
+/* Return the natural lane of a cache entry, using modular
+ * permutation on its address */
+static inline uint64_t
+lru_lane_of_entry(cache_entry_t *entry)
+{
+    return (((uint64_t) entry) % LRU_N_Q_LANES);
+}
+
 /* Insert the entry in the queue specified by the flags and lane. */
 
 static inline void
@@ -220,8 +228,7 @@ lru_insert_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
 
 static inline void
 lru_remove_entry(cache_inode_lru_t *lru,
-                 uint32_t flags,
-                 uint32_t lane __attribute__((unused)))
+                 uint32_t flags)
 {
      /* Source LRU */
      struct lru_q_base *s = NULL;
@@ -250,29 +257,27 @@ lru_remove_entry(cache_inode_lru_t *lru,
    specified in the flags argument. */
 
 static inline void
-lru_move_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
+lru_move_entry(cache_inode_lru_t *lru, uint32_t flags)
 {
      /* Source LRU */
      struct lru_q_base *s = NULL;
      /* Destination LRU */
      struct lru_q_base *d = NULL;
+
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
           pthread_mutex_lock(&lru->mtx);
      }
+
      assert(lru->lane != LRU_NO_LANE);
-     s = lru_select_queue(lru->flags, lru->lane);
+
+     d = s = lru_select_queue(lru->flags, lru->lane);
+
      if (!(flags & LRU_HAVE_LOCKED_SRC)) {
           pthread_mutex_lock(&s->mtx);
      }
-     d = lru_select_queue(flags, lane);
-     if ((s != d) && !(flags & LRU_HAVE_LOCKED_DST)) {
-          pthread_mutex_lock(&d->mtx);
-     }
      glist_del(&lru->q);
      --(s->size);
-     if (!(flags & LRU_HAVE_LOCKED_SRC)) {
-          pthread_mutex_unlock(&s->mtx);
-     }
+
      /* When moving from L2 to L1, add to the LRU, otherwise add to
         the MRU.  (In general we don't want to promote things except
         on initial reference, but promoting things on move makes more
@@ -284,12 +289,14 @@ lru_move_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
           glist_add(&d->q, &lru->q);
      }
      ++(d->size);
-     if ((s != d) && !(flags & LRU_HAVE_LOCKED_DST)) {
-          pthread_mutex_unlock(&d->mtx);
+
+     if (! (flags & LRU_HAVE_LOCKED_SRC)) {
+          pthread_mutex_unlock(&s->mtx);
      }
+
      lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
      lru->flags |= (LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
-     lru->lane = lane;
+
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
           pthread_mutex_unlock(&lru->mtx);
      }
@@ -585,8 +592,7 @@ cache_inode_lru_get(cache_inode_client_t *client,
                     if (entry->lru.flags & LRU_ENTRY_L2) {
                          lru_move_entry(&entry->lru,
                                         LRU_HAVE_LOCKED_ENTRY |
-                                        LRU_HAVE_LOCKED_SRC,
-                                        client->lru_lane);
+                                        LRU_HAVE_LOCKED_SRC);
                          pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
                     } else {
                          pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
@@ -625,7 +631,6 @@ cache_inode_lru_get(cache_inode_client_t *client,
      }
 
      if (!lru) {
-          lane = client->lru_lane;
           GetFromPool(entry, &client->pool_entry, cache_entry_t);
           if(entry == NULL) {
                LogCrit(COMPONENT_CACHE_INODE_LRU,
@@ -648,7 +653,8 @@ cache_inode_lru_get(cache_inode_client_t *client,
           if (flags & LRU_REQ_FLAG_REF)
                ++(entry->lru.refcount);
 
-          lru_insert_entry(&entry->lru, LRU_HAVE_LOCKED_ENTRY, lane);
+          lru_insert_entry(&entry->lru, LRU_HAVE_LOCKED_ENTRY,
+                           lru_lane_of_entry(entry));
      }
 
      *status = CACHE_INODE_SUCCESS;
@@ -658,8 +664,7 @@ out:
 
 static inline cache_inode_status_t
 cache_inode_lru_pin(cache_entry_t * entry,
-                    uint32_t flags,
-                    uint32_t lane)
+                    uint32_t flags)
 {
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
           pthread_mutex_lock(&entry->lru.mtx);
@@ -673,8 +678,8 @@ cache_inode_lru_pin(cache_entry_t * entry,
         because almost anything that you could do to pin something
         would invalidate the L2 guarantee of having been checked. */
 
-     lru_move_entry(&entry->lru, flags | LRU_ENTRY_PINNED |
-                    LRU_HAVE_LOCKED_ENTRY, lane);
+     lru_move_entry(&entry->lru,
+                    (flags | LRU_ENTRY_PINNED | LRU_HAVE_LOCKED_ENTRY));
 
 unlock:
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
@@ -686,8 +691,7 @@ unlock:
 
 static inline cache_inode_status_t
 cache_inode_lru_unpin(cache_entry_t *entry,
-                      uint32_t flags,
-                      uint32_t lane)
+                      uint32_t flags)
 {
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
           pthread_mutex_lock(&entry->lru.mtx);
@@ -698,7 +702,7 @@ cache_inode_lru_unpin(cache_entry_t *entry,
           goto unlock;
 
      lru_move_entry(&entry->lru, (flags & ~LRU_ENTRY_PINNED) |
-                    LRU_HAVE_LOCKED_ENTRY, lane);
+                    LRU_HAVE_LOCKED_ENTRY);
 
 unlock:
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
@@ -751,8 +755,7 @@ cache_inode_lru_ref(cache_entry_t *entry,
      if ((flags & LRU_REQ_INITIAL) ||
          ((flags & LRU_REQ_SCAN) &&
           (entry->lru.flags & LRU_ENTRY_L2))) {
-          lru_move_entry(&entry->lru, flags | LRU_HAVE_LOCKED_ENTRY,
-                         client->lru_lane);
+         lru_move_entry(&entry->lru, (flags | LRU_HAVE_LOCKED_ENTRY));
      }
 
      pthread_rwlock_unlock(&entry->state_lock);
@@ -779,8 +782,7 @@ cache_inode_lru_unref(cache_entry_t *entry,
           /* entry is UNREACHABLE -- the call path is recycling entry */
           cache_inode_lru_clean(entry, client);
           lru_remove_entry(&entry->lru,
-                           flags | LRU_HAVE_LOCKED_ENTRY,
-                           client->lru_lane);
+                           (flags | LRU_HAVE_LOCKED_ENTRY));
 
           pthread_mutex_unlock(&entry->lru.mtx);
           ReleaseToPool(entry, &client->pool_entry);
@@ -793,13 +795,11 @@ cache_inode_lru_unref(cache_entry_t *entry,
      if (cache_inode_file_holds_state(entry) &&
          !(entry->lru.flags & LRU_ENTRY_PINNED)) {
           cache_inode_lru_pin(entry,
-                              flags | LRU_HAVE_LOCKED_ENTRY,
-                              client->lru_lane);
+                              (flags | LRU_HAVE_LOCKED_ENTRY));
      } else if (!cache_inode_file_holds_state(entry) &&
                 (entry->lru.flags & LRU_ENTRY_PINNED)) {
           cache_inode_lru_unpin(entry,
-                                flags | LRU_HAVE_LOCKED_ENTRY,
-                                client->lru_lane);
+                                (flags | LRU_HAVE_LOCKED_ENTRY));
      }
      pthread_rwlock_unlock(&entry->state_lock);
 
@@ -1090,8 +1090,7 @@ static void *lru_thread(void *arg __attribute__((unused)))
                                    lru_move_entry(lru,
                                                   LRU_HAVE_LOCKED_SRC |
                                                   LRU_HAVE_LOCKED_ENTRY |
-                                                  LRU_ENTRY_L2,
-                                                  lane);
+                                                  LRU_ENTRY_L2);
                               } else {
                                    /* Highly unlikely, this will probably
                                       go away if we make the SAL
@@ -1100,8 +1099,7 @@ static void *lru_thread(void *arg __attribute__((unused)))
                                                   LRU_HAVE_LOCKED_SRC |
                                                   LRU_HAVE_LOCKED_ENTRY |
                                                   LRU_ENTRY_L2 |
-                                                  LRU_ENTRY_PINNED,
-                                                  lane);
+                                                  LRU_ENTRY_PINNED);
                               }
                               pthread_rwlock_unlock(&entry->state_lock);
                               pthread_mutex_unlock(&lru->mtx);

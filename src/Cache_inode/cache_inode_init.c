@@ -209,9 +209,6 @@ int cache_inode_client_init(cache_inode_client_t *client,
   client->thread_id
        = cache_inode_lru_thread_id(thread_index);
 
-  client->lru_lane
-       = cache_inode_lru_thread_lane(thread_index);
-
   /* Everything was ok, return 0 */
   return 0;
 }                               /* cache_inode_client_init */
