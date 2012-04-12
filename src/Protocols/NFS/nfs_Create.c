@@ -10,16 +10,16 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- * 
+ *
  * ---------------------------------------
  */
 
@@ -98,6 +98,7 @@ int nfs_Create(nfs_arg_t * parg,
   cache_entry_t *parent_pentry = NULL;
   fsal_attrib_list_t parent_attr;
   fsal_attrib_list_t attr;
+  fsal_attrib_list_t attr_parent_after;
   fsal_attrib_list_t attr_newfile;
   fsal_attrib_list_t attributes_create;
   fsal_attrib_list_t *ppre_attr;
@@ -405,9 +406,77 @@ int nfs_Create(nfs_arg_t * parg,
 
                     }
 
-                  /*
-                   * Get the FSAL handle for this entry
-                   */
+                  switch (preq->rq_vers)
+                    {
+                    case NFS_V2:
+                      /* Build file handle */
+                      if(nfs2_FSALToFhandle(
+                              &(pres->res_dirop2.DIROP2res_u.diropok.file),
+                              &file_pentry->handle,
+                              pexport) == 0)
+                        pres->res_dirop2.status = NFSERR_IO;
+                      else
+                        {
+                          if(!nfs2_FSALattr_To_Fattr(
+                                  pexport, &attr_newfile,
+                                  &(pres->res_dirop2.DIROP2res_u.
+                                    diropok.attributes)))
+                            pres->res_dirop2.status = NFSERR_IO;
+                          else
+                            pres->res_dirop2.status = NFS_OK;
+                        }
+                      break;
+
+                    case NFS_V3:
+                      /* Build file handle */
+                      pres->res_create3.status =
+                        nfs3_AllocateFH(&pres->res_create3.CREATE3res_u
+                                        .resok.obj.post_op_fh3_u.handle);
+                      if (pres->res_create3.status != NFS3_OK)
+                        return NFS_REQ_OK;
+
+                      /* Set Post Op Fh3 structure */
+                      if(nfs3_FSALToFhandle(
+                              &(pres->res_create3.CREATE3res_u.resok
+                                .obj.post_op_fh3_u.handle),
+                              &file_pentry->handle, pexport) == 0)
+                        {
+                          Mem_Free(pres->res_create3.CREATE3res_u.resok.obj.
+                                   post_op_fh3_u.handle.data.data_val);
+
+                          pres->res_create3.status = NFS3ERR_BADHANDLE;
+                          return NFS_REQ_OK;
+                        }
+
+                      /* Set Post Op Fh3 structure */
+                      pres->res_create3.CREATE3res_u.resok.obj.handle_follows
+                        = TRUE;
+
+                      /* Get the attributes of the parent after the
+                         operation */
+                      attr_parent_after = parent_pentry->attributes;
+
+                      /* Build entry attributes */
+                      nfs_SetPostOpAttr(pexport,
+                                        &attr_newfile,
+                                        &(pres->res_create3.CREATE3res_u.resok.
+                                          obj_attributes));
+
+                      /*
+                       * Build Weak Cache Coherency data
+                       */
+                      nfs_SetWccData(pcontext,
+                                     pexport,
+                                     parent_pentry,
+                                     ppre_attr,
+                                     &attr_parent_after,
+                                     &(pres->res_create3.CREATE3res_u
+                                       .resok.dir_wcc));
+
+                      pres->res_create3.status = NFS3_OK;
+                      break;
+                    }       /* switch */
+                  return NFS_REQ_OK;
                 }
             }
           else
