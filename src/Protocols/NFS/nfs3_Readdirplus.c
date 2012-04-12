@@ -444,6 +444,7 @@ nfs3_readdirplus_callback(void* opaque,
      if (tracker->count == tracker->total_entries) {
           return FALSE;
      }
+     tracker->entries[tracker->count].nextentry = NULL;
      if ((tracker->mem_left < (sizeof(entry3) + namelen))) {
           if (tracker->count == 0) {
                tracker->error = NFS3ERR_TOOSMALL;

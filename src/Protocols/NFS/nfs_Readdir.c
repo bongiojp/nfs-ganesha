@@ -560,6 +560,7 @@ nfs2_readdir_callback(void* opaque,
      if (tracker->count == tracker->total_entries) {
           return FALSE;
      }
+     tracker->entries[tracker->count].nextentry = NULL;
      if (tracker->mem_left < (sizeof(entry2) + namelen)) {
           if (tracker->count == 0) {
                tracker->error = NFSERR_IO;
@@ -625,6 +626,7 @@ nfs3_readdir_callback(void* opaque,
      if (tracker->count == tracker->total_entries) {
           return FALSE;
      }
+     tracker->entries[tracker->count].nextentry = NULL;
      if ((tracker->mem_left < (sizeof(entry3) + namelen))) {
           if (tracker->count == 0) {
                tracker->error = NFS3ERR_TOOSMALL;
@@ -652,7 +654,7 @@ nfs3_readdir_callback(void* opaque,
      }
      ++(tracker->count);
      return FALSE;
-} /* */
+} /* nfs3_readdir_callback */
 
 /**
  * @brief Clean up memory allocated to serve NFSv2 READDIR
