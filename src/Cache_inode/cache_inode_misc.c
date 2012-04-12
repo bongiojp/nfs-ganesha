@@ -431,7 +431,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
 #ifdef _USE_NFS4_ACL
      LogDebug(COMPONENT_CACHE_INODE, "init_attributes: md_type=%d, acl=%p",
-              entry->type, attr->acl);
+              entry->type, entry->attributes.acl);
 
   /* Bump up reference counter of new acl. */
      if(entry->attributes.acl)
