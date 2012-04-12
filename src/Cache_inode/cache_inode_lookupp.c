@@ -114,6 +114,7 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
 
      if (!parent) {
           fsal_handle_t parent_handle;
+          memset(&parent_handle, 0, sizeof(fsal_handle_t));
 
           memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
           object_attributes.asked_attributes = client->attrmask;
