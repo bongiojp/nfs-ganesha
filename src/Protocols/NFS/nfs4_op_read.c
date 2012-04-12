@@ -90,19 +90,18 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
 
   fsal_seek_t              seek_descriptor;
   fsal_size_t              size;
-  fsal_size_t              read_size;
+  fsal_size_t              read_size, check_size;
   fsal_off_t               offset;
   fsal_boolean_t           eof_met;
   caddr_t                  bufferdata;
   cache_inode_status_t     cache_status;
   state_t                * pstate_found = NULL;
   state_t                * pstate_open;
-  state_t                * pstate_iterate;
   cache_content_status_t   content_status;
   fsal_attrib_list_t       attr;
   cache_entry_t          * pentry = NULL;
   int                      rc = 0;
-  struct glist_head      * glist;
+  fsal_staticfsinfo_t    * pstaticinfo = NULL ;
 
   cache_content_policy_data_t datapol;
 
@@ -188,6 +187,8 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       return res_READ4.status;
     }
 
+  pstaticinfo = data->pcontext->export_context->fe_static_fs_info;
+
   /* NB: After this points, if pstate_found == NULL, then the stateid is all-0 or all-1 */
 
   if(pstate_found != NULL)
@@ -268,48 +269,16 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       /* Special stateid, no open state, check to see if any share conflicts */
       pstate_open = NULL;
 
-      /* Acquire lock to enter critical section on this entry */
-      P_r(&pentry->lock);
-
-      /* Iterate through file's state to look for conflicts */
-      glist_for_each(glist, &pentry->object.file.state_list)
+      /*
+       * Special stateid, no open state, check to see if any share conflicts
+       * The stateid is all-0 or all-1
+       */
+      rc = nfs4_check_special_stateid(pentry,"READ",FATTR4_ATTR_READ);
+      if(rc != NFS4_OK)
         {
-          pstate_iterate = glist_entry(glist, state_t, state_list);
-
-          switch(pstate_iterate->state_type)
-            {
-              case STATE_TYPE_SHARE:
-                if(pstate_iterate->state_data.share.share_deny & OPEN4_SHARE_DENY_READ)
-                  {
-                    /* Reading from this file is prohibited, file is read-denied */
-                    V_r(&pentry->lock);
-                    res_READ4.status = NFS4ERR_LOCKED;
-                    LogDebug(COMPONENT_NFS_V4_LOCK,
-                             "READ is denied by state %p",
-                             pstate_iterate);
-                    return res_READ4.status;
-                  }
-                break;
-
-              case STATE_TYPE_LOCK:
-                /* Skip, will check for conflicting locks later */
-                break;
-
-              case STATE_TYPE_DELEG:
-                // TODO FSF: should check for conflicting delegations, may need to recall
-                break;
-
-              case STATE_TYPE_LAYOUT:
-                // TODO FSF: should check for conflicting layouts, may need to recall
-                // Need to look at this even for NFS v4 READ since there may be NFS v4.1 users of the file
-                break;
-
-              case STATE_TYPE_NONE:
-                break;
-            }
+          res_READ4.status = rc;
+          return res_READ4.status;
         }
-      // TODO FSF: need to check against existing locks
-      V_r(&pentry->lock);
     }
 
   if (pstate_open == NULL)
@@ -342,13 +311,23 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       }
 
   /* Do not read more than FATTR4_MAXREAD */
-  if((data->pexport->options & EXPORT_OPTION_MAXREAD) == EXPORT_OPTION_MAXREAD &&
-     size > data->pexport->MaxRead)
+  /* We should check against the value we returned in getattr. This was not
+   * the case before the following check_size code was added.
+   */
+  if( ((data->pexport->options & EXPORT_OPTION_MAXREAD) == EXPORT_OPTION_MAXREAD))
+    check_size = data->pexport->MaxRead;
+  else
+    check_size = pstaticinfo->maxread;
+  if( size > check_size )
     {
       /* the client asked for too much data,
        * this should normally not happen because
        * client will get FATTR4_MAXREAD value at mount time */
-      size = data->pexport->MaxRead;
+      
+      LogFullDebug(COMPONENT_NFS_V4,
+               "NFS4_OP_READ: read requested size = %llu  read allowed size = %llu",
+               size, check_size);
+      size = check_size;
     }
 
   /* If size == 0 , no I/O is to be made and everything is alright */
