@@ -72,7 +72,8 @@
  *
  * This function removes an entry from the cache immediately when it
  * has become unusable (for example, when the FSAL declares it to be
- * stale.)
+ * stale.)  This function removes only one reference.  The caller must
+ * also un-reference any reference it holds above the sentinel.
  *
  * @param entry [in] The entry to be killed
  * @param client [in,out] Structure to manage per-thread resources
@@ -150,9 +151,6 @@ cache_inode_kill_entry(cache_entry_t *entry,
      }
 
      cache_inode_weakref_delete(&entry->weakref);
-
-     /* Return the sentinel reference */
-     cache_inode_lru_unref(entry, client, LRU_FLAG_NONE);
 
      entry = NULL;
 
