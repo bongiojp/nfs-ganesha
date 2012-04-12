@@ -440,6 +440,7 @@ nfs3_readdirplus_callback(void* opaque,
      struct fsal_handle_desc id_descriptor
           = {sizeof(tracker->entries[tracker->count].fileid),
              (caddr_t) &tracker->entries[tracker->count].fileid};
+     entryplus3 *ep3;
 
      if (tracker->count == tracker->total_entries) {
           return FALSE;
@@ -456,57 +457,47 @@ nfs3_readdirplus_callback(void* opaque,
                        handle,
                        &id_descriptor);
 
-     tracker->entries[tracker->count].name
-          = Mem_Alloc(namelen + 1);
-     if (tracker->entries[tracker->count].name == NULL) {
-          tracker->error = NFS4ERR_IO;
+     ep3 = tracker->entries + tracker->count;
+     ep3->name = Mem_Alloc(namelen + 1);
+     if (ep3->name == NULL) {
+          tracker->error = NFS3ERR_IO;
           return FALSE;
      }
-     strcpy(tracker->entries[tracker->count].name,
-            name);
-     tracker->entries[tracker->count].cookie = cookie;
-
-     if (tracker->count > 0) {
-          tracker->entries[tracker->count - 1].nextentry
-               = tracker->entries + tracker->count;
-     }
-     tracker->entries[tracker->count].name_handle.handle_follows
-          = TRUE;
-     if ((tracker->entries[tracker->count].name_handle.post_op_fh3_u
-          .handle.data.data_val = Mem_Alloc(NFS3_FHSIZE)) == NULL) {
+     strcpy(ep3->name, name);
+     ep3->cookie = cookie;
+     ep3->name_handle.handle_follows = TRUE;
+     ep3->name_handle.post_op_fh3_u.handle.data.data_val = Mem_Alloc(NFS3_FHSIZE);
+     if (ep3->name_handle.post_op_fh3_u .handle.data.data_val == NULL) {
           tracker->error = NFS3ERR_SERVERFAULT;
-          Mem_Free(tracker->entries[tracker->count].name);
+          Mem_Free(ep3->name);
           return FALSE;
      }
 
-     if (nfs3_FSALToFhandle(&tracker->entries[tracker->count].name_handle
-                            .post_op_fh3_u.handle,
+     if (nfs3_FSALToFhandle(&ep3->name_handle.post_op_fh3_u.handle,
                             handle,
                             tracker->export) == 0) {
           tracker->error = NFS3ERR_BADHANDLE;
-          Mem_Free(tracker->entries[tracker->count].name);
-          Mem_Free(tracker->entries[tracker->count].name_handle
-                   .post_op_fh3_u.handle.data.data_val);
+          Mem_Free(ep3->name);
+          Mem_Free(ep3->name_handle.post_op_fh3_u.handle.data.data_val);
           return FALSE;
      }
-     if (tracker->mem_left < (tracker->entries[tracker->count].name_handle
-                              .post_op_fh3_u.handle.data.data_len +
+     if (tracker->mem_left < (ep3->name_handle.post_op_fh3_u.handle.data.data_len +
                               sizeof(uint32_t))) {
           tracker->error = NFS3ERR_BADHANDLE;
-          Mem_Free(tracker->entries[tracker->count].name);
-          Mem_Free(tracker->entries[tracker->count].name_handle
-                   .post_op_fh3_u.handle.data.data_val);
+          Mem_Free(ep3->name);
+          Mem_Free(ep3->name_handle.post_op_fh3_u.handle.data.data_val);
           return FALSE;
      }
-     tracker->entries[tracker->count].name_attributes.attributes_follow
-          = FALSE;
-     tracker->mem_left -= (tracker->entries[tracker->count].name_handle
-                           .post_op_fh3_u.handle.data.data_len +
+     if (tracker->count > 0) {
+          tracker->entries[tracker->count - 1].nextentry = ep3;
+     }
+     ep3->name_attributes.attributes_follow = FALSE;
+     tracker->mem_left -= (ep3->name_handle.post_op_fh3_u.handle.data.data_len +
                            sizeof(uint32_t));
 
      nfs_SetPostOpAttr(tracker->export,
                        attrs,
-                       &tracker->entries[tracker->count].name_attributes);
+                       &ep3->name_attributes);
      ++(tracker->count);
      return TRUE;
 } /* nfs3_readdirplus_callback */
