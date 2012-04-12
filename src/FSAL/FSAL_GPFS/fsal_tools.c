@@ -261,6 +261,8 @@ fsal_status_t GPFSFSAL_DigestHandle(fsal_export_context_t *exp_context,   /* IN 
       /* sanity check about output size */
       memset(out_buff, 0, FSAL_DIGEST_SIZE_FILEID3);
       /* If the handle_size is the full OPENHANDLE_HANDLE_LEN then we assume it's a new style GPFS handle */
+      if (fh_desc->len == 8)
+	memset(fh_desc->start, 0, sizeof(uint64_t));
       if(p_in_fsal_handle->data.handle.handle_size < OPENHANDLE_HANDLE_LEN)
         memcpy(out_buff, p_in_fsal_handle->data.handle.f_handle, sizeof(int));
       else
