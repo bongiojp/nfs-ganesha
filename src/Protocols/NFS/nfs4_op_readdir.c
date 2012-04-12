@@ -75,6 +75,8 @@ struct nfs4_readdir_cb_data
                           hit maxcount */
      size_t count; /*< The count of complete entries stored in the
                        buffer */
+     size_t total_entries; /*< The total number of entries available
+                               in the array*/
      nfsstat4 error; /*< Set to a value other than NFS4_OK if the
                          callback function finds a fatal error. */
      bitmap4 req_attr; /*< The requested attributes */
@@ -147,6 +149,7 @@ nfs4_op_readdir(struct nfs_argop4 *op,
         with 500 max entries */
 
      estimated_num_entries = 50;
+     cb_data.total_entries = estimated_num_entries;
 
      LogFullDebug(COMPONENT_NFS_V4,
                   "--- nfs4_op_readdir ---> dircount=%lu maxcount=%lu "
@@ -304,6 +307,9 @@ nfs4_readdir_callback(void* opaque,
           .nfs_fh4_val = val_fh
      };
 
+     if (tracker->total_entries == tracker->count) {
+          return FALSE;
+     }
      memset(val_fh, 0, NFS4_FHSIZE);
      /* Bits that don't require allocation */
      if (tracker->mem_left < sizeof(entry4)) {

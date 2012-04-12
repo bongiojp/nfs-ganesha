@@ -94,6 +94,8 @@ struct nfs2_readdir_cb_data
                           hit maxcount */
      size_t count; /*< The count of complete entries stored in the
                        buffer */
+     size_t total_entries; /*< The total number of entries in the
+                              array */
      fsal_op_context_t *context; /*< FSAL operation context */
      nfsstat2 error; /*< Set to a value other than NFS_OK if the
                          callback function finds a fatal error. */
@@ -113,6 +115,8 @@ struct nfs3_readdir_cb_data
                           hit maxcount */
      size_t count; /*< The count of complete entries stored in the
                        buffer */
+     size_t total_entries; /*< The total number of entries in the
+                              array */
      fsal_op_context_t *context; /*< FSAL operation context */
      nfsstat3 error; /*< Set to a value other than NFS_OK if the
                          callback function finds a fatal error. */
@@ -297,6 +301,7 @@ nfs_Readdir(nfs_arg_t *arg,
      if (req->rq_vers == NFS_V2) {
           cb2.entries = (entry2 *) Mem_Alloc(sizeof(entry2) *
                                              estimated_num_entries);
+          cb2.total_entries = estimated_num_entries;
           if (cb2.entries == NULL) {
                rc = NFS_REQ_DROP;
                goto out;
@@ -308,6 +313,7 @@ nfs_Readdir(nfs_arg_t *arg,
      } else if (req->rq_vers == NFS_V3) {
           cb3.entries = (entry3 *) Mem_Alloc(sizeof(entry3) *
                                              estimated_num_entries);
+          cb3.total_entries = estimated_num_entries;
           if (cb3.entries == NULL) {
                rc = NFS_REQ_DROP;
                goto out;
@@ -551,6 +557,9 @@ nfs2_readdir_callback(void* opaque,
           = {sizeof(tracker->entries[tracker->count].fileid),
              (caddr_t) &tracker->entries[tracker->count].fileid};
 
+     if (tracker->count == tracker->total_entries) {
+          return FALSE;
+     }
      if (tracker->mem_left < (sizeof(entry2) + namelen)) {
           if (tracker->count == 0) {
                tracker->error = NFSERR_IO;
@@ -613,6 +622,9 @@ nfs3_readdir_callback(void* opaque,
           = {sizeof(tracker->entries[tracker->count].fileid),
              (caddr_t) &tracker->entries[tracker->count].fileid};
 
+     if (tracker->count == tracker->total_entries) {
+          return FALSE;
+     }
      if ((tracker->mem_left < (sizeof(entry3) + namelen))) {
           if (tracker->count == 0) {
                tracker->error = NFS3ERR_TOOSMALL;

@@ -65,6 +65,7 @@
 #include "nfs_tools.h"
 #include "nfs_file_handle.h"
 #include "nfs_proto_tools.h"
+#include <assert.h>
 
 static bool_t nfs3_readdirplus_callback(void* opaque,
                                         char *name,
@@ -87,6 +88,8 @@ struct nfs3_readdirplus_cb_data
                           hit maxcount */
      size_t count; /*< The count of complete entries stored in the
                        buffer */
+     size_t total_entries; /*< The number of entires we allocated for
+                               the array. */
      exportlist_t *export; /*< Pointer to the entry for the supplied
                                handle's export */
      fsal_op_context_t *context; /*< FSAL operation context */
@@ -170,6 +173,7 @@ nfs3_Readdirplus(nfs_arg_t *arg,
           MIN((cb_opaque.mem_left + sizeof(entry3 *))
               / (sizeof(entry3) - sizeof(char *)*2), 50);
 
+     cb_opaque.total_entries = estimated_num_entries;
      LogFullDebug(COMPONENT_NFS_READDIR,
                   "nfs3_Readdirplus: dircount=%lu "
                   "begin_cookie=%"PRIu64" "
@@ -437,6 +441,9 @@ nfs3_readdirplus_callback(void* opaque,
           = {sizeof(tracker->entries[tracker->count].fileid),
              (caddr_t) &tracker->entries[tracker->count].fileid};
 
+     if (tracker->count == tracker->total_entries) {
+          return FALSE;
+     }
      if ((tracker->mem_left < (sizeof(entry3) + namelen))) {
           if (tracker->count == 0) {
                tracker->error = NFS3ERR_TOOSMALL;
