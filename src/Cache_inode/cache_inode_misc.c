@@ -735,7 +735,7 @@ void cache_inode_print_dir(cache_entry_t * cache_entry_root)/* release internal 
       return;
     }
 
-  dirent_node = avltree_first(&cache_entry_root->object.dir.avl);
+  dirent_node = avltree_first(&cache_entry_root->object.dir.avl.t);
   do {
       dirent = avltree_container_of(dirent_node, cache_inode_dir_entry_t,
                                     node_hk);
@@ -792,7 +792,8 @@ void cache_inode_release_symlink(cache_entry_t * pentry,
  *
  */
 void cache_inode_release_dirents(cache_entry_t           * pentry,
-                                 cache_inode_client_t    * pclient)
+                                 cache_inode_client_t    * pclient,
+                                 uint32_t                  which)
 {
     struct avltree_node     * dirent_node      = NULL ;
     struct avltree_node     * next_dirent_node = NULL ;
@@ -803,21 +804,47 @@ void cache_inode_release_dirents(cache_entry_t           * pentry,
     if (pentry->type != DIRECTORY)
         return;
 
-    tree = &pentry->object.dir.avl;
-    dirent_node = avltree_first(tree);
+    switch( which )
+    {
+    case CACHE_INODE_AVL_NAMES:
+        tree = &pentry->object.dir.avl.t;
+	break;
 
-    while(dirent_node) {
-        next_dirent_node = avltree_next(dirent_node);
-        dirent = avltree_container_of(dirent_node,
-                                      cache_inode_dir_entry_t,
-                                      node_hk);
-        avltree_remove(dirent_node, tree);
-        ReleaseToPool(dirent, &pclient->pool_dir_entry);
-        dirent_node = next_dirent_node;
+    case CACHE_INODE_AVL_COOKIES:
+        tree = &pentry->object.dir.avl.c;
+        break;
+
+    case CACHE_INODE_AVL_BOTH:
+	cache_inode_release_dirents(pentry, pclient, CACHE_INODE_AVL_NAMES);
+	cache_inode_release_dirents(pentry, pclient, CACHE_INODE_AVL_COOKIES);
+	/* tree == NULL */
+	break;
+
+    default:
+	/* tree == NULL */
+	break;
     }
 
-    pentry->object.dir.nbactive = 0;
-    atomic_clear_int_bits(&pentry->flags, CACHE_INODE_DIR_POPULATED);
+    if (tree) {
+	  dirent_node = avltree_first(tree);
+
+	  while( dirent_node )
+           {
+	     next_dirent_node = avltree_next(dirent_node);
+             dirent = avltree_container_of( dirent_node,
+                                            cache_inode_dir_entry_t,
+                                            node_hk);
+             avltree_remove(dirent_node, tree);
+             ReleaseToPool(dirent, &pclient->pool_dir_entry);
+	     dirent_node = next_dirent_node;
+	   }
+
+          if (tree == &pentry->object.dir.avl.t) {
+              pentry->object.dir.nbactive = 0;
+              atomic_clear_int_bits(&pentry->flags,
+                                    CACHE_INODE_DIR_POPULATED);
+          }
+    }
 }
 
 /**

@@ -250,12 +250,16 @@ typedef struct cache_inode_unstable_data__
   uint32_t length; /*< Length */
 } cache_inode_unstable_data_t;
 
+<<<<<<< HEAD
 /**
  * \brief Represents a cached directory entry
  *
  * This is a cached directory entry that associates a name and cookie
  * with a cache entry.
  */
+
+#define DIR_ENTRY_FLAG_NONE     0x0000
+#define DIR_ENTRY_FLAG_DELETED  0x0001
 
 typedef struct cache_inode_dir_entry__
 {
@@ -267,6 +271,7 @@ typedef struct cache_inode_dir_entry__
   gweakref_t entry; /*< Weak reference pointing to the cache entry */
   fsal_name_t name; /*< The filename */
   uint64_t fsal_cookie; /*< The cookie returned by the FSAL. */
+  uint32_t flags; /*< Flags */
 } cache_inode_dir_entry_t;
 
 /**
@@ -369,7 +374,11 @@ struct cache_entry_t
                           'referral string' */
       gweakref_t parent; /*< The parent of this directory
                              ('..') */
-      struct avltree avl; /*< Children */
+      struct {
+          struct avltree t;                     /**< Children */
+          struct avltree c;                     /**< Persist cookies */
+          uint32_t collisions;                  /**< Heuristic. Expect 0. */
+      } avl;
       uint32_t collisions; /*< For future heuristics. Expect 0. */
     } dir; /*< DIRECTORY data */
   } object; /*< Filetype specific data, discriminated by the type

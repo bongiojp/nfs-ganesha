@@ -131,7 +131,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
                                   cache_inode_status_t * pstatus)
 {
      cache_entry_t *pentry = NULL;
-     cache_inode_dir_entry_t dirent_key[1], *dirent, *dirent2;
+     cache_inode_dir_entry_t dirent_key[1], *dirent, *dirent2, *dirent3;
 
      /* Directory mutation generally invalidates outstanding readdirs,
       * hence any cached cookies, so in these cases we clear the
@@ -160,7 +160,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
 
      FSAL_namecpy(&dirent_key->name, pname);
      dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
-     if (!dirent) {
+     if ((! dirent) || (dirent->flags & DIR_ENTRY_FLAG_DELETED)) {
        if (pentry_parent->flags & (CACHE_INODE_TRUST_CONTENT |
                                    CACHE_INODE_DIR_POPULATED)) {
          /* We cannot serve negative lookups. */
@@ -181,12 +181,10 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
           /* Yes, we did ! */
           switch (dirent_op) {
           case CACHE_INODE_DIRENT_OP_REMOVE:
-               cache_inode_avl_remove(pentry_parent, dirent);
-               /* release to pool */
-               ReleaseToPool(dirent, &pclient->pool_dir_entry);
-               pentry_parent->object.dir.nbactive--;
-               *pstatus = CACHE_INODE_SUCCESS;
-               break;
+              /* mark deleted */
+              avl_dirent_set_deleted(pentry_parent, dirent);
+              pentry_parent->object.dir.nbactive--;
+              break;
 
           case CACHE_INODE_DIRENT_OP_RENAME:
                /* change the installed inode only the rename can succeed */
@@ -203,60 +201,48 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
                       *pstatus = CACHE_INODE_ENTRY_EXISTS;
                     }
                } else {
-                    /* try to rename in-place */
-                    cache_inode_avl_remove(pentry_parent, dirent);
-                    FSAL_namecpy(&dirent->name, newname);
-                    if (cache_inode_avl_qp_insert(pentry_parent,
-                                                  dirent) == -1) {
-                         /* collision, tree state unchanged--unlikely */
-                         if (pentry_parent->flags &
-                             CACHE_INODE_TRUST_CONTENT) {
-                           /* We are not up to date. */
-                           *pstatus = CACHE_INODE_SUCCESS;
-                         } else {
-                           *pstatus = CACHE_INODE_ENTRY_EXISTS;
-                         }
-                         /* still, try to revert the change in place */
-                         FSAL_namecpy(&dirent->name, pname);
-                         if (cache_inode_avl_qp_insert(pentry_parent, dirent) == -1) {
-                              LogDebug(COMPONENT_NFS_READDIR,
-                                       "DIRECTORY: failed renaming dirent (%s, %s)",
-                                       pname->name, newname->name);
-                              /* We are inconsistent and no longer
-                                 valid. */
-                              atomic_clear_int_bits(&pentry_parent->flags,
-                                                    CACHE_INODE_TRUST_CONTENT |
-                                                    CACHE_INODE_DIR_POPULATED);
-                              cache_inode_release_dirents(pentry_parent,
-                                                          pclient);
-                         }
-                    } else {
-                      *pstatus = CACHE_INODE_SUCCESS;
-                    }
+                   /* try to rename--no longer in-place */
+                   avl_dirent_set_deleted(pentry_parent, dirent);
+                   GetFromPool(dirent3, &pclient->pool_dir_entry,
+                               cache_inode_dir_entry_t);
+                   FSAL_namecpy(&dirent3->name, newname);
+                   dirent3->entry = dirent->entry;
+                   code = cache_inode_avl_qp_insert(pentry_parent, dirent3);
+                   switch (code) {
+                   case 0:
+                       /* CACHE_INODE_SUCCESS */
+                       break;
+                   case 1:
+                       /* we reused an existing dirent, dirent has been deep
+                        * copied, dispose it */
+                       ReleaseToPool(dirent3, &pclient->pool_dir_entry);
+                       /* CACHE_INODE_SUCCESS */
+                       break;
+                   case -1:
+                       /* collision, tree state unchanged (unlikely) */
+                       *pstatus = CACHE_INODE_ENTRY_EXISTS;
+                       /* dirent is on persist tree, undelete it */
+                       avl_dirent_clear_deleted(pentry_parent, dirent);
+                       /* dirent3 was never inserted */
+                       ReleaseToPool(dirent3, &pclient->pool_dir_entry);
+                   default:
+                       LogCrit(COMPONENT_NFS_READDIR,
+                               "DIRECTORY: insert error renaming dirent "
+                               "(%s, %s)",
+                               pname->name, newname->name);
+                       *pstatus = CACHE_INODE_INSERT_ERROR;
+                       break;
+                   }
                } /* !found */
                break;
 
           default:
-               /* Should never occurs, in any case, it cost nothing to handle
+               /* Should never occur, in any case, it costs nothing to handle
                 * this situation */
                *pstatus = CACHE_INODE_INVALID_ARGUMENT;
                break;
 
           }                       /* switch */
-     }
-
-     if (*pstatus == CACHE_INODE_SUCCESS) {
-       /* As noted, if a mutating operation was performed, we must
-          invalidate cached cookies. */
-          atomic_clear_int_bits(&pentry_parent->flags,
-                                (CACHE_INODE_DIR_POPULATED |
-                                 CACHE_INODE_TRUST_CONTENT));
-          cache_inode_release_dirents(pentry_parent, pclient);
-
-          /* Someone has to repopulate the avl cookie cache.  Populating it
-           * lazily is ok, but the logic to do it makes supporting simultaneous
-           * readers more involved.  Another approach would be to do it in the
-           * background, scheduled from here. */
      }
 
      return pentry;
@@ -305,6 +291,7 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
 {
      fsal_status_t fsal_status;
      cache_inode_dir_entry_t *new_dir_entry = NULL;
+     int code = 0;
 
      *pstatus = CACHE_INODE_SUCCESS;
 
@@ -315,8 +302,8 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
      }
 
      /* in cache inode avl, we always insert on pentry_parent */
-     GetFromPool(new_dir_entry, &pclient->pool_dir_entry, cache_inode_dir_entry_t);
-
+     GetFromPool(new_dir_entry, &pclient->pool_dir_entry,
+                 cache_inode_dir_entry_t);
      if(new_dir_entry == NULL) {
           *pstatus = CACHE_INODE_MALLOC_ERROR;
           return *pstatus;
@@ -329,12 +316,24 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
      }
 
      /* add to avl */
-     if (cache_inode_avl_qp_insert(pentry_parent, new_dir_entry) == -1) {
-          /* collision, tree not updated--release both pool objects and return
-           * err */
-          ReleaseToPool(new_dir_entry, &pclient->pool_dir_entry);
-          *pstatus = CACHE_INODE_ENTRY_EXISTS;
-          return *pstatus;
+     code = cache_inode_avl_qp_insert(pentry_parent, new_dir_entry);
+     switch (code) {
+     case 0:
+         /* CACHE_INODE_SUCCESS */
+         break;
+     case 1:
+         /* we reused an existing dirent, dirent has been deep
+          * copied, dispose it */
+         ReleaseToPool(new_dir_entry, &pclient->pool_dir_entry);
+         /* CACHE_INODE_SUCCESS */
+         break;
+     default:
+         /* collision, tree not updated--release both pool objects and return
+          * err */
+         ReleaseToPool(new_dir_entry, &pclient->pool_dir_entry);
+         *pstatus = CACHE_INODE_ENTRY_EXISTS;
+         return *pstatus;
+         break;
      }
 
      *pnew_dir_entry = new_dir_entry;
@@ -342,7 +341,6 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
      /* we're going to succeed */
      pentry_parent->object.dir.nbactive++;
      new_dir_entry->entry = pentry_added->weakref;
-
 
      return *pstatus;
 }                               /* cache_inode_add_cached_dirent */
@@ -663,7 +661,6 @@ cache_inode_status_t cache_inode_readdir_populate(
  * @retval CACHE_INODE_LRU_ERROR if allocation error occured when
  *                               validating the entry
  */
-<<<<<<< HEAD
 cache_inode_status_t
 cache_inode_readdir(cache_entry_t * dir_entry,
                     uint64_t cookie,
@@ -674,24 +671,9 @@ cache_inode_readdir(cache_entry_t * dir_entry,
                     cache_inode_readdir_cb_t cb,
                     void *cb_opaque,
                     cache_inode_status_t *status)
-=======
-cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
-                                         cache_inode_policy_t policy,
-                                         uint64_t cookie,
-                                         unsigned int nbwanted,
-                                         unsigned long *pnbfound,
-                                         uint64_t *pend_cookie,
-                                         cache_inode_endofdir_t *peod_met,
-                                         cache_inode_dir_entry_t **dirent_array,
-                                         hash_table_t *ht,
-                                         int *unlock,
-                                         cache_inode_client_t *pclient,
-                                         fsal_op_context_t *pcontext,
-                                         cache_inode_status_t *pstatus)
->>>>>>> 9ef3662... Fix the use of int as unsigned long in readdir.
 {
      /* Key for looking up the directory entry corresponding to the
-        supplied cookie. */
+       supplied cookie. */
      cache_inode_dir_entry_t dirent_key[1];
      /* The entry being examined */
      cache_inode_dir_entry_t *dirent = NULL;
@@ -708,7 +690,6 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
-     dirent = NULL;
 
      /* readdir can be done only with a directory */
      if (dir_entry->type != DIRECTORY) {
@@ -760,8 +741,8 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
           }
 
           /* we assert this can now succeed */
-          dirent_key->hk.k = cookie;
-          dirent = cache_inode_avl_lookup_k(dir_entry, dirent_key);
+          dirent = cache_inode_avl_lookup_k(dir_pentry, cookie,
+                                            CACHE_INODE_FLAG_NEXT_ACTIVE);
           if (!dirent) {
                LogFullDebug(COMPONENT_NFS_READDIR,
                             "%s: seek to cookie=%"PRIu64" fail",
@@ -770,15 +751,13 @@ cache_inode_status_t cache_inode_readdir(cache_entry_t * dir_pentry,
                goto unlock_dir;
           }
 
+          /* dirent is the NEXT entry to return, since we sent 
+           * CACHE_INODE_FLAG_NEXT_ACTIVE */
           dirent_node = &dirent->node_hk;
 
-          /* client wants the cookie -after- the last we sent, and
-           * the Linux 3.0 and 3.1.0-rc7 clients misbehave if we
-           * resend the last one */
-          dirent_node = avltree_next(dirent_node);
      } else {
           /* initial readdir */
-          dirent_node = avltree_first(&dir_entry->object.dir.avl);
+         dirent_node = avltree_first(&dir_entry->object.dir.avl.t);
      }
 
      LogFullDebug(COMPONENT_NFS_READDIR,
