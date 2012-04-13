@@ -1925,7 +1925,10 @@ void *worker_thread(void *IndexArg)
          (int)nfs_param.core_param.stats_update_delay / 2)
         {
 
-          FSAL_get_stats(&pmydata->stats.fsal_stats, FALSE);
+/** @TODO disable stats for now.  with new api etc. these are different.
+ * btw, why not take this at core level and save duplication in every fsal??
+ */
+/*           FSAL_get_stats(&pmydata->stats.fsal_stats, FALSE); */
 
 #ifndef _NO_BUDDY_SYSTEM
           BuddyGetStats(&pmydata->stats.buddy_stats);

@@ -3029,20 +3029,6 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht)
             }
           /* Add this entry to the Cache Inode as a "root" entry */
 
-/* this will not actually work.  We are crossing a type boundary AND, what we should be doing is 
- * passing a handle (fsal_obj_handle *), not a struct copy.  We stop here for now because this
- * gets into cache_inode.
- *
- * cache_inode should be keeping a fsal_obj_handle * that it will release when the entry is
- * invalidated.
- */
-
-/** @TODO fix with cache_inode_new_entry work */
-/*           fsdata.fh_desc.start = (caddr_t) &fsal_handle; */
-/*           fsdata.fh_desc.len = 0; */
-/* 	  (void)pcurrent->proot_handle->ops-> */
-/*           fsdata.cookie = 0; */
-
           if((pentry = cache_inode_make_root(pcurrent->proot_handle,
                                              pcurrent->cache_inode_policy,
                                              ht,
@@ -3092,7 +3078,10 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist, hash_table_t * ht)
 int CleanUpExportContext(fsal_export_context_t * p_export_context)
 {
 
-  FSAL_CleanUpExportContext(p_export_context);
+/** @TODO some level of cleanup would be a release of the export.
+ * disable for now.  do an export release in remove export entry
+ */
+/*   FSAL_CleanUpExportContext(p_export_context); */
 
   return TRUE;
 }
@@ -3107,9 +3096,6 @@ exportlist_t *RemoveExportEntry(exportlist_t * exportEntry)
     return NULL;
 
   next = exportEntry->next;
-
-  if (exportEntry->proot_handle != NULL)
-    Mem_Free(exportEntry->proot_handle);
 
   if (exportEntry->worker_stats != NULL)
     Mem_Free(exportEntry->worker_stats);

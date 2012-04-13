@@ -289,11 +289,13 @@ cache_content_status_t cache_content_emergency_flush(char *cachedir,
                                                &fsal_path, FSAL_RCP_LOCAL_TO_FS);
             }
 #else
-          if(!FSAL_IS_ERROR(fsal_status))
-            {
-              fsal_status = FSAL_rcp(&fsal_handle,
-                                     pcontext, &fsal_path, FSAL_RCP_LOCAL_TO_FS);
-            }
+/** @TODO disable it for now.  this may move to caching fsal.  save the energy
+ */
+/*           if(!FSAL_IS_ERROR(fsal_status)) */
+/*             { */
+/*               fsal_status = FSAL_rcp(&fsal_handle, */
+/*                                      pcontext, &fsal_path, FSAL_RCP_LOCAL_TO_FS); */
+/*             } */
 #endif
 
           if(FSAL_IS_ERROR(fsal_status))
