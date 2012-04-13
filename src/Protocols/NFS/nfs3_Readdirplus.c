@@ -125,7 +125,6 @@ nfs3_Readdirplus(nfs_arg_t *arg,
 {
      static char __attribute__ ((__unused__)) funcName[] = "nfs3_Readdirplus";
      cache_entry_t *dir_entry = NULL;
-     unsigned long dircount = 0;
      fsal_attrib_list_t dir_attr;
      uint64_t begin_cookie = 0;
      uint64_t cache_inode_cookie = 0;
@@ -163,23 +162,26 @@ nfs3_Readdirplus(nfs_arg_t *arg,
      res->res_readdir3.READDIR3res_u.resfail
           .dir_attributes.attributes_follow = FALSE;
 
-     dircount = arg->arg_readdirplus3.dircount;
      cb_opaque.mem_left = (arg->arg_readdirplus3.maxcount * 9) / 10;
      begin_cookie = arg->arg_readdirplus3.cookie;
 
      cb_opaque.mem_left -= sizeof(READDIRPLUS3resok);
 
+     /* Estimate assuming that we're going to send no names and no handles.
+      * Don't count space for pointers for nextentry or 
+      * name_handle.data.data_val in entryplus3 */
      estimated_num_entries =
-          MIN((cb_opaque.mem_left + sizeof(entry3 *))
-              / (sizeof(entry3) - sizeof(char *)*2), 50);
+          MIN((cb_opaque.mem_left + sizeof(entryplus3 *))
+              / (sizeof(entryplus3) - sizeof(char *)*2), 50);
 
      cb_opaque.total_entries = estimated_num_entries;
      LogFullDebug(COMPONENT_NFS_READDIR,
-                  "nfs3_Readdirplus: dircount=%lu "
+                  "nfs3_Readdirplus: dircount=%u "
                   "begin_cookie=%"PRIu64" "
-                  "estimated_num_entries=%lu", dircount,
+                  "estimated_num_entries=%lu, mem_left=%zd",
+                  arg->arg_readdirplus3.dircount,
                   begin_cookie,
-                  estimated_num_entries);
+                  estimated_num_entries, cb_opaque.mem_left);
 
      /* Is this a xattr FH ? */
      if (nfs3_Is_Fh_Xattr(&(arg->arg_readdirplus3.dir))) {
@@ -445,13 +447,17 @@ nfs3_readdirplus_callback(void* opaque,
      if (tracker->count == tracker->total_entries) {
           return FALSE;
      }
-     tracker->entries[tracker->count].nextentry = NULL;
-     if ((tracker->mem_left < (sizeof(entry3) + namelen))) {
+     /* This is a pessimistic check, which assumes that we're going
+      * to send attributes and full size handle - if it fails then 
+      * we're close enough to the buffer size limit and t's time to 
+      * stop anyway */
+     if ((tracker->mem_left < (sizeof(entryplus3) + namelen + NFS3_FHSIZE))) {
           if (tracker->count == 0) {
                tracker->error = NFS3ERR_TOOSMALL;
           }
           return FALSE;
      }
+
      FSAL_DigestHandle(FSAL_GET_EXP_CTX(tracker->context),
                        FSAL_DIGEST_FILEID3,
                        handle,
@@ -465,6 +471,10 @@ nfs3_readdirplus_callback(void* opaque,
      }
      strcpy(ep3->name, name);
      ep3->cookie = cookie;
+
+     /* Account for file name + length + cookie */
+     tracker->mem_left -= sizeof(ep3->cookie) + ((namelen + 3) & ~3) + 4;
+
      ep3->name_handle.handle_follows = TRUE;
      ep3->name_handle.post_op_fh3_u.handle.data.data_val = Mem_Alloc(NFS3_FHSIZE);
      if (ep3->name_handle.post_op_fh3_u .handle.data.data_val == NULL) {
@@ -481,23 +491,22 @@ nfs3_readdirplus_callback(void* opaque,
           Mem_Free(ep3->name_handle.post_op_fh3_u.handle.data.data_val);
           return FALSE;
      }
-     if (tracker->mem_left < (ep3->name_handle.post_op_fh3_u.handle.data.data_len +
-                              sizeof(uint32_t))) {
-          tracker->error = NFS3ERR_BADHANDLE;
-          Mem_Free(ep3->name);
-          Mem_Free(ep3->name_handle.post_op_fh3_u.handle.data.data_val);
-          return FALSE;
-     }
+
+     /* Account for filehande + length + follows + nextentry */
+     tracker->mem_left -= ep3->name_handle.post_op_fh3_u.handle.data.data_len + 12;
      if (tracker->count > 0) {
           tracker->entries[tracker->count - 1].nextentry = ep3;
      }
      ep3->name_attributes.attributes_follow = FALSE;
-     tracker->mem_left -= (ep3->name_handle.post_op_fh3_u.handle.data.data_len +
-                           sizeof(uint32_t));
 
      nfs_SetPostOpAttr(tracker->export,
                        attrs,
                        &ep3->name_attributes);
+     if (ep3->name_attributes.attributes_follow) {
+	  tracker->mem_left -= sizeof(ep3->name_attributes);
+     } else {
+	  tracker->mem_left -= sizeof(ep3->name_attributes.attributes_follow);
+     }
      ++(tracker->count);
      return TRUE;
 } /* nfs3_readdirplus_callback */
