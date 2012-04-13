@@ -253,9 +253,9 @@ nfs3_Readdirplus(nfs_arg_t *arg,
           .resok.reply
 
      /* Allocate space for entries */
-     if ((cb_opaque.entries = (entryplus3 *) Mem_Alloc(sizeof(entryplus3) *
-                                                       estimated_num_entries))
-         == NULL) {
+     cb_opaque.entries = (entryplus3 *) Mem_Calloc(estimated_num_entries,
+                                                   sizeof(entryplus3));
+     if (cb_opaque.entries == NULL) {
           rc = NFS_REQ_DROP;
           goto out;
      }
@@ -439,10 +439,9 @@ nfs3_readdirplus_callback(void* opaque,
      /* Length of the current filename */
      size_t namelen = strlen(name);
      /* Fileid buffer descriptor */
+     entryplus3 *ep3 = tracker->entries + tracker->count;
      struct fsal_handle_desc id_descriptor
-          = {sizeof(tracker->entries[tracker->count].fileid),
-             (caddr_t) &tracker->entries[tracker->count].fileid};
-     entryplus3 *ep3;
+          = {sizeof(ep3->fileid), (caddr_t) &ep3->fileid};
 
      if (tracker->count == tracker->total_entries) {
           return FALSE;
@@ -463,7 +462,6 @@ nfs3_readdirplus_callback(void* opaque,
                        handle,
                        &id_descriptor);
 
-     ep3 = tracker->entries + tracker->count;
      ep3->name = Mem_Alloc(namelen + 1);
      if (ep3->name == NULL) {
           tracker->error = NFS3ERR_IO;
