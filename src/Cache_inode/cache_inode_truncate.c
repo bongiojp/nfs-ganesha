@@ -135,11 +135,13 @@ cache_inode_status_t cache_inode_truncate(cache_entry_t * pentry,
                                           fsal_op_context_t * pcontext,
                                           cache_inode_status_t * pstatus)
 {
+  cache_inode_status_t ret;
   pthread_rwlock_wrlock(&pentry->attr_lock);
   pthread_rwlock_wrlock(&pentry->content_lock);
-  return cache_inode_truncate_impl(pentry,
+  ret = cache_inode_truncate_impl(pentry,
                                    length, pattr, pclient, pcontext, pstatus);
   pthread_rwlock_unlock(&pentry->attr_lock);
   pthread_rwlock_unlock(&pentry->content_lock);
   assert(pentry->content_lock.__data.__nr_readers < 200);
+  return ret;
 } /* cache_inode_truncate */
