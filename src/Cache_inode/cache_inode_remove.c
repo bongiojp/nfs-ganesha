@@ -201,7 +201,7 @@ cache_inode_status_t cache_inode_remove(cache_entry_t *pentry,
                              /* Keep the attribute lock so we can copy
                                 attributes back to the caller.  I plan
                                 to get rid of this later. --ACE */
-                             CACHE_INODE_FLAG_ATTR_HOLD);
+                             CACHE_INODE_FLAG_ATTR_HAVE|CACHE_INODE_FLAG_ATTR_HOLD);
 
      *pattr = pentry->attributes;
 
@@ -279,7 +279,8 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
      }
      cache_inode_fixup_md(entry);
 
-     if (!(flags & CACHE_INODE_FLAG_ATTR_HOLD)) {
+     if ((flags & CACHE_INODE_FLAG_ATTR_HAVE) &&
+         !(flags & CACHE_INODE_FLAG_ATTR_HOLD)) {
           pthread_rwlock_unlock(&entry->attr_lock);
      }
 
@@ -332,7 +333,8 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
      }
 
 out:
-     if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
+     if ((flags * CACHE_INODE_FLAG_CONTENT_HAVE) &&
+         !(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
           assert(entry->content_lock.__data.__nr_readers < 200);
      }

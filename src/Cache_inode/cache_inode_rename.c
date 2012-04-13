@@ -309,7 +309,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                                        pclient,
                                        pcontext,
                                        pstatus,
-                                       CACHE_INODE_FLAG_CONTENT_HOLD);
+                                       CACHE_INODE_FLAG_CONTENT_HAVE|CACHE_INODE_FLAG_CONTENT_HOLD);
       if (status != CACHE_INODE_SUCCESS)
         {
           *pstatus = status;
