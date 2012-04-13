@@ -100,6 +100,7 @@ cache_inode_rdwr(cache_entry_t *entry,
      fsal_status_t fsal_status = {0, 0};
      /* Required open mode to successfully read or write */
      fsal_openflags_t openflags = FSAL_O_CLOSED;
+     fsal_openflags_t loflags;
      /* TRUE if we have taken the content lock on 'entry' */
      bool_t content_locked = FALSE;
      /* TRUE if we have taken the attribute lock on 'entry' */
@@ -185,11 +186,17 @@ cache_inode_rdwr(cache_entry_t *entry,
              if we need to open or close a file descriptor. */
           pthread_rwlock_rdlock(&entry->content_lock);
           content_locked = TRUE;
-          if (!cache_inode_fd(entry)) {
+          loflags = entry->object.file.open_fd.openflags;
+          if ((!cache_inode_fd(entry)) ||
+              (loflags && ((loflags != FSAL_O_RDWR) ||
+                           (loflags != openflags)))) {
                pthread_rwlock_unlock(&entry->content_lock);
                assert(entry->content_lock.__data.__nr_readers < 200);
                pthread_rwlock_wrlock(&entry->content_lock);
-               if (!cache_inode_fd(entry)) {
+               loflags = entry->object.file.open_fd.openflags;
+               if ((!cache_inode_fd(entry)) ||
+                   (loflags && ((loflags != FSAL_O_RDWR) ||
+                                 (loflags != openflags)))) {
                     if (cache_inode_open(entry,
                                          client,
                                          openflags,
@@ -219,16 +226,16 @@ cache_inode_rdwr(cache_entry_t *entry,
                                  io_size,
                                  buffer,
                                  bytes_moved);
-          }
 
-          /* Alright, the unstable write is complete. Now if it was
-             supposed to be a stable write we can sync to the hard
-             drive. */
+               /* Alright, the unstable write is complete. Now if it was
+                  supposed to be a stable write we can sync to the hard
+                  drive. */
 
-          if (stable == CACHE_INODE_SAFE_WRITE_TO_FS) {
-               fsal_status
-                    = FSAL_commit(&(entry->object.file.open_fd.fd),
+               if (stable == CACHE_INODE_SAFE_WRITE_TO_FS) {
+                    fsal_status
+                         = FSAL_commit(&(entry->object.file.open_fd.fd),
                                   offset, io_size);
+               }
           }
 
           LogFullDebug(COMPONENT_FSAL,
