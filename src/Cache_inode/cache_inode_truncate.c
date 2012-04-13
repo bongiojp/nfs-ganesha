@@ -148,7 +148,8 @@ cache_inode_status_t cache_inode_truncate_sw(cache_entry_t * pentry,
       fsal_status = MFSL_truncate(&pentry->mobject, pcontext, &pclient->mfsl_context, length, NULL,    
                                   &pentry->attributes, NULL);
 #else
-      fsal_status = FSAL_truncate(&pentry->handle, pcontext, length, NULL,  /** @todo &pentry->object.file.open_fd.fd, *//* Used only with FSAL_PROXY */
+      fsal_status = FSAL_truncate(&pentry->handle, pcontext, length,
+                                  &(pentry->object.file.open_fd.fd), /* Used by FSAL_PROXY and FSAL_GPFS */
                                   &pentry->attributes);
 #endif /* _USE_MFSL */
 
