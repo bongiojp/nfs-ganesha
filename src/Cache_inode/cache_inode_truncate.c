@@ -96,7 +96,7 @@ cache_inode_truncate_impl(cache_entry_t *pentry,
   /* Call FSAL to actually truncate */
   pentry->attributes.asked_attributes = pclient->attrmask;
   fsal_status = FSAL_truncate(&pentry->handle, pcontext, length,
-                              NULL,
+                              &(pentry->object.file.open_fd.fd), /* Used by FSAL_PROXY and FSAL_GPFS */
                               &pentry->attributes);
 
   if(FSAL_IS_ERROR(fsal_status))
