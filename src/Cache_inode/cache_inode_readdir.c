@@ -92,7 +92,8 @@ cache_inode_invalidate_all_cached_dirent(cache_entry_t *entry,
      cache_inode_release_dirents(entry, client);
 
      /* Mark directory as not populated */
-     atomic_clear_int_bits(&entry->flags, CACHE_INODE_DIR_POPULATED);
+     atomic_clear_int_bits(&entry->flags, (CACHE_INODE_DIR_POPULATED |
+                                           CACHE_INODE_TRUST_CONTENT));
      *status = CACHE_INODE_SUCCESS;
 
      return *status;
@@ -248,6 +249,8 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
      if (*pstatus == CACHE_INODE_SUCCESS) {
        /* As noted, if a mutating operation was performed, we must
            * invalidate cached cookies. */
+          atomic_clear_int_bits(&entry->flags, (CACHE_INODE_DIR_POPULATED |
+                                                CACHE_INODE_TRUST_CONTENT));
           cache_inode_release_dirents(pentry_parent, pclient);
 
           /* Someone has to repopulate the avl cookie cache.  Populating it
@@ -263,18 +266,20 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
  *
  * cache_inode_add_cached_dirent: Adds a directory entry to a cached directory.
  *
- * A dirent pointing to a cache entry counts as an internal reference to that entry,
- * similar to the internal reference owned by the hash table.  So when this function
- * returns successfully, pentry_added->refcount is increased by 1, but the increase
- * is not charged to the call path (and should not be returned until the dirent
- * becomes unreachable).
+ * A dirent pointing to a cache entry counts as an internal reference
+ * to that entry, similar to the internal reference owned by the hash
+ * table.  So when this function returns successfully,
+ * pentry_added->refcount is increased by 1, but the increase is not
+ * charged to the call path (and should not be returned until the
+ * dirent becomes unreachable).
  *
- * Adds a directory entry to a cached directory. This is use when creating a
- * new entry through nfs and keep it to the cache. It also allocates and caches
- * the entry.  This function can be call iteratively, within a loop (like what
- * is done in cache_inode_readdir_populate).  In this case, pentry_parent should
- * be set to the value returned in *pentry_next.  This function should never be
- * used for managing a junction.
+ * Adds a directory entry to a cached directory. This is use when
+ * creating a new entry through nfs and keep it to the cache. It also
+ * allocates and caches the entry.  This function can be call
+ * iteratively, within a loop (like what is done in
+ * cache_inode_readdir_populate).  In this case, pentry_parent should
+ * be set to the value returned in *pentry_next.  This function should
+ * never be used for managing a junction.
  *
  * @param pentry_parent [INOUT] cache entry representing the directory to be
  *                              managed.
@@ -446,7 +451,6 @@ cache_inode_status_t cache_inode_readdir_populate(
       return *pstatus;
     }
 
-  /* If directory is already populated , there is no job to do */
   if(pentry_dir->flags & CACHE_INODE_DIR_POPULATED)
     {
       *pstatus = CACHE_INODE_SUCCESS;
@@ -708,8 +712,8 @@ cache_inode_readdir(cache_entry_t * dir_entry,
           goto unlock_attrs;
      }
 
-     if (!(dir_entry->flags & (CACHE_INODE_TRUST_CONTENT |
-                               CACHE_INODE_DIR_POPULATED))) {
+     if (!((dir_entry->flags & CACHE_INODE_TRUST_CONTENT) &&
+           (dir_entry->flags & CACHE_INODE_DIR_POPULATED))) {
           pthread_rwlock_wrlock(&dir_entry->content_lock);
           pthread_rwlock_unlock(&dir_entry->attr_lock);
           if (cache_inode_readdir_populate(dir_entry,
