@@ -2193,7 +2193,7 @@ void nfs_start(nfs_start_info_t * p_start_info)
            "NFS EXIT: regular exit");
 
   /* if not in grace period, clean up the old state directory */
-  if(!nfs4_in_grace())
+  if(!nfs_in_grace())
     nfs4_clean_old_recov_dir();
 
 /* is this supposed to be here? */
