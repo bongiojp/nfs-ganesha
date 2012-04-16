@@ -88,7 +88,7 @@ cache_inode_invalidate_all_cached_dirent(cache_entry_t *entry,
           return *status;
      }
 
-     /* Get ride of entries cached in the DIRECTORY */
+     /* Get rid of entries cached in the DIRECTORY */
      cache_inode_release_dirents(entry, client);
 
      /* Mark directory as not populated */
