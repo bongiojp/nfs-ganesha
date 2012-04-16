@@ -188,15 +188,14 @@ cache_inode_rdwr(cache_entry_t *entry,
           content_locked = TRUE;
           loflags = entry->object.file.open_fd.openflags;
           if ((!cache_inode_fd(entry)) ||
-              (loflags && ((loflags != FSAL_O_RDWR) ||
-                           (loflags != openflags)))) {
+              (loflags && loflags != FSAL_O_RDWR && loflags != openflags)) {
                pthread_rwlock_unlock(&entry->content_lock);
                assert(entry->content_lock.__data.__nr_readers < 200);
                pthread_rwlock_wrlock(&entry->content_lock);
                loflags = entry->object.file.open_fd.openflags;
                if ((!cache_inode_fd(entry)) ||
-                   (loflags && ((loflags != FSAL_O_RDWR) ||
-                                 (loflags != openflags)))) {
+                   (loflags && loflags != FSAL_O_RDWR &&
+                    loflags != openflags)) {
                     if (cache_inode_open(entry,
                                          client,
                                          openflags,

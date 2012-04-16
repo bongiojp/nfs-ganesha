@@ -248,9 +248,10 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
 
      if (*pstatus == CACHE_INODE_SUCCESS) {
        /* As noted, if a mutating operation was performed, we must
-           * invalidate cached cookies. */
-          atomic_clear_int_bits(&entry->flags, (CACHE_INODE_DIR_POPULATED |
-                                                CACHE_INODE_TRUST_CONTENT));
+          invalidate cached cookies. */
+          atomic_clear_int_bits(&pentry_parent->flags,
+                                (CACHE_INODE_DIR_POPULATED |
+                                 CACHE_INODE_TRUST_CONTENT));
           cache_inode_release_dirents(pentry_parent, pclient);
 
           /* Someone has to repopulate the avl cookie cache.  Populating it
