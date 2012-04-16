@@ -341,6 +341,8 @@ fsal_status_t FSAL_name2buffdesc(fsal_name_t * in_name, fsal_buffdesc_t * out_bu
 int FSAL_handlecmp(fsal_handle_t * handle1, fsal_handle_t * handle2,
                    fsal_status_t * status);
 
+#if 0
+
 #ifndef _USE_SWIG
 
 /**
@@ -740,6 +742,8 @@ fsal_status_t FSAL_lock_op( fsal_file_t       * p_file_descriptor,   /* IN */
                             fsal_lock_param_t * conflicting_lock     /* OUT */
                             );
 
+#endif
+
 /* FSAL_UP functions */
 /* These structs are defined here because including fsal_up.h causes
  * preprocessor issues. */
@@ -784,6 +788,8 @@ typedef struct fsal_xattrent__
   fsal_attrib_list_t attributes;         /**< entry attributes (if supported) */
 
 } fsal_xattrent_t;
+
+#if 0
 
 /**
  * Retrieves the list of extended attributes for an object in the filesystem.
@@ -970,6 +976,8 @@ fsal_status_t FSAL_check_quota( fsal_path_t * path,  /* IN */
 unsigned int FSAL_GetFileno(fsal_file_t * pfile);
 #define FSAL_FILENO( pfile ) FSAL_GetFileno( pfile )
 
+#endif
+
 /**
  * fsal2unix_mode:
  * Convert FSAL mode to posix mode.
@@ -994,6 +1002,8 @@ fsal_dev_t posix2fsal_devt(dev_t posix_devid);
  */
 fsal_accessmode_t unix2fsal_mode(mode_t unix_mode);
 
+#if 0
+
 /* The following functions are used in Cache_Inode_Asynch mode */
 
 fsal_status_t FSAL_setattr_access(fsal_op_context_t * p_context,        /* IN */
@@ -1017,6 +1027,8 @@ fsal_status_t FSAL_create_access(fsal_op_context_t * pcontext,  /* IN */
 
 fsal_status_t FSAL_link_access(fsal_op_context_t * pcontext,    /* IN */
                                fsal_attrib_list_t * pattr);     /* IN */
+
+#endif
 
 /******************************************************
  *                Structure used to define a fsal
