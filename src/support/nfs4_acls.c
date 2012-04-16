@@ -14,7 +14,9 @@
 #include "nfs4_acls.h"
 #include <openssl/md5.h>
 
+#ifndef _NO_BLOCK_PREALLOC
 static unsigned int nb_pool_prealloc = 1024;
+#endif
 
 struct prealloc_pool fsal_acl_pool;
 static pthread_mutex_t fsal_acl_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
