@@ -116,10 +116,8 @@ cache_inode_invalidate_all_cached_dirent(cache_entry_t *entry,
  * @param pclient [INOUT] resource allocated by the client for the nfs management.
  * @param dirent_op [IN] operation (ADD, LOOKUP or REMOVE) to do on the dirent
  *        if found.
- * @pstatus [OUT] returned status.
  *
- * @return the found entry if its exists and NULL if it is not in the dirent
- *         cache. REMOVE always returns NULL.
+ * @return returned status.
  *
  */
 cache_inode_status_t
