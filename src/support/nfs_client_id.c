@@ -547,7 +547,10 @@ void nfs_client_id_expire(nfs_client_id_t *client_record)
       state_owner_t * plock_owner = glist_entry(glist,
                                           state_owner_t,
 					  so_owner.so_nfs4_owner.so_perclient);
+      inc_state_owner_ref(plock_owner);
       release_lockstate(plock_owner);
+      dec_state_owner_ref(plock_owner, plock_owner->so_pclient);
+      
     }
 
   /* release the corresponding open states , close files*/
@@ -556,7 +559,9 @@ void nfs_client_id_expire(nfs_client_id_t *client_record)
       state_owner_t * popen_owner = glist_entry(glist,
                                           state_owner_t,
 					  so_owner.so_nfs4_owner.so_perclient);
+      inc_state_owner_ref(popen_owner);
       release_openstate(popen_owner);
+      dec_state_owner_ref(popen_owner, popen_owner->so_pclient);
     }
 
   dec_state_owner_ref(client_record->clientid_owner, client_record->clientid_owner->so_pclient);
