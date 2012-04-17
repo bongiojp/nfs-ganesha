@@ -374,7 +374,7 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
       return res_WRITE4.status;
     }
 
-  if((nfs_param.core_param.use_nfs_commit == TRUE) && (arg_WRITE4.stable == UNSTABLE4))
+  if(arg_WRITE4.stable == UNSTABLE4)
     {
       stability = CACHE_INODE_UNSAFE_WRITE_TO_FS_BUFFER;
     }
