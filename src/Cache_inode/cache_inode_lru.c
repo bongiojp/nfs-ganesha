@@ -541,9 +541,12 @@ cache_inode_lru_get(cache_inode_client_t *client,
      cache_entry_t *entry = NULL;
 
      /* If we are in reclaim state, try to find an entry to recycle. */
+     pthread_mutex_lock(&lru_mtx);
      if (lru_state.flags & LRU_STATE_RECLAIMING) {
 
-          /* Search through logical L2 entry. */
+         pthread_mutex_unlock(&lru_mtx);
+
+         /* Search through logical L2 entry. */
          for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
              lru = try_reap_entry(&LRU_2[lane].lru);
              if (lru)
@@ -628,6 +631,8 @@ cache_inode_lru_get(cache_inode_client_t *client,
                     lru = NULL;
                }
           }
+     } else {
+          pthread_mutex_unlock(&lru_mtx);
      }
 
      if (!lru) {
