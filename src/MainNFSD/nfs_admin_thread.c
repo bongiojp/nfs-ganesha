@@ -167,7 +167,7 @@ static int ChangeoverExports()
   return 0;
 }
 
-void *admin_thread(void *Arg)
+void *admin_thread(void *UnusedArg)
 {
 #ifndef _NO_BUDDY_SYSTEM
   int rc = 0;

@@ -130,7 +130,7 @@ int file_content_gc_manage_entry(LRU_entry_t * plru_entry, void *addparam)
 
 extern  nfs_tcb_t gccb;
 
-void *file_content_gc_thread(void *IndexArg)
+void *file_content_gc_thread(void *UnusedArg)
 {
   char command[2 * MAXPATHLEN];
   exportlist_t *pexport = NULL;

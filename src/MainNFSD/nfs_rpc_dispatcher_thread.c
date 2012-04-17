@@ -1229,7 +1229,7 @@ void rpc_dispatcher_svc_run()
  * @return Pointer to the result (but this function will mostly loop forever).
  *
  */
-void *rpc_dispatcher_thread(void *Arg)
+void *rpc_dispatcher_thread(void *UnusedArg)
 {
   SetNameFunction("dispatch_thr");
 

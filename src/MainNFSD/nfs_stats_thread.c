@@ -438,7 +438,7 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
 #endif
 }
 
-void *stats_thread(void *addr)
+void *stats_thread(void *UnusedArg)
 {
   FILE *stats_file = NULL;
   struct stat statref;
@@ -502,7 +502,7 @@ void *stats_thread(void *addr)
 
 #ifdef _SNMP_ADM_ACTIVE
   /* start snmp library */
-  if(stats_snmp(workers_data) == 0)
+  if(stats_snmp() == 0)
     LogInfo(COMPONENT_MAIN,
             "NFS STATS: SNMP stats service was started successfully");
   else

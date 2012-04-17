@@ -128,7 +128,7 @@ char pidfile_path[MAXPATHLEN] ;
  * @return (never returns : never ending loop)
  *
  */
-void *sigmgr_thread( void * arg )
+void *sigmgr_thread( void * UnusedArg )
 {
   SetNameFunction("sigmgr");
   int signal_caught = 0;
@@ -1504,7 +1504,7 @@ static void nfs_Start_threads(void)
    }
 
   /* Starting the thread dedicated to signal handling */
-  if( ( rc = pthread_create( &sigmgr_thrid, &attr_thr, sigmgr_thread, (void *)NULL ) ) != 0 )
+  if( ( rc = pthread_create( &sigmgr_thrid, &attr_thr, sigmgr_thread, NULL ) ) != 0 )
     {
       LogFatal(COMPONENT_THREAD,
                "Could not create sigmgr_thread, error = %d (%s)",
@@ -1517,7 +1517,7 @@ static void nfs_Start_threads(void)
   /* Starting the rpc dispatcher thread */
   if((rc =
       pthread_create(&rpc_dispatcher_thrid, &attr_thr, rpc_dispatcher_thread,
-                     &nfs_param)) != 0)
+                     NULL)) != 0)
     {
       LogFatal(COMPONENT_THREAD,
                "Could not create rpc_dpsatcher_thread, error = %d (%s)",
@@ -1574,7 +1574,7 @@ static void nfs_Start_threads(void)
 
   /* Starting the stats thread */
   if((rc =
-      pthread_create(&stat_thrid, &attr_thr, stats_thread, (void *)workers_data)) != 0)
+      pthread_create(&stat_thrid, &attr_thr, stats_thread, NULL)) != 0)
     {
       LogFatal(COMPONENT_THREAD,
                "Could not create stats_thread, error = %d (%s)",
@@ -1586,7 +1586,7 @@ static void nfs_Start_threads(void)
 
   /* Starting the long processing threshold thread */
   if((rc =
-      pthread_create(&stat_thrid, &attr_thr, long_processing_thread, (void *)workers_data)) != 0)
+      pthread_create(&stat_thrid, &attr_thr, long_processing_thread, NULL)) != 0)
     {
       LogFatal(COMPONENT_THREAD,
                "Could not create long_processing_thread, error = %d (%s)",
@@ -1597,7 +1597,7 @@ static void nfs_Start_threads(void)
 
   /* Starting the stat exporter thread */
   if((rc =
-      pthread_create(&stat_exporter_thrid, &attr_thr, stat_exporter_thread, (void *)workers_data)) != 0)
+      pthread_create(&stat_exporter_thrid, &attr_thr, stat_exporter_thread, NULL)) != 0)
     {
       LogFatal(COMPONENT_THREAD,
                "Could not create stat_exporter_thread, error = %d (%s)",
@@ -1610,7 +1610,7 @@ static void nfs_Start_threads(void)
 
   /* Starting the reaper thread */
   if((rc =
-      pthread_create(&reaper_thrid, &attr_thr, reaper_thread, (void *)workers_data)) != 0)
+      pthread_create(&reaper_thrid, &attr_thr, reaper_thread, NULL)) != 0)
     {
       LogFatal(COMPONENT_THREAD,
                "Could not create reaper_thread, error = %d (%s)",
@@ -1623,7 +1623,7 @@ static void nfs_Start_threads(void)
   /* Starts the thread that mimics upcalls from the FSAL */
    /* Starting the stats thread */
   if((rc =
-      pthread_create(&upcall_simulator_thrid, &attr_thr, upcall_simulator_thread, (void *)workers_data)) != 0)
+      pthread_create(&upcall_simulator_thrid, &attr_thr, upcall_simulator_thread, NULL)) != 0)
     {
       LogFatal(COMPONENT_THREAD,
                "Could not create upcall_simulator_thread, error = %d (%s)",

@@ -1259,11 +1259,9 @@ static void free_dyn(register_get_set * dyn, int count)
  * Start snmp thread.
  * @return 0 on success.
  */
-int stats_snmp(nfs_worker_data_t * workers_data_local)
+int stats_snmp(void)
 {
   int rc = 0;
-
-  workers_data = workers_data_local;
 
   register_get_set *dyn_gs;
   int dyn_gs_count;

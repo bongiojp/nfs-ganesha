@@ -589,7 +589,7 @@ int merge_nfs_stats(char *stat_buf, nfs_stat_client_req_t *stat_client_req,
   return rc;
 }
 
-int process_stat_request(void *addr, int new_fd)
+int process_stat_request(int new_fd)
 {
   int rc = ERR_STAT_NO_ERROR;
 
@@ -604,7 +604,6 @@ int process_stat_request(void *addr, int new_fd)
 
   exportlist_t *pexport = NULL;
 
-  nfs_worker_data_t *workers_data = addr;
   nfs_worker_stat_t global_worker_stat;
   nfs_stat_client_req_t stat_client_req;
   memset(&stat_client_req, 0, sizeof(nfs_stat_client_req_t));
@@ -694,7 +693,7 @@ int check_permissions() {
   return 0;
 }
 
-void *stat_exporter_thread(void *addr)
+void *stat_exporter_thread(void *UnusedArg)
 {
   int sockfd, new_fd;
   struct addrinfo hints, *servinfo, *p;
@@ -778,7 +777,7 @@ void *stat_exporter_thread(void *addr)
                                    &(nfs_param.extern_param.stat_export.allowed_clients),
                                    &pclient_found)) {
         LogDebug(COMPONENT_MAIN, "Stat export server: Access granted to %s", s);
-        process_stat_request(addr, new_fd);
+        process_stat_request(new_fd);
       } else {
         LogWarn(COMPONENT_MAIN, "Stat export server: Access denied to %s", s);
       }
@@ -787,9 +786,8 @@ void *stat_exporter_thread(void *addr)
   return NULL;
 }                               /* stat_exporter_thread */
 
-void *long_processing_thread(void *addr)
+void *long_processing_thread(void *UnusedArg)
 {
-  nfs_worker_data_t *workers_data = (nfs_worker_data_t *) addr;
   struct timeval timer_end;
   struct timeval timer_diff;
   int i;

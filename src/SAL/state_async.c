@@ -62,7 +62,7 @@ cache_inode_client_t           state_async_cache_inode_client;
 nfs_tcb_t                      state_async_tcb;
 
 /* Execute a func from the async queue */
-void *state_async_thread(void *argp)
+void *state_async_thread(void *UnusedArg)
 {
 #ifndef _NO_BUDDY_SYSTEM
   int rc;
