@@ -183,6 +183,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
           case CACHE_INODE_DIRENT_OP_REMOVE:
               /* mark deleted */
               avl_dirent_set_deleted(pentry_parent, dirent);
+<<<<<<< HEAD
               pentry_parent->object.dir.nbactive--;
               break;
 
@@ -229,6 +230,34 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
                        LogCrit(COMPONENT_NFS_READDIR,
                                "DIRECTORY: insert error renaming dirent "
                                "(%s, %s)",
+=======
+              GetFromPool(dirent3, &pclient->pool_dir_entry,
+                          cache_inode_dir_entry_t);
+              dirent3->flags = DIR_ENTRY_FLAG_NONE;
+	      FSAL_namecpy(&dirent3->name, newname);
+              dirent3->pentry = dirent->pentry;
+              code = cache_inode_avl_qp_insert(pentry_parent, dirent3);
+              switch (code) {
+              case 0:
+                  /* CACHE_INODE_SUCCESS */
+                  break;
+              case 1:
+                  /* we reused an existing dirent, dirent has been deep
+                   * copied, dispose it */
+                  ReleaseToPool(dirent3, &pclient->pool_dir_entry);
+                  /* CACHE_INODE_SUCCESS */
+                  break;
+              case -1:
+		  /* collision, tree state unchanged (unlikely) */
+		  *pstatus = CACHE_INODE_ENTRY_EXISTS;
+		  /* dirent is on persist tree, undelete it */
+                  avl_dirent_clear_deleted(pentry_parent, dirent);
+                  /* dirent3 was never inserted */
+                  ReleaseToPool(dirent3, &pclient->pool_dir_entry);
+	      default:
+                  LogCrit(COMPONENT_NFS_READDIR,
+                          "DIRECTORY: insert error renaming dirent (%s, %s)",
+>>>>>>> 9c3871c... Remove skip-deleted logic (no longer needed).  Clear dirent flags after GetFromPool.
                                pname->name, newname->name);
                        *pstatus = CACHE_INODE_INSERT_ERROR;
                        break;
@@ -308,6 +337,8 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
           *pstatus = CACHE_INODE_MALLOC_ERROR;
           return *pstatus;
      }
+
+     new_dir_entry->flags = DIR_ENTRY_FLAG_NONE;
 
      fsal_status = FSAL_namecpy(&new_dir_entry->name, pname);
      if (FSAL_IS_ERROR(fsal_status)) {
