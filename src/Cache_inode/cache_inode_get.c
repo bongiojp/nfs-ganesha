@@ -120,6 +120,11 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
                                        client);
           *attr = entry->attributes;
           pthread_rwlock_unlock(&entry->attr_lock);
+          if (!client) {
+               /* Upcalls have no access to a cache_inode_client_t,
+                  so just return the entry without revalidating it. */
+               return(entry);
+          }
           break;
 
      case HASHTABLE_ERROR_NO_SUCH_KEY:

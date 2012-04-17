@@ -137,107 +137,123 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                cache_inode_lookupp_impl(pentry_parent, pclient, pcontext,
                                         pstatus);
      } else {
+          int write_locked = 0;
           /* We first try avltree_lookup by name.  If that fails, we
            * dispatch to the FSAL. */
-
           FSAL_namecpy(&dirent_key.name, pname);
-          dirent = cache_inode_avl_qp_lookup_s(pentry_parent, &dirent_key, 1);
-          if (dirent) {
-               /* Getting a weakref itself increases the refcount. */
-               pentry = cache_inode_weakref_get(&dirent->entry,
-                                                pclient,
-                                                LRU_REQ_SCAN);
-               if (pentry == NULL) {
-                    broken_dirent = dirent;
+          for (write_locked = 0; write_locked < 2; ++write_locked) {
+               /* If the dirent cache is untrustworthy, don't even ask it */
+               if (pentry_parent->flags & CACHE_INODE_TRUST_CONTENT) {
+                    dirent = cache_inode_avl_qp_lookup_s(pentry_parent,
+                                                         &dirent_key, 1);
+                    if (dirent) {
+                         /* Getting a weakref itself increases the refcount. */
+                         pentry = cache_inode_weakref_get(&dirent->entry,
+                                                          pclient,
+                                                          LRU_REQ_SCAN);
+                         if (pentry == NULL) {
+                              broken_dirent = dirent;
+                              break;
+                         } else {
+                              /* We have our entry and a valid reference.
+                                 Declare victory. */
+                              *pstatus = CACHE_INODE_SUCCESS;
+                              goto out;
+                         }
+                    }
+                    /* If the dirent cache is both fully populated and
+                       valid, it can serve negative lookups. */
+                    if (!dirent &&
+                        (pentry_parent->flags & CACHE_INODE_DIR_POPULATED)) {
+                         pentry = NULL;
+                         *pstatus = CACHE_INODE_NOT_FOUND;
+                         goto out;
+                    }
+               } else if (write_locked) {
+                    /* We have the write lock and the content is
+                       still invalid.  Empty it out and mark it valid
+                       in preparation for caching the result of this
+                       lookup. */
+                    cache_inode_release_dirents(pentry_parent, pclient);
+                    atomic_set_int_bits(&pentry_parent->flags,
+                                        CACHE_INODE_TRUST_CONTENT);
+               } else {
+                    /* Get a write ock and do it again. */
+                    pthread_rwlock_unlock(&pentry_parent->content_lock);
+                    pthread_rwlock_wrlock(&pentry_parent->content_lock);
                }
           }
-          pthread_rwlock_unlock(&pentry_parent->content_lock);
-          assert(pentry_parent->content_lock.__data.__nr_readers < 200);
-          pthread_rwlock_wrlock(&pentry_parent->content_lock);
-          /* Make sure nobody put the entry in the cache while we
-             were waiting. */
-          dirent = cache_inode_avl_qp_lookup_s(pentry_parent, &dirent_key, 1);
-          if (dirent) {
-               pentry = cache_inode_weakref_get(&dirent->entry,
-                                                pclient,
-                                                LRU_REQ_SCAN);
-               if (pentry == NULL) {
-                    broken_dirent = dirent;
-               }
-          }
+          assert(pentry == NULL);
+          LogDebug(COMPONENT_CACHE_INODE, "Cache Miss detected");
      }
 
-     if (pentry == NULL) {
-          LogDebug(COMPONENT_CACHE_INODE, "Cache Miss detected");
+     memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
+     object_attributes.asked_attributes = pclient->attrmask;
+     fsal_status =
+          FSAL_lookup(&pentry_parent->handle,
+                      pname, pcontext, &object_handle,
+                      &object_attributes);
+     if (FSAL_IS_ERROR(fsal_status)) {
+          *pstatus = cache_inode_error_convert(fsal_status);
+          return NULL;
+     }
 
-          memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
-          object_attributes.asked_attributes = pclient->attrmask;
+     type = cache_inode_fsal_type_convert(object_attributes.type);
+
+     /* If entry is a symlink, cache its target */
+     if(type == SYMBOLIC_LINK) {
           fsal_status =
-               FSAL_lookup(&pentry_parent->handle,
-                           pname, pcontext, &object_handle,
-                           &object_attributes);
+               FSAL_readlink(&object_handle,
+                             pcontext,
+                             &create_arg.link_content,
+                             &object_attributes);
+
           if(FSAL_IS_ERROR(fsal_status)) {
                *pstatus = cache_inode_error_convert(fsal_status);
                return NULL;
           }
+     }
 
-          type = cache_inode_fsal_type_convert(object_attributes.type);
+     /* Allocation of a new entry in the cache */
+     new_entry_fsdata.fh_desc.start = (caddr_t) &object_handle;
+     new_entry_fsdata.fh_desc.len = 0;
+     FSAL_ExpandHandle(pcontext->export_context,
+                       FSAL_DIGEST_SIZEOF,
+                       &new_entry_fsdata.fh_desc);
 
-          /* If entry is a symlink, this value for be cached */
-          if(type == SYMBOLIC_LINK) {
-               fsal_status =
-                    FSAL_readlink(&object_handle,
-                                  pcontext,
-                                  &create_arg.link_content,
-                                  &object_attributes);
+     if((pentry = cache_inode_new_entry(&new_entry_fsdata,
+                                        &object_attributes,
+                                        type,
+                                        &create_arg,
+                                        pclient,
+                                        pcontext,
+                                        CACHE_INODE_FLAG_EXREF,
+                                        pstatus)) == NULL) {
+          return NULL;
+     }
 
-               if(FSAL_IS_ERROR(fsal_status)) {
-                    *pstatus = cache_inode_error_convert(fsal_status);
-                    return NULL;
-               }
-          }
-
-          /* Allocation of a new entry in the cache */
-          new_entry_fsdata.fh_desc.start = (caddr_t)(&object_handle);
-          new_entry_fsdata.fh_desc.len = 0;
-          FSAL_ExpandHandle(pcontext->export_context,
-                            FSAL_DIGEST_SIZEOF,
-                            &new_entry_fsdata.fh_desc);
-
-          if((pentry
-              = cache_inode_new_entry(&new_entry_fsdata,
-                                      &object_attributes,
-                                      type,
-                                      &create_arg,
-                                      pclient,
-                                      pcontext,
-                                      CACHE_INODE_FLAG_EXREF,
-                                      pstatus)) == NULL) {
+     if (broken_dirent) {
+          /* Directory entry existed, but the weak reference
+             was broken.  Just update with the new one. */
+          broken_dirent->entry = pentry->weakref;
+          cache_status = CACHE_INODE_SUCCESS;
+     } else {
+          /* Entry was found in the FSAL, add this entry to the
+             parent directory */
+          cache_status = cache_inode_add_cached_dirent(pentry_parent,
+                                                       pname,
+                                                       pentry,
+                                                       &new_dir_entry,
+                                                       pclient,
+                                                       pcontext,
+                                                       pstatus);
+          if(cache_status != CACHE_INODE_SUCCESS &&
+             cache_status != CACHE_INODE_ENTRY_EXISTS) {
                return NULL;
           }
-
-          if (broken_dirent) {
-               /* Directory entry existed, but the weak reference
-                  was broken.  Just update with the new one. */
-               broken_dirent->entry = pentry->weakref;
-               cache_status = CACHE_INODE_SUCCESS;
-          } else {
-               /* Entry was found in the FSAL, add this entry to the
-                  parent directory */
-               cache_status
-                    = cache_inode_add_cached_dirent(pentry_parent,
-                                                    pname,
-                                                    pentry,
-                                                    &new_dir_entry,
-                                                    pclient,
-                                                    pcontext,
-                                                    pstatus);
-               if(cache_status != CACHE_INODE_SUCCESS &&
-                  cache_status != CACHE_INODE_ENTRY_EXISTS) {
-                    return NULL;
-               }
-          }
      }
+
+out:
 
      return pentry;
 } /* cache_inode_lookup_impl */

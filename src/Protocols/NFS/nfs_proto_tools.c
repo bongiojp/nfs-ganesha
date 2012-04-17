@@ -3148,6 +3148,7 @@ static int nfs4_decode_acl(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr, u_in
     }
 
   pacl = nfs4_acl_new_entry(&acldata, &status);
+  pFSAL_attr->acl = pacl;
   if(pacl == NULL)
     {
       LogCrit(COMPONENT_NFS_V4,
@@ -3160,7 +3161,6 @@ static int nfs4_decode_acl(fsal_attrib_list_t * pFSAL_attr, fattr4 * Fattr, u_in
                   status);
 
   /* Set new ACL */
-  pFSAL_attr->acl = pacl;
   LogFullDebug(COMPONENT_NFS_V4,
                "SATTR: new acl = %p",
                pacl);
