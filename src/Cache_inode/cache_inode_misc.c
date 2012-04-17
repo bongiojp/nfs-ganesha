@@ -323,6 +323,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                                      CACHE_INODE_DIR_POPULATED);
           }
 
+          entry->object.dir.collisions = 0;
           entry->object.dir.nbactive = 0;
           entry->object.dir.referral = NULL;
           /* init avl tree */
@@ -834,9 +835,9 @@ void cache_inode_release_dirents(cache_entry_t           * pentry,
 inline bool_t
 cache_inode_file_holds_state(cache_entry_t *entry)
 {
-     return !((entry == NULL) ||
-              glist_empty(&entry->object.file.lock_list) ||
-              glist_empty(&entry->state_list));
+     return (entry != NULL) &&
+             ((entry->type == REGULAR_FILE && !glist_empty(&entry->object.file.lock_list)) ||
+              !glist_empty(&entry->state_list));
 } /* cache_inode_file_holds_state */
 
 /**
