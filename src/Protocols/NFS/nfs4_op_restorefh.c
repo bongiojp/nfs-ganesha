@@ -135,6 +135,7 @@ int nfs4_op_restorefh(struct nfs_argop4 *op,
   memcpy(data->currentFH.nfs_fh4_val,
          data->savedFH.nfs_fh4_val,
          data->savedFH.nfs_fh4_len);
+  data->currentFH.nfs_fh4_len = data->savedFH.nfs_fh4_len;
 
   /* If current and saved entry are identical, get no references and
      make no changes. */

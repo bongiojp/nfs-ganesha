@@ -133,6 +133,7 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
   memcpy(data->savedFH.nfs_fh4_val,
          data->currentFH.nfs_fh4_val,
          data->currentFH.nfs_fh4_len);
+  data->savedFH.nfs_fh4_len = data->currentFH.nfs_fh4_len;
 
 
   /* If saved and current entry are equal, skip the following. */
