@@ -299,7 +299,10 @@ void *fsal_up_thread(void *Arg)
   SetNameFunction(thr_name);
 
 #ifndef _NO_BUDDY_SYSTEM
-  if(BuddyInit(&nfs_param.buddy_param_fsal_up) != BUDDY_SUCCESS)
+  {
+    int rc;
+
+  if((rc = BuddyInit(&nfs_param.buddy_param_fsal_up)) != BUDDY_SUCCESS)
     {
       /* Failed init */
       LogFatal(COMPONENT_FSAL_UP,
@@ -312,6 +315,7 @@ void *fsal_up_thread(void *Arg)
           fsal_up_args->export_entry->filesystem_id.major,
           fsal_up_args->export_entry->filesystem_id.minor,
           fsal_up_args->export_entry->id);
+  }
 #endif
 
   /* Set the FSAL UP functions that will be used to process events. */
