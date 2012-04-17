@@ -174,7 +174,9 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                        still invalid.  Empty it out and mark it valid
                        in preparation for caching the result of this
                        lookup. */
-                    cache_inode_release_dirents(pentry_parent, pclient);
+                    cache_inode_release_dirents(pentry_parent,
+                                                pclient,
+                                                CACHE_INODE_AVL_BOTH);
                     atomic_set_int_bits(&pentry_parent->flags,
                                         CACHE_INODE_TRUST_CONTENT);
                } else {

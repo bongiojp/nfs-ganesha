@@ -149,8 +149,8 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
 
      /* If no active entry, do nothing */
      if (pentry_parent->object.dir.nbactive == 0) {
-       if (pentry_parent->flags & (CACHE_INODE_TRUST_CONTENT |
-                                   CACHE_INODE_DIR_POPULATED)) {
+       if (!((pentry_parent->flags & CACHE_INODE_TRUST_CONTENT) &&
+             (pentry_parent->flags & CACHE_INODE_DIR_POPULATED))) {
          /* We cannot serve negative lookups. */
           *pstatus = CACHE_INODE_SUCCESS;
        } else {
@@ -162,8 +162,8 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
      FSAL_namecpy(&dirent_key->name, pname);
      dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
      if ((! dirent) || (dirent->flags & DIR_ENTRY_FLAG_DELETED)) {
-       if (pentry_parent->flags & (CACHE_INODE_TRUST_CONTENT |
-                                   CACHE_INODE_DIR_POPULATED)) {
+       if (!((pentry_parent->flags & CACHE_INODE_TRUST_CONTENT) &&
+             (pentry_parent->flags & CACHE_INODE_DIR_POPULATED))) {
          /* We cannot serve negative lookups. */
          *pstatus = CACHE_INODE_SUCCESS;
        } else {
@@ -629,7 +629,9 @@ cache_inode_status_t cache_inode_readdir_populate(
     }
 
   /* End of work */
-  pentry_dir->flags |= CACHE_INODE_DIR_POPULATED;
+  atomic_set_int_bits(&pentry_dir->flags,
+                      (CACHE_INODE_DIR_POPULATED |
+                       CACHE_INODE_TRUST_CONTENT));
   *pstatus = CACHE_INODE_SUCCESS;
   return *pstatus;
 }                               /* cache_inode_readdir_populate */
@@ -675,9 +677,6 @@ cache_inode_readdir(cache_entry_t * dir_entry,
                     void *cb_opaque,
                     cache_inode_status_t *status)
 {
-     /* Key for looking up the directory entry corresponding to the
-       supplied cookie. */
-     cache_inode_dir_entry_t dirent_key[1];
      /* The entry being examined */
      cache_inode_dir_entry_t *dirent = NULL;
      /* The node in the tree being traversed */
@@ -754,7 +753,7 @@ cache_inode_readdir(cache_entry_t * dir_entry,
                goto unlock_dir;
           }
 
-          /* dirent is the NEXT entry to return, since we sent 
+          /* dirent is the NEXT entry to return, since we sent
            * CACHE_INODE_FLAG_NEXT_ACTIVE */
           dirent_node = &dirent->node_hk;
 

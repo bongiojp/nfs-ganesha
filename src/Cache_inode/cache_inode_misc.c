@@ -834,7 +834,8 @@ void cache_inode_release_dirents(cache_entry_t           * pentry,
           if (tree == &pentry->object.dir.avl.t) {
               pentry->object.dir.nbactive = 0;
               atomic_clear_int_bits(&pentry->flags,
-                                    CACHE_INODE_DIR_POPULATED);
+                                    (CACHE_INODE_TRUST_CONTENT |
+                                     CACHE_INODE_DIR_POPULATED));
           }
     }
 }
