@@ -786,7 +786,7 @@ cache_inode_lru_unref(cache_entry_t *entry,
 
           pthread_mutex_unlock(&entry->lru.mtx);
           ReleaseToPool(entry, &client->pool_entry);
-          goto unlock;
+          return (CACHE_INODE_SUCCESS);
      }
 
      /* Is this actually needed?  We should be set if we have the SAL
@@ -802,8 +802,6 @@ cache_inode_lru_unref(cache_entry_t *entry,
                                 (flags | LRU_HAVE_LOCKED_ENTRY));
      }
      pthread_rwlock_unlock(&entry->state_lock);
-
-unlock:
 
      if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
           pthread_mutex_unlock(&entry->lru.mtx);
