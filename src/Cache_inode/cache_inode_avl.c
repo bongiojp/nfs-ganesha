@@ -118,7 +118,7 @@ cache_inode_avl_insert_impl(cache_entry_t *entry, cache_inode_dir_entry_t *v,
                             int j, int j2)
 {
     int code = -1;
-    struct avltree_node *node, *node2;
+    struct avltree_node *node;
     cache_inode_dir_entry_t *v_exist = NULL;
     struct avltree *t = &entry->object.dir.avl.t;
     struct avltree *c = &entry->object.dir.avl.c;
@@ -138,7 +138,7 @@ cache_inode_avl_insert_impl(cache_entry_t *entry, cache_inode_dir_entry_t *v,
         v_exist = avltree_container_of(node, cache_inode_dir_entry_t,
                                        node_hk);
         FSAL_namecpy(&v_exist->name, &v->name);
-        v_exist->pentry = v->pentry;
+        v_exist->entry = v->entry;
         avl_dirent_clear_deleted(entry, v_exist);
         v = v_exist;
         code = 1; /* tell client to dispose v */    
@@ -268,7 +268,6 @@ cache_inode_avl_lookup_k(cache_entry_t *entry, uint64_t k, uint32_t flags)
                  node2, node);
     }
 
->>>>>>> da89c92... Persistent offsets in dirent AVL
     if (node)
         dirent = avltree_container_of(node, cache_inode_dir_entry_t, node_hk);
 
@@ -283,7 +282,6 @@ cache_inode_avl_qp_lookup_s(
     struct avltree *t = &entry->object.dir.avl.t;
     struct avltree_node *node;
     cache_inode_dir_entry_t *v2;
-    unsigned long ix, s;
     uint32_t hk[4];
     int j;
 

@@ -793,7 +793,7 @@ void cache_inode_release_symlink(cache_entry_t * pentry,
  */
 void cache_inode_release_dirents(cache_entry_t           * pentry,
                                  cache_inode_client_t    * pclient,
-                                 uint32_t                  which)
+                                 cache_inode_avl_which_t   which)
 {
     struct avltree_node     * dirent_node      = NULL ;
     struct avltree_node     * next_dirent_node = NULL ;

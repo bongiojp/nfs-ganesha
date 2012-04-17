@@ -217,6 +217,11 @@ typedef enum cache_inode_dirent_op__
   CACHE_INODE_DIRENT_OP_RENAME = 3 /*< Rename node */
 } cache_inode_dirent_op_t;
 
+typedef enum cache_inode_avl_which__
+{ CACHE_INODE_AVL_NAMES = 1,
+  CACHE_INODE_AVL_COOKIES = 2,
+  CACHE_INODE_AVL_BOTH = 3
+} cache_inode_avl_which_t;
 
 /* Flags set on cache_entry_t::flags*/
 
@@ -250,7 +255,6 @@ typedef struct cache_inode_unstable_data__
   uint32_t length; /*< Length */
 } cache_inode_unstable_data_t;
 
-<<<<<<< HEAD
 /**
  * \brief Represents a cached directory entry
  *
@@ -924,7 +928,8 @@ cache_inode_status_t cache_inode_invalidate_all_cached_dirent(
      cache_inode_client_t *client,
      cache_inode_status_t *status);
 void cache_inode_release_dirents(cache_entry_t           * pentry,
-                                 cache_inode_client_t    * pclient);
+                                 cache_inode_client_t    * pclient,
+                                 cache_inode_avl_which_t   which);
 
 cache_inode_status_t cache_inode_kill_entry(cache_entry_t *entry,
                                             cache_inode_client_t *client,

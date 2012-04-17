@@ -619,11 +619,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                               memset(&(res_OPEN4.OPEN4res_u.resok4
                                        .cinfo.after), 0, sizeof(changeid4));
                               res_OPEN4.OPEN4res_u.resok4.cinfo.after =
-<<<<<<< HEAD
                                    cache_inode_get_changeid4(pentry_parent);
-=======
-                                  (changeid4) pentry_parent->internal_md.mod_time;
->>>>>>> 7b80dc8... Don't claim general atomicity in nfs4/41 ops.  Found by Adam.
                               res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = FALSE;
 
                               /* No delegation */
@@ -1034,13 +1030,8 @@ out_prev:
       res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 3;
     }
 
-<<<<<<< HEAD
   res_OPEN4.OPEN4res_u.resok4.cinfo.after
        = cache_inode_get_changeid4(pentry_parent);
-=======
-  res_OPEN4.OPEN4res_u.resok4.cinfo.after =
-      (changeid4) pentry_parent->internal_md.mod_time;
->>>>>>> 7b80dc8... Don't claim general atomicity in nfs4/41 ops.  Found by Adam.
   res_OPEN4.OPEN4res_u.resok4.cinfo.atomic = FALSE;
 
   /* No delegation */
