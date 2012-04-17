@@ -323,6 +323,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                                      CACHE_INODE_DIR_POPULATED);
           }
 
+          entry->object.dir.collisions = 0;
           entry->object.dir.nbactive = 0;
           entry->object.dir.referral = NULL;
           /* init avl tree */
@@ -400,6 +401,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      /* Set the attributes*/
      if(attr == NULL) {
           /* This sets the two times and the trust flag, too. */
+          memset(&entry->attributes, 0, sizeof(entry->attributes));
           if ((*status = cache_inode_refresh_attrs(entry,
                                                    context,
                                                    client))
@@ -427,16 +429,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      /* conditionally take an extra reference */
      if (flags & CACHE_INODE_FLAG_EXREF)
           cache_inode_lru_ref(entry, client, LRU_FLAG_NONE);
-
-
-#ifdef _USE_NFS4_ACL
-     LogDebug(COMPONENT_CACHE_INODE, "init_attributes: md_type=%d, acl=%p",
-              entry->type, entry->attributes.acl);
-
-  /* Bump up reference counter of new acl. */
-     if(entry->attributes.acl)
-          nfs4_acl_entry_inc_ref(entry->attributes.acl);
-#endif /* _USE_NFS4_ACL */
 
      LogDebug(COMPONENT_CACHE_INODE,
               "cache_inode_new_entry: New entry %p added", entry);
@@ -834,9 +826,9 @@ void cache_inode_release_dirents(cache_entry_t           * pentry,
 inline bool_t
 cache_inode_file_holds_state(cache_entry_t *entry)
 {
-     return !((entry == NULL) ||
-              glist_empty(&entry->object.file.lock_list) ||
-              glist_empty(&entry->state_list));
+     return (entry != NULL) &&
+             ((entry->type == REGULAR_FILE && !glist_empty(&entry->object.file.lock_list)) ||
+              !glist_empty(&entry->state_list));
 } /* cache_inode_file_holds_state */
 
 /**
