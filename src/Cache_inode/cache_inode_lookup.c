@@ -164,21 +164,24 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                     /* If the dirent cache is both fully populated and
                        valid, it can serve negative lookups. */
                     if (!dirent &&
-                        (pentry_parent->flags && CACHE_INODE_DIR_POPULATED)) {
+                        (pentry_parent->flags & CACHE_INODE_DIR_POPULATED)) {
                          pentry = NULL;
                          *pstatus = CACHE_INODE_NOT_FOUND;
                          goto out;
                     }
                } else if (write_locked) {
-                    /* We have the lock and the content are still invalid.
-                       Empty it out and mark it valid in preparation for
-                       caching the result of this lookup. */
+                    /* We have the write lock and the content is
+                       still invalid.  Empty it out and mark it valid
+                       in preparation for caching the result of this
+                       lookup. */
                     cache_inode_release_dirents(pentry_parent, pclient);
                     atomic_set_int_bits(&pentry_parent->flags,
                                         CACHE_INODE_TRUST_CONTENT);
+               } else {
+                    /* Get a write ock and do it again. */
+                    pthread_rwlock_unlock(&pentry_parent->content_lock);
+                    pthread_rwlock_wrlock(&pentry_parent->content_lock);
                }
-               pthread_rwlock_unlock(&pentry_parent->content_lock);
-               pthread_rwlock_wrlock(&pentry_parent->content_lock);
           }
           assert(pentry == NULL);
           LogDebug(COMPONENT_CACHE_INODE, "Cache Miss detected");
