@@ -89,15 +89,13 @@ cache_inode_status_t cache_inode_rename_cached_dirent(cache_entry_t * pentry_par
       return *pstatus;
     }
 
-  if((removed_pentry = cache_inode_operate_cached_dirent(pentry_parent,
-                                                         oldname,
-                                                         newname,
-                                                         pclient,
-                                                         CACHE_INODE_DIRENT_OP_RENAME,
-                                                         pstatus)) == NULL)
-    return *pstatus;
+  *pstatus = cache_inode_operate_cached_dirent(pentry_parent,
+                                               oldname,
+                                               newname,
+                                               pclient,
+                                               CACHE_INODE_DIRENT_OP_RENAME);
 
-  return *pstatus;
+  return (*pstatus);
 }                               /* cache_inode_rename_cached_dirent */
 
 static inline void src_dest_lock(cache_entry_t *pentry_dirsrc,

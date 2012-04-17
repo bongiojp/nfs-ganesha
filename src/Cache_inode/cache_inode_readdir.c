@@ -122,29 +122,21 @@ cache_inode_invalidate_all_cached_dirent(cache_entry_t *entry,
  *         cache. REMOVE always returns NULL.
  *
  */
-cache_entry_t *
+cache_inode_status_t
 cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
                                   fsal_name_t * pname,
                                   fsal_name_t * newname,
                                   cache_inode_client_t * pclient,
-                                  cache_inode_dirent_op_t dirent_op,
-                                  cache_inode_status_t * pstatus)
+                                  cache_inode_dirent_op_t dirent_op)
 {
-     cache_entry_t *pentry = NULL;
      cache_inode_dir_entry_t dirent_key[1], *dirent, *dirent2, *dirent3;
+     cache_inode_status_t pstatus = CACHE_INODE_SUCCESS;
      int code = 0;
-
-     /* Directory mutation generally invalidates outstanding readdirs,
-      * hence any cached cookies, so in these cases we clear the
-      * cookie avl */
-
-     /* Set the return default to CACHE_INODE_SUCCESS */
-     *pstatus = CACHE_INODE_SUCCESS;
 
      /* Sanity check */
      if(pentry_parent->type != DIRECTORY) {
-          *pstatus = CACHE_INODE_BAD_TYPE;
-          return NULL;
+         pstatus = CACHE_INODE_BAD_TYPE;
+         goto out;
      }
 
      /* If no active entry, do nothing */
@@ -152,11 +144,11 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
        if (!((pentry_parent->flags & CACHE_INODE_TRUST_CONTENT) &&
              (pentry_parent->flags & CACHE_INODE_DIR_POPULATED))) {
          /* We cannot serve negative lookups. */
-          *pstatus = CACHE_INODE_SUCCESS;
+           /* pstatus == CACHE_INODE_SUCCESS; */
        } else {
-          *pstatus = CACHE_INODE_NOT_FOUND;
+           pstatus = CACHE_INODE_NOT_FOUND;
        }
-          return NULL;
+       goto out;
      }
 
      FSAL_namecpy(&dirent_key->name, pname);
@@ -165,11 +157,11 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
        if (!((pentry_parent->flags & CACHE_INODE_TRUST_CONTENT) &&
              (pentry_parent->flags & CACHE_INODE_DIR_POPULATED))) {
          /* We cannot serve negative lookups. */
-         *pstatus = CACHE_INODE_SUCCESS;
+         /* pstatus == CACHE_INODE_SUCCESS; */
        } else {
-         *pstatus = CACHE_INODE_NOT_FOUND;
+         pstatus = CACHE_INODE_NOT_FOUND;
        }
-       return NULL;
+       goto out;
      }
 
      /* We perform operations anyway even if
@@ -178,75 +170,73 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
         correct.  We just don't ever return a not found or exists
         error. */
 
-     if(pentry != NULL) {
-          /* Yes, we did ! */
-          switch (dirent_op) {
-          case CACHE_INODE_DIRENT_OP_REMOVE:
-              /* mark deleted */
-              avl_dirent_set_deleted(pentry_parent, dirent);
-              pentry_parent->object.dir.nbactive--;
-              break;
+     switch (dirent_op) {
+     case CACHE_INODE_DIRENT_OP_REMOVE:
+         /* mark deleted */
+         avl_dirent_set_deleted(pentry_parent, dirent);
+         pentry_parent->object.dir.nbactive--;
+         break;
 
-          case CACHE_INODE_DIRENT_OP_RENAME:
-               /* change the installed inode only the rename can succeed */
-               FSAL_namecpy(&dirent_key->name, newname);
-               dirent2 = cache_inode_avl_qp_lookup_s(pentry_parent,
-                                                     dirent_key, 1);
-               if (dirent2) {
-                    /* rename would cause a collision */
-                    if (pentry_parent->flags &
-                        CACHE_INODE_TRUST_CONTENT) {
-                      /* We are not up to date. */
-                      *pstatus = CACHE_INODE_SUCCESS;
-                    } else {
-                      *pstatus = CACHE_INODE_ENTRY_EXISTS;
-                    }
-               } else {
-                   /* try to rename--no longer in-place */
-                   avl_dirent_set_deleted(pentry_parent, dirent);
-                   GetFromPool(dirent3, &pclient->pool_dir_entry,
-                               cache_inode_dir_entry_t);
-                   FSAL_namecpy(&dirent3->name, newname);
-                   dirent3->entry = dirent->entry;
-                   code = cache_inode_avl_qp_insert(pentry_parent, dirent3);
-                   switch (code) {
-                   case 0:
-                       /* CACHE_INODE_SUCCESS */
-                       break;
-                   case 1:
-                       /* we reused an existing dirent, dirent has been deep
-                        * copied, dispose it */
-                       ReleaseToPool(dirent3, &pclient->pool_dir_entry);
-                       /* CACHE_INODE_SUCCESS */
-                       break;
-                   case -1:
-                       /* collision, tree state unchanged (unlikely) */
-                       *pstatus = CACHE_INODE_ENTRY_EXISTS;
-                       /* dirent is on persist tree, undelete it */
-                       avl_dirent_clear_deleted(pentry_parent, dirent);
-                       /* dirent3 was never inserted */
-                       ReleaseToPool(dirent3, &pclient->pool_dir_entry);
-                   default:
-                       LogCrit(COMPONENT_NFS_READDIR,
-                               "DIRECTORY: insert error renaming dirent "
-                               "(%s, %s)",
-                               pname->name, newname->name);
-                       *pstatus = CACHE_INODE_INSERT_ERROR;
-                       break;
-                   }
-               } /* !found */
-               break;
+     case CACHE_INODE_DIRENT_OP_RENAME:
+         /* change the installed inode only the rename can succeed */
+         FSAL_namecpy(&dirent_key->name, newname);
+         dirent2 = cache_inode_avl_qp_lookup_s(pentry_parent,
+                                               dirent_key, 1);
+         if (dirent2) {
+             /* rename would cause a collision */
+             if (pentry_parent->flags &
+                 CACHE_INODE_TRUST_CONTENT) {
+                 /* We are not up to date. */
+                 /* pstatus == CACHE_INODE_SUCCESS; */
+             } else {
+                 pstatus = CACHE_INODE_ENTRY_EXISTS;
+             }
+         } else {
+             /* try to rename--no longer in-place */
+             avl_dirent_set_deleted(pentry_parent, dirent);
+             GetFromPool(dirent3, &pclient->pool_dir_entry,
+                         cache_inode_dir_entry_t);
+             FSAL_namecpy(&dirent3->name, newname);
+             dirent3->entry = dirent->entry;
+             code = cache_inode_avl_qp_insert(pentry_parent, dirent3);
+             switch (code) {
+             case 0:
+                 /* CACHE_INODE_SUCCESS */
+                 break;
+             case 1:
+                 /* we reused an existing dirent, dirent has been deep
+                  * copied, dispose it */
+                 ReleaseToPool(dirent3, &pclient->pool_dir_entry);
+                 /* CACHE_INODE_SUCCESS */
+                 break;
+             case -1:
+                 /* collision, tree state unchanged (unlikely) */
+                 pstatus = CACHE_INODE_ENTRY_EXISTS;
+                 /* dirent is on persist tree, undelete it */
+                 avl_dirent_clear_deleted(pentry_parent, dirent);
+                 /* dirent3 was never inserted */
+                 ReleaseToPool(dirent3, &pclient->pool_dir_entry);
+             default:
+                 LogCrit(COMPONENT_NFS_READDIR,
+                         "DIRECTORY: insert error renaming dirent "
+                         "(%s, %s)",
+                         pname->name, newname->name);
+                 pstatus = CACHE_INODE_INSERT_ERROR;
+                 break;
+             }
+         } /* !found */
+         break;
 
-          default:
-               /* Should never occur, in any case, it costs nothing to handle
-                * this situation */
-               *pstatus = CACHE_INODE_INVALID_ARGUMENT;
-               break;
+     default:
+         /* Should never occur, in any case, it costs nothing to handle
+          * this situation */
+         pstatus = CACHE_INODE_INVALID_ARGUMENT;
+         break;
 
-          }                       /* switch */
-     }
+     }                       /* switch */
 
-     return pentry;
+out:
+     return (pstatus);
 }                               /* cache_inode_operate_cached_dirent */
 
 /**
@@ -371,7 +361,6 @@ cache_inode_status_t cache_inode_remove_cached_dirent(
     cache_inode_client_t * pclient,
     cache_inode_status_t * pstatus)
 {
-  cache_entry_t *removed_pentry = NULL;
 
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
@@ -383,15 +372,13 @@ cache_inode_status_t cache_inode_remove_cached_dirent(
       return *pstatus;
     }
 
-  if((removed_pentry = cache_inode_operate_cached_dirent(pentry_parent,
-                                                         pname,
-                                                         NULL,
-                                                         pclient,
-                                                         CACHE_INODE_DIRENT_OP_REMOVE,
-                                                         pstatus)) == NULL)
-    return *pstatus;
+  *pstatus = cache_inode_operate_cached_dirent(pentry_parent,
+                                               pname,
+                                               NULL,
+                                               pclient,
+                                               CACHE_INODE_DIRENT_OP_REMOVE);
+  return (*pstatus);
 
-  return CACHE_INODE_SUCCESS;
 }                               /* cache_inode_remove_cached_dirent */
 
 /**

@@ -746,13 +746,12 @@ cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
 cache_inode_status_t cache_inode_clean_internal(cache_entry_t *to_remove_entry,
                                                 cache_inode_client_t *pclient);
 
-cache_entry_t *cache_inode_operate_cached_dirent(
+cache_inode_status_t cache_inode_operate_cached_dirent(
      cache_entry_t *pentry_parent,
      fsal_name_t *pname,
      fsal_name_t *newname,
      cache_inode_client_t *pclient,
-     cache_inode_dirent_op_t dirent_op,
-     cache_inode_status_t *pstatus);
+     cache_inode_dirent_op_t dirent_op);
 
 cache_inode_status_t cache_inode_remove_cached_dirent(
      cache_entry_t *pentry_parent,
