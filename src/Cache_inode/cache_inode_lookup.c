@@ -96,7 +96,6 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
 {
      cache_inode_dir_entry_t dirent_key;
      cache_inode_dir_entry_t *dirent = NULL;
-     cache_inode_dir_entry_t *new_dir_entry = NULL;
      cache_entry_t *pentry = NULL;
      fsal_status_t fsal_status = {0, 0};
      fsal_handle_t object_handle;
@@ -245,7 +244,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           cache_status = cache_inode_add_cached_dirent(pentry_parent,
                                                        pname,
                                                        pentry,
-                                                       &new_dir_entry,
+                                                       NULL,
                                                        pclient,
                                                        pcontext,
                                                        pstatus);

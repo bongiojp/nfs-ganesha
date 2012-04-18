@@ -175,7 +175,6 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
 {
   cache_inode_status_t status;
   fsal_status_t fsal_status;
-  cache_inode_dir_entry_t *new_dir_entry;
   cache_entry_t *pentry_lookup_src = NULL;
   cache_entry_t *pentry_lookup_dest = NULL;
   fsal_attrib_list_t *pattrsrc;
@@ -413,7 +412,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       status = cache_inode_add_cached_dirent(pentry_dirdest,
                                              pnewname,
                                              pentry_lookup_src,
-                                             &new_dir_entry,
+                                             NULL,
                                              pclient, pcontext, pstatus);
       if(status != CACHE_INODE_SUCCESS)
         {

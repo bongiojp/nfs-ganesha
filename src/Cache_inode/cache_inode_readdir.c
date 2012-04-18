@@ -151,7 +151,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
 
      FSAL_namecpy(&dirent_key->name, pname);
      dirent = cache_inode_avl_qp_lookup_s(pentry_parent, dirent_key, 1);
-     if ((! dirent) || (dirent->flags & DIR_ENTRY_FLAG_DELETED)) {
+     if ((!dirent) || (dirent->flags & DIR_ENTRY_FLAG_DELETED)) {
        if (!((pentry_parent->flags & CACHE_INODE_TRUST_CONTENT) &&
              (pentry_parent->flags & CACHE_INODE_DIR_POPULATED))) {
          /* We cannot serve negative lookups. */
@@ -161,6 +161,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
        }
        goto out;
      }
+
 
      /* We perform operations anyway even if
         CACHE_INODE_TRUST_CONTENT is clear.  That way future upcalls
@@ -239,7 +240,7 @@ out:
 
 /**
  *
- * cache_inode_add_cached_dirent: Adds a directory entry to a cached directory.
+ * @brief Adds a directory entry to a cached directory.
  *
  * A dirent pointing to a cache entry counts as an internal reference
  * to that entry, similar to the internal reference owned by the hash
@@ -278,7 +279,6 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
                               fsal_op_context_t *pcontext,
                               cache_inode_status_t *pstatus)
 {
-     fsal_status_t fsal_status;
      cache_inode_dir_entry_t *new_dir_entry = NULL;
      int code = 0;
 
@@ -300,11 +300,7 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
 
      new_dir_entry->flags = DIR_ENTRY_FLAG_NONE;
 
-     fsal_status = FSAL_namecpy(&new_dir_entry->name, pname);
-     if (FSAL_IS_ERROR(fsal_status)) {
-          *pstatus = CACHE_INODE_FSAL_ERROR;
-          return *pstatus;
-     }
+     FSAL_namecpy(&new_dir_entry->name, pname);
 
      /* add to avl */
      code = cache_inode_avl_qp_insert(pentry_parent, new_dir_entry);
@@ -327,7 +323,9 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
          break;
      }
 
-     *pnew_dir_entry = new_dir_entry;
+     if (pnew_dir_entry) {
+         *pnew_dir_entry = new_dir_entry;
+     }
 
      /* we're going to succeed */
      pentry_parent->object.dir.nbactive++;

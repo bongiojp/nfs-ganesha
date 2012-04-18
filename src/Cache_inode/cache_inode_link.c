@@ -98,7 +98,6 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                                       cache_inode_status_t * pstatus)
 {
      fsal_status_t fsal_status = {0, 0};
-     cache_inode_dir_entry_t *new_dir_entry;
      bool_t srcattrlock = FALSE;
      bool_t destattrlock = FALSE;
      bool_t destdirlock = FALSE;
@@ -183,7 +182,7 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
      if (cache_inode_add_cached_dirent(pentry_dir_dest,
                                        plink_name,
                                        pentry_src,
-                                       &new_dir_entry,
+                                       NULL,
                                        pclient,
                                        pcontext,
                                        pstatus) != CACHE_INODE_SUCCESS) {

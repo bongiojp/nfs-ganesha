@@ -91,7 +91,6 @@ cache_inode_create(cache_entry_t *parent,
                    cache_inode_status_t *status)
 {
      cache_entry_t *entry = NULL;
-     cache_inode_dir_entry_t *new_dir_entry = NULL;
      fsal_status_t fsal_status = {0, 0};
      fsal_handle_t object_handle;
      fsal_attrib_list_t object_attributes;
@@ -230,7 +229,7 @@ cache_inode_create(cache_entry_t *parent,
      /* Add this entry to the directory (also takes an internal ref) */
      cache_inode_add_cached_dirent(parent,
                                    name, entry,
-                                   &new_dir_entry,
+                                   NULL,
                                    client,
                                    context,
                                    status);
