@@ -196,6 +196,7 @@ cache_inode_operate_cached_dirent(cache_entry_t * pentry_parent,
              GetFromPool(dirent3, &pclient->pool_dir_entry,
                          cache_inode_dir_entry_t);
              FSAL_namecpy(&dirent3->name, newname);
+             dirent3->flags = DIR_ENTRY_FLAG_NONE;
              dirent3->entry = dirent->entry;
              code = cache_inode_avl_qp_insert(pentry_parent, dirent3);
              switch (code) {
@@ -301,6 +302,7 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
      new_dir_entry->flags = DIR_ENTRY_FLAG_NONE;
 
      FSAL_namecpy(&new_dir_entry->name, pname);
+     new_dir_entry->entry = pentry_added->weakref;
 
      /* add to avl */
      code = cache_inode_avl_qp_insert(pentry_parent, new_dir_entry);
@@ -329,7 +331,6 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
 
      /* we're going to succeed */
      pentry_parent->object.dir.nbactive++;
-     new_dir_entry->entry = pentry_added->weakref;
 
      return *pstatus;
 }                               /* cache_inode_add_cached_dirent */
@@ -750,7 +751,7 @@ cache_inode_readdir(cache_entry_t * dir_entry,
                   "cookie=%"PRIu64" collisions %d",
                   dir_entry,
                   cookie,
-                  dir_entry->object.dir.collisions);
+                  dir_entry->object.dir.avl.collisions);
 
      /* Now satisfy the request from the cached readdir--stop when either
       * the requested sequence or dirent sequence is exhausted */

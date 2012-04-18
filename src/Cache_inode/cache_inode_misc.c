@@ -323,9 +323,11 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                                      CACHE_INODE_DIR_POPULATED);
           }
 
-          entry->object.dir.collisions = 0;
+          entry->object.dir.avl.collisions = 0;
           entry->object.dir.nbactive = 0;
           entry->object.dir.referral = NULL;
+          entry->object.dir.parent.ptr = NULL;
+          entry->object.dir.parent.gen = 0;
           /* init avl tree */
           cache_inode_avl_init(entry);
           break;

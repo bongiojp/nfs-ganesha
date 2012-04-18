@@ -383,7 +383,6 @@ struct cache_entry_t
           struct avltree c;                     /**< Persist cookies */
           uint32_t collisions;                  /**< Heuristic. Expect 0. */
       } avl;
-      uint32_t collisions; /*< For future heuristics. Expect 0. */
     } dir; /*< DIRECTORY data */
   } object; /*< Filetype specific data, discriminated by the type
                 field.  Note that data for special files is in
