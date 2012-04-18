@@ -801,10 +801,16 @@ void *long_processing_thread(void *UnusedArg)
 
       for(i = 0; i < nfs_param.core_param.nb_worker; i++)
         {
+          P(workers_data[i].request_pool_mutex);
           if(workers_data[i].timer_start.tv_sec == 0)
-            continue;
+            {
+              V(workers_data[i].request_pool_mutex);
+              continue;
+            }
           timer_diff = time_diff(workers_data[i].timer_start, timer_end);
-          if(timer_diff.tv_sec == nfs_param.core_param.long_processing_threshold)
+          V(workers_data[i].request_pool_mutex);
+          if(timer_diff.tv_sec == nfs_param.core_param.long_processing_threshold ||
+             timer_diff.tv_sec == nfs_param.core_param.long_processing_threshold * 10)
             LogEvent(COMPONENT_DISPATCH,
                      "Worker#%d: Function %s has been running for %llu.%.6llu seconds",
                      i, workers_data[i].pfuncdesc->funcname,

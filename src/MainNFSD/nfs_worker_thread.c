@@ -1222,7 +1222,9 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
     }
 
   /* Zero out timers prior to starting processing */
+  P(pworker_data->request_pool_mutex);
   memset(timer_start, 0, sizeof(struct timeval));
+  V(pworker_data->request_pool_mutex);
   memset(&timer_end, 0, sizeof(struct timeval));
   memset(&timer_diff, 0, sizeof(struct timeval));
   memset(&queue_timer_diff, 0, sizeof(struct timeval));
@@ -1394,6 +1396,7 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
         }
 
       /* processing */
+      P(pworker_data->request_pool_mutex);
       gettimeofday(timer_start, NULL);
 
       LogDebug(COMPONENT_DISPATCH,
@@ -1401,6 +1404,8 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
                pworker_data->pfuncdesc->funcname,
                (unsigned long long)timer_start->tv_sec,
                (unsigned long long)timer_start->tv_usec);
+
+      V(pworker_data->request_pool_mutex);
 
 
 #ifdef _ERROR_INJECTION
@@ -1439,7 +1444,9 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
 
   /* process time */
   stat_type = (rc == NFS_REQ_OK) ? GANESHA_STAT_SUCCESS : GANESHA_STAT_DROP;
+  P(pworker_data->request_pool_mutex);
   timer_diff = time_diff(*timer_start, timer_end); 
+  V(pworker_data->request_pool_mutex);
   latency_stat.type = SVC_TIME;
   latency_stat.latency = timer_diff.tv_sec * 1000000
     + timer_diff.tv_usec; /* microseconds */

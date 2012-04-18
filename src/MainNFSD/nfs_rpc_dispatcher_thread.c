@@ -692,12 +692,12 @@ unsigned int nfs_core_select_worker_queue()
   unsigned int worker_index = NO_VALUE_CHOOSEN;
   unsigned int avg_number_pending = NO_VALUE_CHOOSEN;
   unsigned int total_number_pending = 0;
+  unsigned int i;
+  unsigned int cpt = 0;
 
   static unsigned int counter;
-
-  unsigned int i;
   static unsigned int last;
-  unsigned int cpt = 0;
+
   worker_available_rc rc;
 
   P(lock_worker_selection);
@@ -714,7 +714,6 @@ unsigned int nfs_core_select_worker_queue()
       /* Reset counter. */
       counter = 0;
     }
-  V(lock_worker_selection);
 
   /* Choose the queue whose length is smaller than average. */
       for(i = (last + 1) % nfs_param.core_param.nb_worker, cpt = 0;
@@ -746,6 +745,8 @@ unsigned int nfs_core_select_worker_queue()
     worker_index = (last + 1) % nfs_param.core_param.nb_worker;
 
   last = worker_index;
+
+  V(lock_worker_selection);
 
   return worker_index;
 
