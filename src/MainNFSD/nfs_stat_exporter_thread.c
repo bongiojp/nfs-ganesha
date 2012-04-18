@@ -734,6 +734,7 @@ void *stat_exporter_thread(void *UnusedArg)
                           sizeof(int))) == -1)
         {
           LogError(COMPONENT_MAIN, ERR_SYS, errno, rc);
+          freeaddrinfo(servinfo);
           return NULL;
         }
 
@@ -750,6 +751,7 @@ void *stat_exporter_thread(void *UnusedArg)
   if(p == NULL)
     {
       LogCrit(COMPONENT_MAIN, "server: failed to bind");
+      freeaddrinfo(servinfo);
       return NULL;
     }
 
