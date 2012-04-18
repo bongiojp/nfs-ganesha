@@ -2579,9 +2579,7 @@ int nfs_export_check_access(sockaddr_t *hostaddr,
 
   if (pexport != NULL)
     {
-      if (pexport->new_access_list_version)
-        pexport->access_type = ACCESSTYPE_RW;
-      else if(proc_makes_write && (pexport->access_type == ACCESSTYPE_RO))
+      if(proc_makes_write && (pexport->access_type == ACCESSTYPE_RO))
         return EXPORT_WRITE_ATTEMPT_WHEN_RO;
       else if(proc_makes_write && (pexport->access_type == ACCESSTYPE_MDONLY_RO))
         return EXPORT_WRITE_ATTEMPT_WHEN_MDONLY_RO;
