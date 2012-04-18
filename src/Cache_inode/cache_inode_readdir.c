@@ -829,7 +829,6 @@ cache_inode_readdir(cache_entry_t * dir_entry,
 unlock_dir:
 
      pthread_rwlock_unlock(&dir_entry->content_lock);
-     assert(dir_entry->content_lock.__data.__nr_readers < 200);
      return *status;
 
 unlock_attrs:

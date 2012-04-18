@@ -77,8 +77,6 @@ cache_inode_status_t cache_inode_rename_cached_dirent(cache_entry_t * pentry_par
                                                       cache_inode_client_t * pclient,
                                                       cache_inode_status_t * pstatus)
 {
-  cache_entry_t *removed_pentry = NULL;
-
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
 
@@ -128,30 +126,25 @@ static inline void src_dest_unlock(cache_entry_t * pentry_dirsrc,
   if(pentry_dirsrc == pentry_dirdest)
     {
       pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-      assert(pentry_dirsrc->content_lock.__data.__nr_readers < 200);
     }
   else
     {
       if(pentry_dirsrc < pentry_dirdest)
         {
           pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-          assert(pentry_dirdest->content_lock.__data.__nr_readers < 200);
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          assert(pentry_dirsrc->content_lock.__data.__nr_readers < 200);
         }
       else
         {
           pthread_rwlock_unlock(&pentry_dirsrc->content_lock);
-          assert(pentry_dirsrc->content_lock.__data.__nr_readers < 200);
           pthread_rwlock_unlock(&pentry_dirdest->content_lock);
-          assert(pentry_dirdest->content_lock.__data.__nr_readers < 200);
         }
     }
 }
 
 /**
  *
- * cache_inode_rename: renames an entry in the cache. 
+ * cache_inode_rename: renames an entry in the cache.
  *
  * Renames an entry in the cache. This operation is used for moving an object into a different directory.
  *

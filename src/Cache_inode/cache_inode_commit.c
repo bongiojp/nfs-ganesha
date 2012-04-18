@@ -108,7 +108,6 @@ cache_inode_commit(cache_entry_t *entry,
      if (stability == CACHE_INODE_UNSAFE_WRITE_TO_FS_BUFFER) {
           if (!is_open_for_write(entry)) {
                pthread_rwlock_unlock(&entry->content_lock);
-               assert(entry->content_lock.__data.__nr_readers < 200);
                pthread_rwlock_wrlock(&entry->content_lock);
                if (!is_open_for_write(entry)) {
                     if (cache_inode_open(entry,
@@ -171,7 +170,6 @@ cache_inode_commit(cache_entry_t *entry,
           if (count == 0 || count == 0xFFFFFFFFL) {
                /* Count = 0 means "flush all data to permanent storage */
                pthread_rwlock_unlock(&entry->content_lock);
-               assert(entry->content_lock.__data.__nr_readers < 200);
                content_locked = FALSE;
                *status = cache_inode_rdwr(entry,
                                          CACHE_INODE_WRITE,
@@ -214,7 +212,6 @@ out:
 
      if (content_locked) {
           pthread_rwlock_unlock(&entry->content_lock);
-          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
      return *status;

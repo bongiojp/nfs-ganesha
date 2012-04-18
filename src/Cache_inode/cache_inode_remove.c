@@ -84,7 +84,6 @@ cache_inode_status_t cache_inode_is_dir_empty_WithLock(cache_entry_t * pentry)
      pthread_rwlock_rdlock(&pentry->content_lock);
      status = cache_inode_is_dir_empty(pentry);
      pthread_rwlock_unlock(&pentry->content_lock);
-     assert(pentry->content_lock.__data.__nr_readers < 200);
 
      return status;
 }                               /* cache_inode_is_dir_empty_WithLock */
@@ -137,7 +136,6 @@ cache_inode_clean_internal(cache_entry_t *entry,
           pthread_rwlock_wrlock(&entry->content_lock);
           cache_inode_release_symlink(entry, &client->pool_entry_symlink);
           pthread_rwlock_unlock(&entry->content_lock);
-          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
      return CACHE_INODE_SUCCESS;
@@ -214,7 +212,7 @@ unlock_attr:
 
 /**
  *
- * \brief Implement actual work of removing file
+ * @brief Implement actual work of removing file
  *
  * Actually remove an entry from the directory.  Assume that the
  * directory contents and attributes are locked for writes.  The
@@ -232,12 +230,13 @@ unlock_attr:
  *                               validating the entry
  *
  */
-cache_inode_status_t cache_inode_remove_impl(cache_entry_t *entry,
-                                             fsal_name_t *name,
-                                             cache_inode_client_t *client,
-                                             fsal_op_context_t *context,
-                                             cache_inode_status_t *status,
-                                             uint32_t flags)
+cache_inode_status_t
+cache_inode_remove_impl(cache_entry_t *entry,
+                        fsal_name_t *name,
+                        cache_inode_client_t *client,
+                        fsal_op_context_t *context,
+                        cache_inode_status_t *status,
+                        uint32_t flags)
 {
      cache_entry_t *to_remove_entry = NULL;
      fsal_status_t fsal_status = {0, 0};
@@ -336,7 +335,6 @@ out:
      if ((flags * CACHE_INODE_FLAG_CONTENT_HAVE) &&
          !(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
-          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
      return *status;

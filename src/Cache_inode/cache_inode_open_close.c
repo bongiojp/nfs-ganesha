@@ -230,7 +230,6 @@ unlock:
 
      if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
-          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
 out:
@@ -306,7 +305,7 @@ cache_inode_close(cache_entry_t *entry,
                        *status, cache_inode_err_str(*status));
                goto unlock;
           }
-          --(open_fd_count);
+          --open_fd_count;
      }
 
      *status = CACHE_INODE_SUCCESS;
@@ -315,7 +314,6 @@ unlock:
 
      if (!(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
-          assert(entry->content_lock.__data.__nr_readers < 200);
      }
 
 out:

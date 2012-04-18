@@ -310,7 +310,6 @@ cache_inode_lookup(cache_entry_t *pentry_parent,
                                      pcontext,
                                      pstatus);
      pthread_rwlock_unlock(&pentry_parent->content_lock);
-     assert(pentry_parent->content_lock.__data.__nr_readers < 200);
 
      if (entry) {
           *pstatus = cache_inode_lock_trust_attrs(entry,

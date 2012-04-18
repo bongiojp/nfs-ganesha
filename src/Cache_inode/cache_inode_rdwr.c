@@ -171,7 +171,6 @@ cache_inode_rdwr(cache_entry_t *entry,
           }
           if (content_locked) {
                pthread_rwlock_unlock(&entry->content_lock);
-               assert(entry->content_lock.__data.__nr_readers < 200);
                content_locked = FALSE;
           }
           if (attributes_locked) {
@@ -190,7 +189,6 @@ cache_inode_rdwr(cache_entry_t *entry,
           if ((!cache_inode_fd(entry)) ||
               (loflags && loflags != FSAL_O_RDWR && loflags != openflags)) {
                pthread_rwlock_unlock(&entry->content_lock);
-               assert(entry->content_lock.__data.__nr_readers < 200);
                pthread_rwlock_wrlock(&entry->content_lock);
                loflags = entry->object.file.open_fd.openflags;
                if ((!cache_inode_fd(entry)) ||
@@ -261,7 +259,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                                  entry);
 
                     pthread_rwlock_unlock(&entry->content_lock);
-                    assert(entry->content_lock.__data.__nr_readers < 200);
                     pthread_rwlock_wrlock(&entry->content_lock);
                     FSAL_close(&(entry->object.file.open_fd.fd));
                     entry->object.file.open_fd.openflags
@@ -291,7 +288,6 @@ cache_inode_rdwr(cache_entry_t *entry,
 
           if (content_locked) {
                pthread_rwlock_unlock(&entry->content_lock);
-               assert(entry->content_lock.__data.__nr_readers < 200);
                content_locked = FALSE;
           }
      }
@@ -317,7 +313,6 @@ out:
 
      if (content_locked) {
           pthread_rwlock_unlock(&entry->content_lock);
-          assert(entry->content_lock.__data.__nr_readers < 200);
           content_locked = FALSE;
      }
 

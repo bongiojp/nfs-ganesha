@@ -69,15 +69,15 @@
 /**
  *
  * nfs4_op_getattr: Gets attributes for an entry in the FSAL.
- * 
+ *
  * Gets attributes for an entry in the FSAL.
  *
  * @param op    [IN]    pointer to nfs4_op arguments
  * @param data  [INOUT] Pointer to the compound request's data
  * @param resp  [IN]    Pointer to nfs4_op results
- * 
- * @return NFS4_OK 
- * 
+ *
+ * @return NFS4_OK
+ *
  */
 int nfs4_op_getattr(struct nfs_argop4 *op,
                     compound_data_t * data, struct nfs_resop4 *resp)

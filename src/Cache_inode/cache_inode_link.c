@@ -191,7 +191,6 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
      }
 
      pthread_rwlock_unlock(&pentry_dir_dest->content_lock);
-     assert(pentry_dir_dest->content_lock.__data.__nr_readers < 200);
      destdirlock = FALSE;
 
 out:
@@ -206,7 +205,6 @@ out:
 
      if (destdirlock) {
           pthread_rwlock_unlock(&pentry_dir_dest->content_lock);
-          assert(pentry_dir_dest->content_lock.__data.__nr_readers < 200);
      }
 
      return *pstatus;

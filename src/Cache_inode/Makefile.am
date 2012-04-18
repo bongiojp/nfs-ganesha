@@ -3,9 +3,6 @@ AM_CFLAGS                     = $(FSAL_CFLAGS) $(SEC_CFLAGS)
 
 noinst_LTLIBRARIES            = libcache_inode.la
 
-#check_PROGRAMS                = test_cache_inode test_cache_inode_readlink \
-#                                test_cache_inode_readdir test_cache_inode_lookup 
-
 libcache_inode_la_SOURCES = cache_inode_access.c             \
                             cache_inode_getattr.c            \
                             cache_inode_remove.c             \
@@ -38,18 +35,10 @@ libcache_inode_la_SOURCES = cache_inode_access.c             \
                             ../include/stuff_alloc.h         \
 			    ../include/fsal.h                \
                             ../include/fsal_types.h          \
-                            ../include/LRU_List.h            \
                             ../include/log.h       \
                             ../include/HashData.h            \
                             ../include/HashTable.h           \
                             ../include/err_cache_inode.h
 
 
-#test_cache_inode_lookup_SOURCES    = test_cache_inode_lookup.c
-#test_cache_inode_readdir_SOURCES   = test_cache_inode_readdir.c
-#test_cache_inode_readlink_SOURCES  = test_cache_inode_readlink.c
-#test_cache_inode_SOURCES           = test_cache_inode.c
-
 new: clean all
-
-

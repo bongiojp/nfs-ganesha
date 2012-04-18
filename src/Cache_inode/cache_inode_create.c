@@ -235,7 +235,6 @@ cache_inode_create(cache_entry_t *parent,
                                    context,
                                    status);
      pthread_rwlock_unlock(&parent->content_lock);
-     assert(parent->content_lock.__data.__nr_readers < 200);
      if (*status != CACHE_INODE_SUCCESS) {
           cache_inode_lru_unref(entry, client,
                                 LRU_FLAG_NONE);
