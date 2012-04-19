@@ -129,7 +129,7 @@ cache_inode_access_sw(cache_entry_t * pentry,
             if(pclient->use_test_access == 1)
                 {
                     /* We get the attributes */
-		    attr = pentry->obj_handle->attributes;
+                  attr = pentry->obj_handle->attributes;
 
                 }
             else
@@ -148,14 +148,14 @@ cache_inode_access_sw(cache_entry_t * pentry,
 #else
                     fsal_status = pfsal_handle->ops->getattrs(pfsal_handle, &attr);
 #endif
-                }
-            if(FSAL_IS_ERROR(fsal_status))
-                {
-                    *pstatus = cache_inode_error_convert(fsal_status);
-                    inc_func_err_retryable(pclient, CACHE_INODE_ACCESS);
 
-                    if(fsal_status.major == ERR_FSAL_STALE)
-                        {
+                    if(FSAL_IS_ERROR(fsal_status))
+                      {
+                        *pstatus = cache_inode_error_convert(fsal_status);
+                        inc_func_err_retryable(pclient, CACHE_INODE_ACCESS);
+
+                        if(fsal_status.major == ERR_FSAL_STALE)
+                          {
                             cache_inode_status_t kill_status;
 
                             LogEvent(COMPONENT_CACHE_INODE,
@@ -163,26 +163,27 @@ cache_inode_access_sw(cache_entry_t * pentry,
                                      pentry, fsal_status.major, fsal_status.minor);
 
                             if( use_mutex )
-                                 cache_inode_kill_entry( pentry, RD_LOCK, ht,
-                                                         pclient, &kill_status);
+                              cache_inode_kill_entry( pentry, RD_LOCK, ht,
+                                                      pclient, &kill_status);
                             else
-                                 cache_inode_kill_entry( pentry, NO_LOCK, ht,
-                                                         pclient, &kill_status);
+                              cache_inode_kill_entry( pentry, NO_LOCK, ht,
+                                                      pclient, &kill_status);
 
                             if(kill_status != CACHE_INODE_SUCCESS)
-                                LogCrit(COMPONENT_CACHE_INODE,
-                                        "cache_inode_access: Could not kill entry %p, status = %u",
-                                        pentry, kill_status);
-
+                              LogCrit(COMPONENT_CACHE_INODE,
+                                      "cache_inode_access: Could not kill entry %p, status = %u",
+                                      pentry, kill_status);
+                            
                             *pstatus = CACHE_INODE_FSAL_ESTALE;
                             return *pstatus;
-                        }
+                          }
+                      }
                 }
-	    fsal_status = pfsal_handle->ops->test_access(pfsal_handle,
-							 creds,
-							 used_access_type);
-	    *pstatus = FSAL_IS_ERROR(fsal_status) ?
-		    CACHE_INODE_FSAL_EACCESS : CACHE_INODE_SUCCESS;
+            fsal_status = pfsal_handle->ops->test_access(pfsal_handle,
+                                                         creds,
+                                                         used_access_type);
+            *pstatus = FSAL_IS_ERROR(fsal_status) ?
+              CACHE_INODE_FSAL_EACCESS : CACHE_INODE_SUCCESS;
         }
 
     if(*pstatus != CACHE_INODE_SUCCESS)
@@ -229,7 +230,7 @@ cache_inode_access_no_mutex(cache_entry_t * pentry,
                             fsal_accessflags_t access_type,
                             hash_table_t * ht,
                             cache_inode_client_t * pclient,
-			    struct user_cred *creds,
+                            struct user_cred *creds,
                             cache_inode_status_t * pstatus)
 {
     return cache_inode_access_sw(pentry, access_type, ht,
@@ -258,7 +259,7 @@ cache_inode_access(cache_entry_t * pentry,
                    fsal_accessflags_t access_type,
                    hash_table_t * ht,
                    cache_inode_client_t * pclient,
-		   struct user_cred *creds,
+                   struct user_cred *creds,
                    cache_inode_status_t * pstatus)
 {
     return cache_inode_access_sw(pentry, access_type, ht,
