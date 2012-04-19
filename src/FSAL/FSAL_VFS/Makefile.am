@@ -2,7 +2,6 @@ AM_CFLAGS                     = $(FSAL_CFLAGS) $(SEC_CFLAGS)
 
 noinst_LTLIBRARIES          = libfsalvfs.la
 
-<<<<<<< HEAD
 libfsalvfs_la_SOURCES = fsal_convert.c   \
                         fsal_internal.c	 \
                         fsal_internal.h  \
