@@ -135,10 +135,22 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
                               state_t              ** ppstate,
                               state_status_t        * pstatus)
 {
-  state_t           * pnew_state  = NULL;
-  state_t           * piter_state = NULL;
-  char                debug_str[OTHERSIZE * 2 + 1];
-  struct glist_head * glist;
+  state_t              * pnew_state  = NULL;
+  state_t              * piter_state = NULL;
+  char                   debug_str[OTHERSIZE * 2 + 1];
+  struct glist_head    * glist;
+  cache_inode_status_t   cache_status;
+
+  cache_status = cache_inode_pin(pentry);
+
+  if(cache_status != CACHE_INODE_SUCCESS)
+    {
+      *pstatus = cache_inode_status_to_state_status(cache_status);
+      LogDebug(COMPONENT_STATE,
+               "Could not pin file");
+      state_cache_inode_unpin_locked(pentry);
+      return *pstatus;
+    }
 
   GetFromPool(pnew_state, &pclient->pool_state_v4, state_t);
 
@@ -149,6 +161,7 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
 
       /* stat */
       *pstatus = STATE_MALLOC_ERROR;
+      state_cache_inode_unpin_locked(pentry);
       return *pstatus;
     }
 
@@ -169,6 +182,7 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
           ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
           *pstatus = STATE_STATE_CONFLICT;
+          state_cache_inode_unpin_locked(pentry);
           return *pstatus;
         }
     }
@@ -185,6 +199,7 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
       *pstatus = STATE_STATE_ERROR;
+      state_cache_inode_unpin_locked(pentry);
       return *pstatus;
     }
 
@@ -214,6 +229,7 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
        * to allocate memory.
        */
       *pstatus = STATE_MALLOC_ERROR;
+      state_cache_inode_unpin_locked(pentry);
       return *pstatus;
     }
 
@@ -286,24 +302,10 @@ state_status_t state_add(cache_entry_t         * pentry,
   return *pstatus;
 }                               /* state_add */
 
-/**
- *
- * state_del: deletes a state from the hash's state
- *
- * Deletes a state from the hash's state
- *
- * @param pstate   [OUT]   pointer to the new state
- * @param pclient  [INOUT] related cache inode client
- * @param pstatus  [OUT]   returned status
- *
- * @return the same as *pstatus
- *
- */
-state_status_t state_del(state_t              * pstate,
-                         cache_inode_client_t * pclient,
-                         state_status_t       * pstatus)
+state_status_t state_del_locked(state_t              * pstate,
+                                cache_entry_t        * pentry,
+                                cache_inode_client_t * pclient)
 {
-  cache_entry_t * pentry = NULL;
   char            debug_str[OTHERSIZE * 2 + 1];
 
   if (isDebug(COMPONENT_STATE))
@@ -311,19 +313,13 @@ state_status_t state_del(state_t              * pstate,
 
   LogFullDebug(COMPONENT_STATE, "Deleting state %s", debug_str);
 
-  /* Locks the related pentry before operating on it */
-  pentry = pstate->state_pentry;
-
   /* Remove the entry from the HashTable */
   if(!nfs4_State_Del(pstate->stateid_other))
     {
       LogDebug(COMPONENT_STATE, "Could not delete state %s", debug_str);
 
-      *pstatus = STATE_STATE_ERROR;
-      return *pstatus;
+      return STATE_STATE_ERROR;
     }
-
-  pthread_rwlock_wrlock(&pentry->state_lock);
 
   /* Remove from list of states owned by owner */
 
@@ -343,8 +339,6 @@ state_status_t state_del(state_t              * pstate,
   if(pstate->state_type == STATE_TYPE_LOCK)
     glist_del(&pstate->state_data.lock.state_sharelist);
 
-  pthread_rwlock_unlock(&pentry->state_lock);
-
   /* Remove from list of states for a particular export */
   P(pstate->state_pexport->exp_state_mutex);
   glist_del(&pstate->state_export_list);
@@ -354,7 +348,65 @@ state_status_t state_del(state_t              * pstate,
 
   LogFullDebug(COMPONENT_STATE, "Deleted state %s", debug_str);
 
-  *pstatus = STATE_SUCCESS;
+  return STATE_SUCCESS;
+}
+
+/**
+ *
+ * state_del: deletes a state from the hash's state
+ *
+ * Deletes a state from the hash's state
+ *
+ * @param pstate   [OUT]   pointer to the new state
+ * @param pclient  [INOUT] related cache inode client
+ * @param pstatus  [OUT]   returned status
+ *
+ * @return the same as *pstatus
+ *
+ */
+state_status_t state_del(state_t              * pstate,
+                         cache_inode_client_t * pclient,
+                         state_status_t       * pstatus)
+{
+  pthread_rwlock_wrlock(&pstate->state_pentry->state_lock);
+
+  *pstatus = state_del_locked(pstate, pstate->state_pentry, pclient);
+
+  state_cache_inode_unpin_locked(pstate->state_pentry);
+
+  pthread_rwlock_unlock(&pstate->state_pentry->state_lock);
 
   return *pstatus;
 }                               /* state_del */
+
+void state_nfs4_state_wipe(cache_entry_t        * pentry,
+                           cache_inode_client_t * pclient)
+{
+  struct glist_head * glist;
+  state_t           * pstate = NULL;
+
+  /* Iterate through file's state to wipe out all stateids */
+  glist_for_each(glist, &pentry->state_list)
+    {
+      pstate = glist_entry(glist, state_t, state_list);
+
+      switch(pstate->state_type)
+        {
+          case STATE_TYPE_SHARE:
+            break;
+
+          case STATE_TYPE_LOCK:
+            break;
+
+          case STATE_TYPE_DELEG:
+            break;
+
+          case STATE_TYPE_LAYOUT:
+            break;
+
+          case STATE_TYPE_NONE:
+            break;
+        }
+      state_del_locked(pstate, pentry, pclient);
+    }
+}
