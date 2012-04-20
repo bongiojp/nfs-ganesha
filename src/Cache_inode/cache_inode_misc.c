@@ -333,6 +333,12 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           memset(&(entry->object.file.open_fd.fd), 0, sizeof(fsal_file_t));
           memset(&(entry->object.file.unstable_data), 0,
                  sizeof(cache_inode_unstable_data_t));
+          /* Initialize the ref counted share state of this file. */
+          entry->object.file.share_state.share_access_read = 0;
+          entry->object.file.share_state.share_access_write = 0;
+          entry->object.file.share_state.share_deny_read = 0;
+          entry->object.file.share_state.share_deny_write = 0;
+
           break;
 
      case DIRECTORY:

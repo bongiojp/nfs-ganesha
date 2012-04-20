@@ -323,6 +323,14 @@ typedef struct cache_inode_dir_entry__
  *
  * The lru field as its own mutex to protect it.
  */
+/* The ref counted share reservation state. */
+typedef struct cache_inode_share__
+{
+  unsigned int share_access_read;
+  unsigned int share_access_write;
+  unsigned int share_deny_read;
+  unsigned int share_deny_write;
+} cache_inode_share_t;
 
 struct cache_entry_t
 {
@@ -367,6 +375,7 @@ struct cache_entry_t
       struct glist_head lock_list; /*< Pointers for lock list */
       cache_inode_unstable_data_t
         unstable_data; /*< Unstable data, for use with WRITE/COMMIT */
+      cache_inode_share_t share_state; /**< The ref counted share reservation state              */
     } file; /*< REGULAR_FILE data */
 
     struct cache_inode_symlink__ *symlink; /*< SYMLINK data */
