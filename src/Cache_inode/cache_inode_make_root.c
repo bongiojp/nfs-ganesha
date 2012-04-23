@@ -93,6 +93,7 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
       pthread_rwlock_wrlock(&pentry->content_lock);
       pentry->object.dir.parent = pentry->weakref;
       pthread_rwlock_unlock(&pentry->content_lock);
+      pentry->object.dir.root = TRUE;
     }
 
   return pentry;

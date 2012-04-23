@@ -147,8 +147,7 @@ static inline uint32_t cache_inode_lru_thread_lane(int index)
 /* convenience function to increase entry refcount, permissible
  * IFF the caller has an initial reference */
 static inline void
-cache_inode_ref(struct cache_entry_t *entry,
-                char *tag)
+cache_inode_ref(struct cache_entry_t *entry)
 {
     P(entry->lru.mtx);
     ++(entry->lru.refcount);

@@ -96,6 +96,16 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
      /* Set the return default to CACHE_INODE_SUCCESS */
      *status = CACHE_INODE_SUCCESS;
 
+     /* Never even think of calling FSAL_lookup on root/.. */
+
+     if (entry->object.dir.root) {
+          /* Bump the refcount on the current entry (so the caller's
+             releasing decrementing it doesn't take us below the
+             sentinel count */
+          cache_inode_ref(entry);
+          return entry;
+     }
+
      /* Try the weakref to the parent first.  This increments the
         refcount. */
      parent = cache_inode_weakref_get(&entry->object.dir.parent,
