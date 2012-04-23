@@ -1016,22 +1016,6 @@ static inline void
 cache_inode_prep_attrs(cache_entry_t *entry,
                        cache_inode_client_t *client)
 {
-#ifdef _USE_NFS4_ACL
-     if (entry->attributes.acl) {
-         fsal_acl_status_t acl_status = 0;
-
-         nfs4_acl_release_entry(entry->attributes.acl, &acl_status);
-         if (acl_status != NFS_V4_ACL_SUCCESS) {
-              LogEvent(COMPONENT_CACHE_INODE,
-                       "Failed to release old acl, status=%d",
-                       acl_status);
-         }
-         entry->attributes.acl = NULL;
-     }
-#endif /* _USE_NFS4_ACL */
-
-     memset(&entry->attributes, 0, sizeof(fsal_attrib_list_t));
-     entry->attributes.asked_attributes = client->attrmask;
 }
 
 /**
@@ -1054,14 +1038,22 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
      fsal_status_t fsal_status = {0, 0};
      cache_inode_status_t cache_status = 0;
 
-     if ((entry->type == FS_JUNCTION) ||
-         (entry->type == UNASSIGNED) ||
-         (entry->type == RECYCLED)) {
-          cache_status = CACHE_INODE_INVALID_ARGUMENT;
-          goto out;
-     }
+#ifdef _USE_NFS4_ACL
+     if (entry->attributes.acl) {
+         fsal_acl_status_t acl_status = 0;
 
-     cache_inode_prep_attrs(entry, client);
+         nfs4_acl_release_entry(entry->attributes.acl, &acl_status);
+         if (acl_status != NFS_V4_ACL_SUCCESS) {
+              LogEvent(COMPONENT_CACHE_INODE,
+                       "Failed to release old acl, status=%d",
+                       acl_status);
+         }
+         entry->attributes.acl = NULL;
+     }
+#endif /* _USE_NFS4_ACL */
+
+     memset(&entry->attributes, 0, sizeof(fsal_attrib_list_t));
+     entry->attributes.asked_attributes = client->attrmask;
 
      /* I assume this function will go away in the Lieb
         Rearchitecture. */
@@ -1076,20 +1068,15 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
                                       &entry->attributes);
      }
      if (FSAL_IS_ERROR(fsal_status)) {
-          cache_status = cache_inode_error_convert(fsal_status);
-          goto out;
+          return cache_inode_kill_entry(entry,
+                                        client,
+                                        &cache_status,
+                                        CACHE_INODE_FLAG_ATTR_HOLD);
      }
-
-     /* XXX Come back and impelment handling for ERR_FSAL_STALE once
-        we decide how to kill inodes. */
-
-     /* Update the internal metadata */
 
      cache_inode_fixup_md(entry);
 
      cache_status = CACHE_INODE_SUCCESS;
-
-out:
 
      return cache_status;
 }

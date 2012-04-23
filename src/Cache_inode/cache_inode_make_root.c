@@ -74,6 +74,7 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
                                      cache_inode_status_t * pstatus)
 {
   cache_entry_t *pentry = NULL;
+  fsal_attrib_list_t attr;
   /* sanity check */
   if(pstatus == NULL)
     return NULL;
@@ -81,20 +82,14 @@ cache_entry_t *cache_inode_make_root(cache_inode_fsal_data_t * pfsdata,
   /* Set the return default to CACHE_INODE_SUCCESS */
   *pstatus = CACHE_INODE_SUCCESS;
 
-  /* BUGAZOMEU: gestion de junctions, : peut etre pas correct de faire
-     pointer root sur lui meme */
-  if((pentry = cache_inode_new_entry(pfsdata,
-                                     NULL,
-                                     DIRECTORY,
-                                     NULL,
-                                     pclient,
-                                     pcontext,
-                                     CACHE_INODE_FLAG_NONE,
-                                     pstatus)) != NULL)
+  if((pentry = cache_inode_get(pfsdata,
+                               &attr,
+                               pclient,
+                               pcontext,
+                               pstatus)) != NULL)
     {
       /* The root directory is its own parent.  (Even though this is a
-         weakref, it's never actually going to be broken in
-         practice.) */
+         weakref, it shouldn't be broken in practice.) */
       pthread_rwlock_wrlock(&pentry->content_lock);
       pentry->object.dir.parent = pentry->weakref;
       pthread_rwlock_unlock(&pentry->content_lock);

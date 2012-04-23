@@ -101,8 +101,12 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
      bool_t srcattrlock = FALSE;
      bool_t destattrlock = FALSE;
      bool_t destdirlock = FALSE;
-
      fsal_accessflags_t access_mask = 0;
+#ifdef _USE_NFS4_ACL
+     fsal_acl_t *saved_acl = NULL;
+     fsal_acl_status_t acl_status = 0;
+#endif /* _USE_NFS4_ACL */
+
 
      /* Set the return default to CACHE_INODE_SUCCESS */
      *pstatus = CACHE_INODE_SUCCESS;
@@ -158,13 +162,25 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
      destdirlock = TRUE;
 
      /* Do the link at FSAL level */
-     cache_inode_prep_attrs(pentry_src, pclient);
+#ifdef _USE_NFS4_ACL
+     saved_acl = pentry_src->attributes.acl;
+#endif /* _USE_NFS4_ACL */
      fsal_status =
           FSAL_link(&pentry_src->handle, &pentry_dir_dest->handle,
                     plink_name, pcontext, &pentry_src->attributes);
      if (FSAL_IS_ERROR(fsal_status)) {
           *pstatus = cache_inode_error_convert(fsal_status);
           goto out;
+     } else {
+#ifdef _USE_NFS4_ACL
+          /* Decrement refcount on saved ACL */
+         nfs4_acl_release_entry(saved_acl, &acl_status);
+         if (acl_status != NFS_V4_ACL_SUCCESS) {
+              LogCrit(COMPONENT_CACHE_INODE,
+                      "Failed to release old acl, status=%d",
+                      acl_status);
+         }
+#endif /* _USE_NFS4_ACL */
      }
 
      cache_inode_fixup_md(pentry_src);

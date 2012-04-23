@@ -182,9 +182,8 @@ int cache_inode_set_time_current(fsal_time_t *ptime)
  *
  * @param fsdata [IN] FSAL data for the entry to be created
  * @param attr [IN] Attributes to be stored in the cache entry
- *                  (may be NULL)
+ *                  (must not be NULL)
  * @param type [IN] Type of entry to create
- * @param polic [IN] Caching policy for this entry
  * @param create_arg [IN] Type specific creation data
  * @param client [IN,OUT] Structure for per-thread resource management
  * @param context [IN] FSAL credentials
@@ -215,6 +214,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      bool_t typespec = FALSE;
      bool_t latched = FALSE;
      struct hash_latch latch;
+
+     assert(attr);
 
      key.pdata = fsdata->fh_desc.start;
      key.len = fsdata->fh_desc.len;
@@ -402,9 +403,9 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      }
      typespec = TRUE;
 
-     /* As we are about to insert the entry into the table, acquire
-        the attribute lock so soemone doesn't grab it before we start
-        filling it. */
+     /* Use the supplied attributes and fix up metadata */
+     entry->attributes = *attr;
+     cache_inode_fixup_md(entry);
 
      /* Adding the entry in the hash table */
      key.pdata = entry->fh_desc.start;
@@ -412,8 +413,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
      value.pdata = entry;
      value.len = sizeof(cache_entry_t);
-
-     pthread_rwlock_wrlock(&entry->attr_lock);
 
      if((rc =
          HashTable_SetLatched(fh_to_cache_entry_ht, &key, &value,
@@ -424,39 +423,11 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           LogCrit(COMPONENT_CACHE_INODE,
                   "cache_inode_new_entry: entry could not be added to hash, "
                   "rc=%d", rc);
-          pthread_rwlock_unlock(&entry->attr_lock);
           *status = CACHE_INODE_HASH_SET_ERROR;
           goto out;
      }
      latched = FALSE;
 
-     /* Set the attributes*/
-     if(attr == NULL) {
-          /* This sets the two times and the trust flag, too. */
-          memset(&entry->attributes, 0, sizeof(entry->attributes));
-          if ((*status = cache_inode_refresh_attrs(entry,
-                                                   context,
-                                                   client))
-              != CACHE_INODE_SUCCESS) {
-               cache_inode_status_t kill_status = CACHE_INODE_SUCCESS;
-
-               /* Because the entry is in the hash table, we cannot
-                  go through the normal deconstruction procedure in
-                  the event that attribute update fails, as some
-                  other process may have acquired a reference since
-                  then.  Instead we use the same
-                  cache_inode_kill_entry we would use for stale
-                  entries. */
-               pthread_rwlock_unlock(&entry->attr_lock);
-               cache_inode_kill_entry(entry, client, &kill_status, 0);
-               return NULL;
-          }
-     } else {
-          /* Use the supplied attributes and fix up metadata */
-          entry->attributes = *attr;
-          cache_inode_fixup_md(entry);
-     }
-     pthread_rwlock_unlock(&entry->attr_lock);
 
      LogDebug(COMPONENT_CACHE_INODE,
               "cache_inode_new_entry: New entry %p added", entry);
