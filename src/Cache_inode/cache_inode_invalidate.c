@@ -81,6 +81,7 @@ cache_inode_invalidate(cache_inode_fsal_data_t *fsal_data,
      hash_buffer_t key, value;
      int rc = 0 ;
      cache_entry_t *entry;
+     struct hash_latch latch;
 
      if (status == NULL || fsal_data == NULL) {
           *status = CACHE_INODE_INVALID_ARGUMENT;
@@ -96,20 +97,29 @@ cache_inode_invalidate(cache_inode_fsal_data_t *fsal_data,
      key.pdata = fsal_data->fh_desc.start;
      key.len = fsal_data->fh_desc.len;
 
-     if ((rc = HashTable_Get(fh_to_cache_entry_ht,
-                             &key,
-                             &value)) == HASHTABLE_ERROR_NO_SUCH_KEY) {
+     if ((rc = HashTable_GetLatch(fh_to_cache_entry_ht,
+                                  &key,
+                                  &value,
+                                  FALSE,
+                                  &latch)) == HASHTABLE_ERROR_NO_SUCH_KEY) {
           /* Entry is not cached */
+          HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
           *status = CACHE_INODE_NOT_FOUND;
           return *status;
      } else if (rc != HASHTABLE_SUCCESS) {
           LogCrit(COMPONENT_CACHE_INODE,
-                  "Unexpected error %u while calling HashTable_GetEx", rc) ;
+                  "Unexpected error %u while calling HashTable_GetLatch", rc) ;
           *status = CACHE_INODE_INVALID_ARGUMENT;
           goto out;
      }
 
      entry = value.pdata;
+     if (cache_inode_lru_ref(entry, NULL, 0) != CACHE_INODE_SUCCESS) {
+          HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
+          *status = CACHE_INODE_NOT_FOUND;
+          return *status;
+     }
+     HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
 
      pthread_rwlock_wrlock(&entry->attr_lock);
      pthread_rwlock_wrlock(&entry->content_lock);
@@ -138,6 +148,8 @@ cache_inode_invalidate(cache_inode_fsal_data_t *fsal_data,
 
      pthread_rwlock_unlock(&entry->attr_lock);
      pthread_rwlock_unlock(&entry->content_lock);
+
+     cache_inode_lru_unref(entry, NULL, 0);
 
 out:
 

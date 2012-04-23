@@ -61,6 +61,7 @@
 #ifdef _USE_NLM
 #include "nlm_util.h"
 #endif
+#include "cache_inode_lru.h"
 
 /*
  * state_lock_entry_t locking rule:

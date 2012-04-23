@@ -57,6 +57,7 @@
 #include "fsal.h"
 #include "sal_functions.h"
 #include "stuff_alloc.h"
+#include "cache_inode_lru.h"
 
 /**
  *

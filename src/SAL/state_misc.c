@@ -52,6 +52,7 @@
 #include "HashTable.h"
 #include "fsal.h"
 #include "sal_functions.h"
+#include "cache_inode_lru.h"
 
 const char *state_err_str(state_status_t err)
 {
@@ -899,11 +900,11 @@ void dec_state_owner_ref(state_owner_t        * powner,
   dec_state_owner_ref_locked(powner, pclient);
 }
 
-void state_cache_inode_unpin_locked(cache_entry_t * pentry)
+void state_cache_inode_unpin_locked(cache_entry_t * entry)
 {
   if((entry->type != REGULAR_FILE || glist_empty(&entry->object.file.lock_list)) &&
      glist_empty(&entry->state_list))
-    cache_inode_unpin(pentry);
+    cache_inode_unpin(entry);
 }
 
 void state_cache_inode_unpin(cache_entry_t * pentry)

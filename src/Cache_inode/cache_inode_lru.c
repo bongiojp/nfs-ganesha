@@ -235,6 +235,11 @@ extern cache_inode_gc_policy_t cache_inode_gc_policy;
    longer reachable from the hash or weakref tables. */
 #define LRU_ENTRY_UNPINNABLE  0x0008
 
+/* Client for the LRU thread.  Also used in the case of a NULL client
+   passed to lru_unref.  This is a gross hack and should be
+   eliminated as soon as can be reasonably done. */
+cache_inode_client_t lru_client;
+
 
 /**
  * @brief Initialize a single base queue.
@@ -650,8 +655,6 @@ lru_thread(void *arg __attribute__((unused)))
      size_t lane = 0;
      /* Temporary holder for flags */
      uint32_t tmpflags = lru_state.flags;
-     /* Client required to make close calls. */
-     cache_inode_client_t client;
      /* True if we are taking extreme measures to reclaim FDs. */
      bool_t extremis = FALSE;
      /* True if we were explicitly woke. */
@@ -672,7 +675,7 @@ lru_thread(void *arg __attribute__((unused)))
 #endif
      /* Initialize the cache_inode_client_t so we can call into
         cache_inode and not reimplement close. */
-     if (cache_inode_client_init(&client,
+     if (cache_inode_client_init(&lru_client,
                                  &(nfs_param.cache_layers_param
                                    .cache_inode_client_param),
                                  0, NULL)) {
@@ -853,7 +856,7 @@ lru_thread(void *arg __attribute__((unused)))
                               if (cache_inode_fd(entry)) {
                                    cache_inode_close(
                                         entry,
-                                        &client,
+                                        &lru_client,
                                         CACHE_INODE_FLAG_REALLYCLOSE,
                                         &cache_status);
                                    if (cache_status != CACHE_INODE_SUCCESS) {
@@ -1199,7 +1202,7 @@ out:
  */
 
 cache_inode_status_t
-cache_inode_lru_pin(cache_entry_t *entry)
+cache_inode_pin(cache_entry_t *entry)
 {
      cache_inode_status_t rc = CACHE_INODE_SUCCESS;
 
@@ -1229,7 +1232,7 @@ cache_inode_lru_pin(cache_entry_t *entry)
  */
 
 cache_inode_status_t
-cache_inode_lru_unpin(cache_entry_t *entry)
+cache_inode_unpin(cache_entry_t *entry)
 {
      pthread_mutex_lock(&entry->lru.mtx);
      if (entry->lru.flags & LRU_ENTRY_PINNED) {
@@ -1314,7 +1317,9 @@ cache_inode_lru_unref(cache_entry_t *entry,
                       cache_inode_client_t *client,
                       uint32_t flags)
 {
-
+     if (!client) {
+          client = &lru_client;
+     }
      pthread_mutex_lock(&entry->lru.mtx);
      assert(entry->lru.refcount >= 1);
 
