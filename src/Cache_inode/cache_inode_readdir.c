@@ -333,7 +333,7 @@ cache_inode_add_cached_dirent(cache_entry_t *pentry_parent,
      pentry_parent->object.dir.nbactive++;
 
      return *pstatus;
-}                               /* cache_inode_add_cached_dirent */
+} /* cache_inode_add_cached_dirent */
 
 /**
  *
@@ -550,9 +550,9 @@ cache_inode_status_t cache_inode_readdir_populate(
              returned */
           new_entry_fsdata.fh_desc.start = (caddr_t)(&array_dirent[iter].handle);
           new_entry_fsdata.fh_desc.len = 0;
-          (void) FSAL_ExpandHandle(pcontext->export_context,
-                                   FSAL_DIGEST_SIZEOF,
-                                   &new_entry_fsdata.fh_desc);
+          FSAL_ExpandHandle(pcontext->export_context,
+                            FSAL_DIGEST_SIZEOF,
+                            &new_entry_fsdata.fh_desc);
 
           if((pentry
               = cache_inode_new_entry(&new_entry_fsdata,
@@ -561,8 +561,6 @@ cache_inode_status_t cache_inode_readdir_populate(
                                       &create_arg,
                                       pclient,
                                       pcontext,
-                                      /* cache_inode_add_cached_dirent
-                                         takes an extra reference */
                                       CACHE_INODE_FLAG_NONE,
                                       pstatus)) == NULL)
             return *pstatus;
@@ -575,6 +573,10 @@ cache_inode_status_t cache_inode_readdir_populate(
                                             pclient,
                                             pcontext,
                                             pstatus);
+
+          /* Once the weakref is stored in the directory entry, we
+             can release the reference we took on the entry. */
+          cache_inode_lru_unref(pentry, pclient, 0);
 
           if(cache_status != CACHE_INODE_SUCCESS
              && cache_status != CACHE_INODE_ENTRY_EXISTS)

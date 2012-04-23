@@ -109,27 +109,46 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
                               FALSE,
                               &latch);
 
-     switch (hrc) {
-     case HASHTABLE_SUCCESS:
+     if ((hrc != HASHTABLE_SUCCESS) &&
+         (hrc != HASHTABLE_ERROR_NO_SUCH_KEY)) {
+          /* This should not happened */
+          *status = CACHE_INODE_HASH_TABLE_ERROR;
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "Hash access failed with code %d"
+                  " - this should not have happened",
+                  hrc);
+          return NULL;
+     }
+
+     if (hrc == HASHTABLE_SUCCESS) {
           /* Entry exists in the cache and was found */
           entry = value.pdata;
           /* take an extra reference within the critical section */
-          cache_inode_lru_ref(entry, client, LRU_REQ_INITIAL);
-          HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
-          cache_inode_lock_trust_attrs(entry,
-                                       context,
-                                       client);
-          *attr = entry->attributes;
-          pthread_rwlock_unlock(&entry->attr_lock);
-          if (!client) {
-               /* Upcalls have no access to a cache_inode_client_t,
-                  so just return the entry without revalidating it. */
-               return(entry);
+          if (cache_inode_lru_ref(entry, client, LRU_REQ_INITIAL) !=
+              CACHE_INODE_SUCCESS) {
+               /* Dead entry.  Treat like a lookup failure. */
+               entry = NULL;
+          } else {
+               cache_inode_lock_trust_attrs(entry,
+                                            context,
+                                            client);
+               *attr = entry->attributes;
+               pthread_rwlock_unlock(&entry->attr_lock);
           }
-          break;
+     }
+     HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
 
-     case HASHTABLE_ERROR_NO_SUCH_KEY:
-          HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
+     if (!client) {
+          /* Upcalls have no access to a cache_inode_client_t,
+             so just return the entry without revalidating it or
+             creating a new one. */
+          if (entry == NULL) {
+               *status = CACHE_INODE_NOT_FOUND;
+          }
+          return entry;
+     }
+
+     if (!entry) {
           /* Cache miss, allocate a new entry */
           file_handle = (fsal_handle_t *) fsdata->fh_desc.start;
           /* First, call FSAL to know what the object is */
@@ -148,7 +167,7 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
 
           /* The type has to be set in the attributes */
           if (!FSAL_TEST_MASK(fsal_attributes.supported_attributes,
-                             FSAL_ATTR_TYPE)) {
+                              FSAL_ATTR_TYPE)) {
                *status = CACHE_INODE_FSAL_ERROR;
                return NULL;
           }
@@ -176,28 +195,15 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
                                        &create_arg,
                                        client,
                                        context,
-                                       CACHE_INODE_FLAG_EXREF, /* This is a population, not a creation */
+                                       CACHE_INODE_FLAG_NONE,
                                        status)) == NULL) {
                return NULL;
           }
 
           /* Set the returned attributes */
           *attr = fsal_attributes;
-
-          /* Now, exit the switch/case and returns */
-          break;
-
-     default:
-          /* This should not happened */
-          *status = CACHE_INODE_INVALID_ARGUMENT;
-          LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_get returning CACHE_INODE_INVALID_ARGUMENT "
-                  "- this should not have happened");
-          return NULL;
-          break;
      }
 
-     /* Want to ASSERT pclient at this point */
      *status = CACHE_INODE_SUCCESS;
 
      /* This is the replacement for cache_inode_renew_entry.  Rather
@@ -224,7 +230,7 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
                              context,
                              client);
 
-     return (entry);
+     return entry;
 } /* cache_inode_get */
 
 /**

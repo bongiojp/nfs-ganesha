@@ -216,8 +216,7 @@ cache_inode_create(cache_entry_t *parent,
                                    create_arg,
                                    client,
                                    context,
-                                   CACHE_INODE_FLAG_CREATE |
-                                   CACHE_INODE_FLAG_EXREF,
+                                   CACHE_INODE_FLAG_CREATE,
                                    status);
      if (entry == NULL) {
           *status = CACHE_INODE_INSERT_ERROR;

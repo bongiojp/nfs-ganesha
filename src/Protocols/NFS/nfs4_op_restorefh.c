@@ -156,9 +156,12 @@ int nfs4_op_restorefh(struct nfs_argop4 *op,
      pseudofs handle. */
 
   if (data->current_entry) {
-       cache_inode_lru_ref(data->current_entry,
-                           data->pclient,
-                           LRU_FLAG_NONE);
+       if (cache_inode_lru_ref(data->current_entry,
+                               data->pclient,
+                               LRU_FLAG_NONE) != CACHE_INODE_SUCCESS) {
+            resp->nfs_resop4_u.opgetfh.status = NFS4ERR_STALE;
+            return resp->nfs_resop4_u.opgetfh.status;
+       }
   }
 
  out:

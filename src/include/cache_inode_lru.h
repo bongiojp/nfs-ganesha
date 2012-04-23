@@ -88,30 +88,26 @@ struct lru_state
 
 extern struct lru_state lru_state;
 
-#define LRU_FLAG_NONE          0x0000
+/* Externally valid flags for functions in the LRU package */
 
-/* Flags set on LRU entries */
+/**
+ * No flag at all.
+ */
 
-/* Set on pinned (state-bearing) entries. Do we need both of these? */
-#define LRU_ENTRY_PINNED      0x0001
-/* Set on LRU entries in the L2 (scanned and colder) queue. */
-#define LRU_ENTRY_L2          0x0002
+static const uint32_t LRU_FLAG_NONE = 0x0000;
 
-/* Flags for functions in the LRU package */
-
-/* Take a reference on the created entry */
+/**
+ * Take a reference on the created entry
+ */
 static const uint32_t LRU_REQ_FLAG_REF = 0x0004;
-/* The caller holds mutex on source (queue from which entry is
-   removed) */
-static const uint32_t LRU_HAVE_LOCKED_SRC = 0x0008;
-/* The caller holds mutex on destination (queue to which entry is
-   added) */
-static const uint32_t LRU_HAVE_LOCKED_DST = 0x0010;
-/* The caller holds mutex on entry */
-static const uint32_t LRU_HAVE_LOCKED_ENTRY = 0x0020;
-/* The caller is fetching an initial reference */
+
+/**
+ * The caller is fetching an initial reference
+ */
 static const uint32_t LRU_REQ_INITIAL = 0x0040;
-/* The caller is scanning the entry (READDIR) */
+/**
+ * The caller is scanning the entry (READDIR)
+ */
 static const uint32_t LRU_REQ_SCAN = 0x0080;
 
 /* The minimum reference count for a cache entry not being recycled. */
@@ -123,10 +119,6 @@ static const int32_t LRU_SENTINEL_REFCOUNT = 1;
 
 #define LRU_N_Q_LANES 7
 
-/* LRU_WORK_PER_WAKE * LRU_N_Q_LANES is the number of entries that
-   the worker thread will process and move from L1 to L2. */
-
-static const uint32_t LRU_WORK_PER_WAKE = 10;
 static const uint32_t LRU_NO_LANE = ~0;
 
 extern void cache_inode_lru_pkginit(void);
@@ -181,7 +173,7 @@ extern struct cache_entry_t *cache_inode_lru_get(cache_inode_client_t *pclient,
 extern cache_inode_status_t cache_inode_lru_ref(
      cache_entry_t *entry,
      cache_inode_client_t *pclient,
-     uint32_t flags);
+     uint32_t flags) __attribute__((warn_unused_result));
 extern cache_inode_status_t cache_inode_lru_unref(
      cache_entry_t * entry,
      cache_inode_client_t *pclient,

@@ -228,7 +228,7 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                                         &create_arg,
                                         pclient,
                                         pcontext,
-                                        CACHE_INODE_FLAG_EXREF,
+                                        CACHE_INODE_FLAG_NONE,
                                         pstatus)) == NULL) {
           return NULL;
      }

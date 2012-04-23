@@ -220,6 +220,8 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      key.len = fsdata->fh_desc.len;
 
      /* Check if the entry doesn't already exists */
+     /* This is slightly ugly, since we make two tries in the event
+        that the lru reference fails. */
      if (HashTable_GetLatch(fh_to_cache_entry_ht, &key, &value, TRUE,
                             &latch) == HASHTABLE_SUCCESS) {
           /* Entry is already in the cache, do not add it */
@@ -229,13 +231,39 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
                    "cache_inode_new_entry: Trying to add an already existing "
                    "entry. Found entry %p type: %d, New type: %d",
                    entry, entry->type, type);
-          /* Conditionally take an extra reference */
-          if (flags & CACHE_INODE_FLAG_EXREF)
-               cache_inode_lru_ref(entry, client, LRU_FLAG_NONE);
-          /* Release the subtree hash table mutex acquired in
-             HashTable_GetEx */
-          HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
-          goto out;
+          if (cache_inode_lru_ref(entry, client, LRU_FLAG_NONE) ==
+              CACHE_INODE_SUCCESS) {
+               /* Release the subtree hash table mutex acquired in
+                  HashTable_GetEx */
+               HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
+               goto out;
+          } else {
+               /* Dead entry.  Treat as lookup failure.  Make another
+                  attempt then fail. */
+               HashTable_ReleaseLatched(fh_to_cache_entry_ht, &latch);
+               if (HashTable_GetLatch(fh_to_cache_entry_ht, &key, &value, TRUE,
+                                      &latch) == HASHTABLE_SUCCESS) {
+                    entry = value.pdata;
+                    *status = CACHE_INODE_ENTRY_EXISTS;
+                    if (cache_inode_lru_ref(entry, client, LRU_FLAG_NONE) !=
+                        CACHE_INODE_SUCCESS) {
+                         LogCrit(COMPONENT_CACHE_INODE,
+                                 "Double dead entry, almost certain bug.\n");
+                         HashTable_ReleaseLatched(fh_to_cache_entry_ht,
+                                                  &latch);
+                         entry = NULL;
+                         *status = CACHE_INODE_LRU_ERROR;
+                         goto out;
+                    }
+                    HashTable_ReleaseLatched(fh_to_cache_entry_ht,
+                                             &latch);
+                    goto out;
+               }
+               /* The second lookup failed, so we fall through as
+                  normal. */
+               entry = NULL;
+               *status = CACHE_INODE_SUCCESS;
+          }
      }
      /* We hold the latch from this point, doing all initialization
         that does not require I/O, inserting the entry and releasing
@@ -250,7 +278,9 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           *status = CACHE_INODE_MALLOC_ERROR;
           goto out;
      }
-     assert(entry->lru.refcount == LRU_SENTINEL_REFCOUNT);
+     /* This should be the sentinel, plus one to use the entry we
+        just returned. */
+     assert(entry->lru.refcount == LRU_SENTINEL_REFCOUNT + 1);
      lrurefed = TRUE;
 
      memset(&entry->handle, 0, sizeof(entry->handle));
@@ -427,10 +457,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
           cache_inode_fixup_md(entry);
      }
      pthread_rwlock_unlock(&entry->attr_lock);
-
-     /* conditionally take an extra reference */
-     if (flags & CACHE_INODE_FLAG_EXREF)
-          cache_inode_lru_ref(entry, client, LRU_FLAG_NONE);
 
      LogDebug(COMPONENT_CACHE_INODE,
               "cache_inode_new_entry: New entry %p added", entry);

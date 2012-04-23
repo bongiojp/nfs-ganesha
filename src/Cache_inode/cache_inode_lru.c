@@ -75,9 +75,57 @@
  * under ordinary circumstances, so are kept on a separate lru_pinned
  * list to retain constant time.
  *
+ * The locking discipline for this module is complex, because an entry
+ * LRU can either be found through the cache entry in which it is
+ * embedded (through a hash table or weakref lookup) or one can be
+ * found on the queue.  Thus, we have some sections for which locking
+ * the entry then the queue is natural, and others for which locking
+ * the queue then the entry is natural.  Because it is the most common
+ * case in request processing, we have made the lock the queue case
+ * the defined lock order.
+ *
+ * This introduces some complication, particularly in the case of
+ * cache_inode_lru_get and the repaer thread, which access entries
+ * through their queue.  Therefore, we introduce the following rules
+ * for accessing LRU entries:
+ *
+ *    - The LRU refcount may be increased by a thread holding either
+ *      the entry lock or the lock for the queue holding the entry.
+ *    - The entry flags may be set or inspected only by a thread
+ *      holding the lock on that entry.
+ *    - An entry may only be removed from or inserted into a queue by
+ *      a thread holding a lock on both the entry and the queue.
+ *    - A thread may only decrement the reference count while holding
+ *      the entry lock.
+ *    - A thread that wishes to decrement the reference count must
+ *      check that the reference count is greater than
+ *      LRU_SENTINEL_REFCOUNT and, if not, acquire the queue lock
+ *      before decrementing it.  When the reference count falls to 0,
+ *      the controlling thread will have already acquired the queue
+ *      lock.  It must then set the LRU_ENTRY_CONDEMNED bit on the
+ *      entry's flags, and remove it from the queue.  It must then
+ *      drop both the entry and queue lock, call pthread_yield, and
+ *      reacquire the entry lock before continuing with disposal.
+ *    - A thread wishing to operate on an entry picked from a given
+ *      queue fragment must lock that queue fragment, find the entry,
+ *      and increase its reference count by one.  It must then store a
+ *      pointer to the entry and release the queue lock before
+ *      acquiring the entry lock.  If the LRU_ENTRY_CONDEMNED bit is
+ *      set, it must relinquish its lock on the entry and attempt no
+ *      further access to it.  Otherwise, it must examine the flags
+ *      and lane stored in the entry to determine the current queue
+ *      fragment containing it, rather than assuming that the original
+ *      location is still valid.
  */
 
+/* Forward Declaration */
+
 static void *lru_thread(void *arg);
+struct lru_state lru_state;
+
+/**
+ * A single queue structure.
+ */
 
 struct lru_q_base
 {
@@ -94,6 +142,10 @@ struct lru_q_base
      ((void *)(((unsigned long)malloc((_s)+CACHE_LINE_SIZE*2) + \
                 CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE-1)))
 
+/**
+ * A single queue lane, holding both movable and pinned entries.
+ */
+
 struct lru_q_
 {
      struct lru_q_base lru;
@@ -101,43 +153,49 @@ struct lru_q_
      CACHE_PAD(0);
 };
 
-/* A multi-level LRU algorithm inspired by MQ [Zhou].  Transition from
-   L1 to L2 implies various checks (open files, etc) have been
-   performed, so ensures they are performed only once.  A
-   correspondence to the "scan resistance" property of 2Q and MQ is
-   accomplished by recycling/clean loads onto the LRU of L1.  Async
-   processing onto L2 constrains oscillation in this algorithm. */
+/**
+ * A multi-level LRU algorithm inspired by MQ [Zhou].  Transition from
+ * L1 to L2 implies various checks (open files, etc) have been
+ * performed, so ensures they are performed only once.  A
+ * correspondence to the "scan resistance" property of 2Q and MQ is
+ * accomplished by recycling/clean loads onto the LRU of L1.  Async
+ * processing onto L2 constrains oscillation in this algorithm.
+ */
 
 static struct lru_q_ LRU_1[LRU_N_Q_LANES];
 static struct lru_q_ LRU_2[LRU_N_Q_LANES];
 
-/* This is a global counter of files opened by cache_inode.  This is
-   preliminary expected to go away.  Problems with this method are
-   that it overcounts file descriptors for FSALs that don't use them
-   for open files, and, under the Lieb Rearchitecture, FSALs will be
-   responsible for caching their own file descriptors, with
-   interfaces for Cache_Inode to interrogate them as to usage or
-   instruct them to close them. */
+/**
+ * This is a global counter of files opened by cache_inode.  This is
+ * preliminary expected to go away.  Problems with this method are
+ * that it overcounts file descriptors for FSALs that don't use them
+ * for open files, and, under the Lieb Rearchitecture, FSALs will be
+ * responsible for caching their own file descriptors, with
+ * interfaces for Cache_Inode to interrogate them as to usage or
+ * instruct them to close them.
+ */
 
 size_t open_fd_count = 0;
 
-/* The refcount mechanism distinguishes 3 key object states:
-
-   1. unreferenced (unreachable)
-   2. unincremented, but reachable
-   3. incremented
-
-   It seems most convenient to make unreferenced correspond to refcount==0.
-   Then refcount==1 is a SENTINEL_REFCOUNT in which the only reference to
-   the entry is the set of functions which can grant new references.  An
-   object with refcount > 1 has been referenced by some thread, which must
-   release its reference at some point.
-
-   Currently, I propose to distinguish between objects with positive refcount
-   and objects with state.  The latter could be evicted, in the normal case,
-   only with loss of protocol correctness, but may have only the sentinel
-   refcount.  To preserve constant time operation, they are stored in an
-   independent partition of the LRU queue. */
+/**
+ * The refcount mechanism distinguishes 3 key object states:
+ *
+ * 1. unreferenced (unreachable)
+ * 2. unincremented, but reachable
+ * 3. incremented
+ *
+ * It seems most convenient to make unreferenced correspond to refcount==0.
+ * Then refcount==1 is a SENTINEL_REFCOUNT in which the only reference to
+ * the entry is the set of functions which can grant new references.  An
+ * object with refcount > 1 has been referenced by some thread, which must
+ * release its reference at some point.
+ *
+ * Currently, I propose to distinguish between objects with positive refcount
+ * and objects with state.  The latter could be evicted, in the normal case,
+ * only with loss of protocol correctness, but may have only the sentinel
+ * refcount.  To preserve constant time operation, they are stored in an
+ * independent partition of the LRU queue.
+ */
 
 static pthread_mutex_t lru_mtx;
 static pthread_cond_t lru_cv;
@@ -150,7 +208,9 @@ static const uint32_t LRU_SHUTDOWN = 0x00000002;
 
 static const uint32_t FD_FALLBACK_LIMIT = 0x400;
 
-struct lru_state lru_state;
+/**
+ * A package for the ID and state of the LRU thread.
+ */
 
 static struct lru_thread_state
 {
@@ -160,6 +220,28 @@ static struct lru_thread_state
 
 extern cache_inode_gc_policy_t cache_inode_gc_policy;
 
+/**
+ * Private flags and constants.
+ */
+
+/* Set on pinned (state-bearing) entries. Do we need both of these? */
+#define LRU_ENTRY_PINNED      0x0001
+/* Set on LRU entries in the L2 (scanned and colder) queue. */
+#define LRU_ENTRY_L2          0x0002
+/* Set on LRU entries that are being deleted */
+#define LRU_ENTRY_CONDEMNED   0x0004
+/* Set if no more state may be granted.  Different from CONDEMNED in
+   that outstanding references may exist on the object, but it is no
+   longer reachable from the hash or weakref tables. */
+#define LRU_ENTRY_UNPINNABLE  0x0008
+
+
+/**
+ * @brief Initialize a single base queue.
+ *
+ * This function initializes a single queue fragment (a half-lane)
+ */
+
 static inline void
 lru_init_queue(struct lru_q_base *q)
 {
@@ -168,12 +250,24 @@ lru_init_queue(struct lru_q_base *q)
      q->size = 0;
 }
 
-/* Given a lane and a set of flags, return a pointer to the
-   appropriate queue. */
+/**
+ * @brief Return a pointer to the appropriate queue
+ *
+ * This function returns a pointer to the appropriate LRU queue
+ * fragment corresponding to the given flags and lane.
+ *
+ * @param[in] flags  May be any combination of 0, LRU_ENTRY_PINNED,
+ *                   and LRU_ENTRY_L2 or'd together.
+ * @param[in] lane   An integer, must be less than the total number of
+ *                   lanes.
+ *
+ * @returns The queue containing entries with the given lane and state.
+ */
 
 static inline struct lru_q_base *
 lru_select_queue(uint32_t flags, uint32_t lane)
 {
+     assert(lane < LRU_N_Q_LANES);
      if (flags & LRU_ENTRY_PINNED) {
           if (flags & LRU_ENTRY_L2) {
                return &LRU_2[lane].lru_pinned;
@@ -189,92 +283,140 @@ lru_select_queue(uint32_t flags, uint32_t lane)
      }
 }
 
-/* Return the natural lane of a cache entry, using modular
- * permutation on its address */
-static inline uint64_t
+/**
+ * @brief Get the appropriate lane for a cache_entry
+ *
+ * This function gets the LRU lane by taking the modulus of the
+ * supplied pointer.
+ *
+ * @param[in] entry  A pointer to a cache entry
+ *
+ * @returns The LRU lane in which that entry should be stored.
+ */
+
+static inline uint32_t
 lru_lane_of_entry(cache_entry_t *entry)
 {
-    return (((uint64_t) entry) % LRU_N_Q_LANES);
+    return (uint32_t) (((uintptr_t) entry) % LRU_N_Q_LANES);
 }
 
-/* Insert the entry in the queue specified by the flags and lane. */
+/**
+ * @brief Insert an entry into the specified queue fragment
+ *
+ * This function determines the queue corresponding to the supplied
+ * lane and flags, inserts the entry into that queue, and updates the
+ * entry to holds the flags and lane.
+ *
+ * The caller MUST have a lock on the entry and MUST NOT hold a lock
+ * on the queue.
+ *
+ * @param[in] lru   The entry to insert
+ * @param[in] flags The flags indicating which subqueue into which it
+ *                  is to be inserted.  The same flag combinations are
+ *                  valid as for lru_select_queue
+ * @param[on] lane  The lane into which this entry should be inserted
+ */
 
 static inline void
 lru_insert_entry(cache_inode_lru_t *lru, uint32_t flags, uint32_t lane)
 {
      /* Destination LRU */
      struct lru_q_base *d = NULL;
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_lock(&lru->mtx);
-     }
+
      d = lru_select_queue(flags, lane);
-     if (!(flags & LRU_HAVE_LOCKED_DST)) {
-          pthread_mutex_lock(&d->mtx);
-     }
+     pthread_mutex_lock(&d->mtx);
      glist_add(&d->q, &lru->q);
      ++(d->size);
-     if (!(flags & LRU_HAVE_LOCKED_DST)) {
-          pthread_mutex_unlock(&d->mtx);
-     }
+     pthread_mutex_unlock(&d->mtx);
+
+     /* Set the flags on the entry to exactly the set of LRU_ENTRY_L2
+        and LRU_ENTRY_PINNED supplied in the flags argument. */
+
      lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
      lru->flags |= (flags & (LRU_ENTRY_L2 | LRU_ENTRY_PINNED));
      lru->lane = lane;
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_unlock(&lru->mtx);
-     }
 }
 
-/* Remove the entry from its queue. */
+/**
+ * @brief Remove an entry from its queue
+ *
+ * This function removes an entry from the queue currently holding it
+ * and updates its lane and flags to corresponding to no queue.  If
+ * the entry is in no queue, this is a no-op.
+ *
+ * The caller MUST have a lock on the entry and MUST NOT hold a lock
+ * on the queue.
+ *
+ * @params[in] lru The entry to remove from its queue.
+ */
 
 static inline void
-lru_remove_entry(cache_inode_lru_t *lru,
-                 uint32_t flags)
+lru_remove_entry(cache_inode_lru_t *lru)
 {
+     if (lru->lane == LRU_NO_LANE) {
+          return;
+     }
+
      /* Source LRU */
      struct lru_q_base *s = NULL;
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_lock(&lru->mtx);
-     }
      s = lru_select_queue(lru->flags, lru->lane);
-     if (!(flags & LRU_HAVE_LOCKED_SRC)) {
-          pthread_mutex_lock(&s->mtx);
-     }
-
+     pthread_mutex_lock(&s->mtx);
      glist_del(&lru->q);
      --(s->size);
-     if (!(flags & LRU_HAVE_LOCKED_SRC)) {
-          pthread_mutex_unlock(&s->mtx);
-     }
+     pthread_mutex_unlock(&s->mtx);
      lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+     /* Anyone interested in this entry should back off immediately. */
+     lru->flags |= LRU_ENTRY_CONDEMNED;
      lru->lane = LRU_NO_LANE;
-
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_unlock(&lru->mtx);
-     }
 }
 
-/* Move an entry from one queue to another.  The destination queue is
-   specified in the flags argument. */
+/**
+ * @brief Move an entry from one queue fragment to another
+ *
+ * This function moves an entry from the queue containing it to the
+ * queue specified by the lane and flags.  The entry MUST be locked
+ * and no queue locks may be held.
+ *
+ * @param[in] lru   The entry to move
+ * @param[in] flags As accepted by lru_select_queue
+ * @param[in] lane  The lane identifying the fragment
+ */
 
 static inline void
-lru_move_entry(cache_inode_lru_t *lru, uint32_t flags)
+lru_move_entry(cache_inode_lru_t *lru,
+               uint32_t flags,
+               uint32_t lane)
 {
      /* Source LRU */
      struct lru_q_base *s = NULL;
      /* Destination LRU */
      struct lru_q_base *d = NULL;
 
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_lock(&lru->mtx);
+     if ((lru->lane == LRU_NO_LANE) &&
+         (lane == LRU_NO_LANE)) {
+          /* From nothing, to nothing. */
+          return;
+     } else if (lru->lane == LRU_NO_LANE) {
+          lru_insert_entry(lru, flags, lane);
+          return;
+     } else if (lane == LRU_NO_LANE) {
+          lru_remove_entry(lru);
+          return;
      }
 
-     assert(lru->lane != LRU_NO_LANE);
+     s = lru_select_queue(lru->flags, lru->lane);
+     d = lru_select_queue(flags, lane);
 
-     d = s = lru_select_queue(lru->flags, lru->lane);
-
-     if (!(flags & LRU_HAVE_LOCKED_SRC)) {
+     if (s == d) {
+          pthread_mutex_lock(&s->mtx);
+     } else if (s < d) {
+          pthread_mutex_lock(&s->mtx);
+          pthread_mutex_lock(&d->mtx);
+     } else if (s > d) {
+          pthread_mutex_lock(&d->mtx);
           pthread_mutex_lock(&s->mtx);
      }
+
      glist_del(&lru->q);
      --(s->size);
 
@@ -290,22 +432,498 @@ lru_move_entry(cache_inode_lru_t *lru, uint32_t flags)
      }
      ++(d->size);
 
-     if (! (flags & LRU_HAVE_LOCKED_SRC)) {
-          pthread_mutex_unlock(&s->mtx);
+     pthread_mutex_unlock(&s->mtx);
+     if (s != d) {
+          pthread_mutex_unlock(&d->mtx);
      }
 
      lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
      lru->flags |= (LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
-
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_unlock(&lru->mtx);
-     }
 }
 
-/*
+/**
+ * @brief Clean an entry for recycling.
+ *
+ * This function cleans an entry up before it's recycled or freed.
+ *
+ * @param[in] entry  The entry to clean
+ * @param[in] client The per-thread resource management structure
+ */
+
+static inline void
+cache_inode_lru_clean(cache_entry_t *entry,
+                      cache_inode_client_t *client)
+{
+     fsal_status_t fsal_status = {0, 0};
+     cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
+
+     /* Clean an LRU entry re-use.  */
+     assert((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) ||
+            (entry->lru.refcount == (LRU_SENTINEL_REFCOUNT - 1)));
+
+     if (cache_inode_fd(entry)) {
+          cache_inode_close(entry, client, CACHE_INODE_FLAG_REALLYCLOSE,
+                            &cache_status);
+          if (cache_status != CACHE_INODE_SUCCESS) {
+               LogCrit(COMPONENT_CACHE_INODE_LRU,
+                       "Error closing file in cleanup: %d.",
+                       cache_status);
+          } else {
+               --open_fd_count;
+          }
+     }
+
+     /* Clean up the associated ressources in the FSAL */
+     if (FSAL_IS_ERROR(fsal_status
+                       = FSAL_CleanObjectResources(&entry->handle))) {
+          LogCrit(COMPONENT_CACHE_INODE,
+                  "cache_inode_lru_clean: Couldn't free FSAL ressources "
+                  "fsal_status.major=%u", fsal_status.major);
+     }
+
+     cache_inode_clean_internal(entry, client);
+     entry->lru.refcount = 0;
+     cache_inode_clean_entry(entry);
+}
+
+/**
+ * @brief Try to pull an entry off the queue
+ *
+ * This function examines the end of the specified queue and if the
+ * entry found there can be re-used, it returns with the entry
+ * locked.  Otherwise, it returns NULL.  The caller MUST NOT hold a
+ * lock on the queue when this function is called.
+ *
+ * This function follows the locking discipline detailed above.  it
+ * returns an lru entry removed from the queue system and which we are
+ * permitted to dispose or recycle.
+ *
+ * @param[in] q  The queue fragment from which to reap.
+ */
+
+static inline cache_inode_lru_t *
+lru_try_reap_entry(struct lru_q_base *q)
+{
+     cache_inode_lru_t *lru = NULL;
+
+     pthread_mutex_lock(&q->mtx);
+     lru = glist_first_entry(&q->q, cache_inode_lru_t, q);
+     if (!lru) {
+          pthread_mutex_unlock(&q->mtx);
+          return NULL;
+     }
+
+     ++(lru->refcount);
+     pthread_mutex_unlock(&q->mtx);
+     pthread_mutex_lock(&lru->mtx);
+     if (lru->flags & LRU_ENTRY_CONDEMNED) {
+          --(lru->refcount);
+          pthread_mutex_unlock(&lru->mtx);
+          return NULL;
+     }
+     if ((lru->refcount > (LRU_SENTINEL_REFCOUNT + 1)) ||
+         (lru->flags & LRU_ENTRY_PINNED)) {
+          /* Any more than the sentinel and our reference count
+             and someone else has a reference.  Plus someone may
+             have moved it to the pin queue while we were waiting. */
+          --(lru->refcount);
+          pthread_mutex_unlock(&lru->mtx);
+          return NULL;
+     }
+     /* At this point, we have legitimate access to the entry,
+        and we go through the disposal/recycling discipline. */
+
+     /* Make sure the entry is still where we think it is. */
+     q = lru_select_queue(lru->flags, lru->lane);
+     pthread_mutex_lock(&q->mtx);
+     if (lru->refcount > LRU_SENTINEL_REFCOUNT + 1) {
+          /* Someone took a reference while we were waiting for the
+             queue.  */
+          pthread_mutex_unlock(&lru->mtx);
+          pthread_mutex_unlock(&q->mtx);
+          return NULL;
+     }
+     /* Drop the refcount to 0, set the flag to tell other threads to
+        stop access immediately. */
+     lru->refcount = 0;
+     lru->flags = LRU_ENTRY_CONDEMNED;
+     glist_del(&lru->q);
+     --(q->size);
+     lru->lane = LRU_NO_LANE;
+     /* Drop all locks and give other threads a chance to abandon the
+        entry. */
+     pthread_mutex_unlock(&lru->mtx);
+     pthread_mutex_unlock(&q->mtx);
+     pthread_yield();
+
+     return lru;
+}
+
+static const uint32_t S_NSECS = 1000000000UL; /* nsecs in 1s */
+static const uint32_t MS_NSECS = 1000000UL; /* nsecs in 1ms */
+
+/**
+ * @brief Sleep in the LRU thread for a specified time
+ *
+ * This function should only be called from the LRU thread.  It sleeps
+ * for the specified time or until woken by lru_wake_thread.
+ *
+ * @param ms [in] The time to sleep, in milliseconds.
+ *
+ * @retval FALSE if the thread wakes by timeout.
+ * @retval TRUE if the thread wakes by signal.
+ */
+
+static bool_t
+lru_thread_delay_ms(unsigned long ms)
+{
+     time_t now = time(NULL);
+     uint64_t nsecs = (S_NSECS * now) + (MS_NSECS * ms);
+     struct timespec then = {
+          .tv_sec = nsecs / S_NSECS,
+          .tv_nsec = nsecs % S_NSECS
+     };
+     bool_t woke = FALSE;
+
+     pthread_mutex_lock(&lru_mtx);
+     lru_thread_state.flags |= LRU_SLEEPING;
+     woke = (pthread_cond_timedwait(&lru_cv, &lru_mtx, &then)
+             == ETIMEDOUT);
+     lru_thread_state.flags &= ~LRU_SLEEPING;
+     pthread_mutex_unlock(&lru_mtx);
+     return woke;
+}
+
+/**
+ * @brief Function that executes in the lru thread
+ *
+ * This function performs long-term reorganization, compaction, and
+ * other operations that are not performed in-line with referencing
+ * and dereferencing.
+ *
+ * This function is responsible for cleaning the FD cache.  It works
+ * by the following rules:
+ *
+ *  - If the number of open FDs is below the low water mark, do
+ *    nothing.
+ *
+ *  - If the number of open FDs is between the low and high water
+ *    mark, make one pass through the queues, and exit.  Each pass
+ *    consists of taking an entry from L1, examining to see if it is a
+ *    regular file not bearing state with an open FD, closing the open
+ *    FD if it is, and then moving it to L2.  The advantage of the two
+ *    level system is twofold: First, seldom used entries congregate
+ *    in L2 and the promotion behaviour provides some scan
+ *    resistance.  Second, once an entry is examined, it is moved to
+ *    L2, so we won't examine the same cache entry repeatedly.
+ *
+ *  - If the number of open FDs is greater than the high water mark,
+ *    we consider ourselves to be in extremis.  In this case we make a
+ *    number of passes through the queue not to exceed the number of
+ *    passes that would be required to process the number of entries
+ *    equal to a biggest_window percent of the system specified
+ *    maximum.
+ *
+ *  - If we are in extremis, and performing the maximum amount of work
+ *    allowed has not moved the open FD count required_progress%
+ *    toward the high water mark, increment lru_state.futility.  If
+ *    lru_state.futility reaches futility_count, temporarily disable
+ *    FD caching.
+ *
+ *  - Every time we wake through timeout, reset futility_count to 0.
+ *
+ *  - If we fall below the low water mark and FD caching has been
+ *    temporarily disabled, re-enable it.
+ *
+ * This function uses the lock discipline for functions accessing LRU
+ * entries through a queue fragment.
+ *
+ * @param arg [in] A void pointer, currently ignored.
+ *
+ * @return A void pointer, currently NULL.
+ */
+
+static void *
+lru_thread(void *arg __attribute__((unused)))
+{
+     /* Index */
+     size_t lane = 0;
+     /* Temporary holder for flags */
+     uint32_t tmpflags = lru_state.flags;
+     /* Client required to make close calls. */
+     cache_inode_client_t client;
+     /* True if we are taking extreme measures to reclaim FDs. */
+     bool_t extremis = FALSE;
+     /* True if we were explicitly woke. */
+     bool_t woke = FALSE;
+
+     SetNameFunction("lru_thread");
+
+     /* Initialize BuddyMalloc (otherwise we crash whenever we call
+        into the FSAL and it tries to update its calls tats) */
+#ifndef _NO_BUDDY_SYSTEM
+     if ((BuddyInit(&nfs_param.buddy_param_worker)) != BUDDY_SUCCESS) {
+          /* Failed init */
+          LogFatal(COMPONENT_CACHE_INODE_LRU,
+                   "Memory manager could not be initialized");
+     }
+     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                  "Memory manager successfully initialized");
+#endif
+     /* Initialize the cache_inode_client_t so we can call into
+        cache_inode and not reimplement close. */
+     if (cache_inode_client_init(&client,
+                                 &(nfs_param.cache_layers_param
+                                   .cache_inode_client_param),
+                                 0, NULL)) {
+          /* Failed init */
+          LogFatal(COMPONENT_CACHE_INODE_LRU,
+                   "Cache Inode client could not be initialized");
+     }
+     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                  "Cache Inode client successfully initialized");
+
+     while (1) {
+          if (lru_thread_state.flags & LRU_SHUTDOWN)
+               break;
+
+          extremis = (open_fd_count > lru_state.fds_hiwat);
+          LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                       "Reaper awakes.");
+
+          if (!woke) {
+               /* If we make it all the way through a timed sleep
+                  without being woken, we assume we aren't racing
+                  against the impossible. */
+               lru_state.futility = 0;
+          }
+
+          uint64_t t_count = 0;
+
+          /* First, sum the queue counts.  This lets us know where we
+             are relative to our watermarks. */
+
+          for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
+               pthread_mutex_lock(&LRU_1[lane].lru.mtx);
+               t_count += LRU_1[lane].lru.size;
+               pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
+
+               pthread_mutex_lock(&LRU_1[lane].lru_pinned.mtx);
+               t_count += LRU_1[lane].lru_pinned.size;
+               pthread_mutex_unlock(&LRU_1[lane].lru_pinned.mtx);
+
+               pthread_mutex_lock(&LRU_2[lane].lru.mtx);
+               t_count += LRU_2[lane].lru.size;
+               pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
+
+               pthread_mutex_lock(&LRU_2[lane].lru_pinned.mtx);
+               t_count += LRU_2[lane].lru_pinned.size;
+               pthread_mutex_unlock(&LRU_2[lane].lru_pinned.mtx);
+          }
+
+          LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                       "%zu entries in cache.",
+                       t_count);
+
+          if (tmpflags & LRU_STATE_RECLAIMING) {
+              if (t_count < lru_state.entries_lowat) {
+                  tmpflags &= ~LRU_STATE_RECLAIMING;
+                  LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                               "Entry count below low water mark.  "
+                               "Disabling reclaim.");
+               }
+          } else {
+              if (t_count > lru_state.entries_hiwat) {
+                  tmpflags |= LRU_STATE_RECLAIMING;
+                  LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                               "Entry count above high water mark.  "
+                               "Enabling reclaim.");
+               }
+          }
+
+          /* Update global state */
+          pthread_mutex_lock(&lru_mtx);
+
+          lru_state.last_count = t_count;
+          lru_state.flags = tmpflags;
+
+          pthread_mutex_unlock(&lru_mtx);
+
+          /* Reap file descriptors.  This is a preliminary example of
+             the L2 functionality rather than soemthing we expect to
+             be permanent.  (It will have to adapt heavily to the new
+             FSAL API, for example.) */
+
+          if (open_fd_count < lru_state.fds_lowat) {
+               LogDebug(COMPONENT_CACHE_INODE_LRU,
+                        "FD count is %zd and low water mark is "
+                        "%d: not reaping.",
+                        open_fd_count,
+                        lru_state.fds_lowat);
+               if (cache_inode_gc_policy.use_fd_cache &&
+                   !lru_state.caching_fds) {
+                    lru_state.caching_fds = TRUE;
+                    LogInfo(COMPONENT_CACHE_INODE_LRU,
+                            "Re-enabling FD cache.");
+               }
+          } else {
+               /* The count of open file descriptors before this run
+                  of the reaper. */
+               size_t formeropen = open_fd_count;
+               /* Total work done in all passes so far.  If this
+                  exceeds the window, stop. */
+               size_t totalwork = 0;
+               /* The current count (after reaping) of open FDs */
+               size_t currentopen = 0;
+               /* Work done in the most recent pass of all queues.  if
+                  value is less than the work to do in a single queue,
+                  don't spin through more passes. */
+               size_t workpass = 0;
+
+               LogDebug(COMPONENT_CACHE_INODE_LRU,
+                        "Starting to reap.");
+
+               if (extremis) {
+                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                                 "Open FDs over high water mark, "
+                                 "reapring aggressively.");
+               }
+
+               do {
+                    workpass = 0;
+                    for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
+                         /* The amount of work done on this lane on
+                            this pass. */
+                         size_t workdone = 0;
+                         /* The current entry being examined. */
+                         cache_inode_lru_t *lru = NULL;
+                         /* Number of entries closed in this run. */
+                         size_t closed = 0;
+
+                         LogDebug(COMPONENT_CACHE_INODE_LRU,
+                                  "Reaping up to %d entries from lane %zd",
+                                  lru_state.per_lane_work,
+                                  lane);
+
+                         pthread_mutex_lock(&LRU_1[lane].lru.mtx);
+                         while ((workdone < lru_state.per_lane_work) &&
+                                (lru = glist_first_entry(&LRU_1[lane].lru.q,
+                                                         cache_inode_lru_t,
+                                                         q))) {
+                              cache_inode_status_t cache_status
+                                   = CACHE_INODE_SUCCESS;
+                              cache_entry_t *entry
+                                   = container_of(lru, cache_entry_t, lru);
+
+                              /* We currently hold the lane queue
+                                 fragment mutex.  Due to lock
+                                 ordering, we are forbidden from
+                                 acquiring the LRU mutex directly.
+                                 therefore, we increase the reference
+                                 count of the entry and drop the
+                                 queue fragment mutex. */
+
+                              ++(lru->refcount);
+                              pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
+
+                              /* Acquire the entry mutex.  If the entry
+                                 is condemned, removed, pinned, or in
+                                 L2, we have no interest in it. Also
+                                 decrement the refcount (since we just
+                                 incremented it.) */
+
+                              pthread_mutex_lock(&lru->mtx);
+                              --(lru->refcount);
+                              if ((lru->flags & LRU_ENTRY_CONDEMNED) ||
+                                  (lru->flags & LRU_ENTRY_PINNED) ||
+                                  (lru->flags & LRU_ENTRY_L2) ||
+                                  (lru->lane == LRU_NO_LANE)) {
+                                   /* Drop the entry lock, thenr
+                                      eacquire the queue lock so we
+                                      can make another trip through
+                                      the loop. */
+                                   pthread_mutex_unlock(&lru->mtx);
+                                   pthread_mutex_lock(&LRU_1[lane].lru.mtx);
+                                   /* By definition, if any of these
+                                      flags are set, the entry isn't
+                                      in this queue fragment any more. */
+                                   continue;
+                              }
+
+                              if (cache_inode_fd(entry)) {
+                                   cache_inode_close(
+                                        entry,
+                                        &client,
+                                        CACHE_INODE_FLAG_REALLYCLOSE,
+                                        &cache_status);
+                                   if (cache_status != CACHE_INODE_SUCCESS) {
+                                        LogCrit(COMPONENT_CACHE_INODE_LRU,
+                                                "Error closing file in "
+                                                "LRU thread.");
+                                   } else {
+                                        ++closed;
+                                        --open_fd_count;
+                                   }
+                              }
+                              /* Move the entry to L2 whatever the
+                                 result of examining it.*/
+                              lru_move_entry(lru, LRU_ENTRY_L2,
+                                             lru->lane);
+                              ++workdone;
+                              /* Reacquire the lock on the queue
+                                 fragment for the next run through
+                                 the loop. */
+                              pthread_mutex_lock(&LRU_1[lane].lru.mtx);
+                         }
+                         pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
+                         LogDebug(COMPONENT_CACHE_INODE_LRU,
+                                  "Actually processed %zd entries on lane %zd "
+                                  "closing %zd descriptors",
+                                  workdone,
+                                  lane,
+                                  closed);
+                         workpass += workdone;
+                    }
+                    totalwork += workpass;
+               } while (extremis &&
+                        (workpass >= lru_state.per_lane_work) &&
+                        (totalwork < lru_state.biggest_window));
+
+               currentopen = open_fd_count;
+               if (extremis &&
+                   ((currentopen > formeropen) ||
+                    (formeropen - currentopen >
+                     (((formeropen - lru_state.fds_hiwat) *
+                       cache_inode_gc_policy.required_progress) /
+                      100)))) {
+                    if (++lru_state.futility >
+                        cache_inode_gc_policy.futility_count) {
+                         LogCrit(COMPONENT_CACHE_INODE_LRU,
+                                 "Futility count exceeded.  The LRU thread is "
+                                 "unable to make progress in reclaiming FDs."
+                                 "Disabling FD cache.");
+                         lru_state.caching_fds = FALSE;
+                    }
+               }
+          }
+
+          lru_thread_delay_ms(lru_state.threadwait);
+     }
+
+     LogEvent(COMPONENT_CACHE_INODE_LRU,
+              "Shutting down LRU thread.");
+
+     return NULL;
+}
+
+/* Public functions */
+
+/**
  * Initialize subsystem
  */
-void cache_inode_lru_pkginit(void)
+
+void
+cache_inode_lru_pkginit(void)
 {
      /* The attributes governing the LRU reaper thread. */
      pthread_attr_t attr_thr;
@@ -456,11 +1074,12 @@ void cache_inode_lru_pkginit(void)
      }
 }
 
-/*
+/**
  * Shutdown subsystem
  */
 
-void cache_inode_lru_pkgshutdown(void)
+void
+cache_inode_lru_pkgshutdown(void)
 {
      /* Post and wait for shutdown of LRU background thread */
      pthread_mutex_lock(&lru_mtx);
@@ -469,64 +1088,19 @@ void cache_inode_lru_pkgshutdown(void)
      pthread_mutex_unlock(&lru_mtx);
 }
 
-static inline void cache_inode_lru_clean(cache_entry_t *entry,
-                                         cache_inode_client_t *client)
-{
-     fsal_status_t fsal_status = {0, 0};
-     cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
-
-     /* Clean an LRU entry re-use.  */
-     assert((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) ||
-            (entry->lru.refcount == (LRU_SENTINEL_REFCOUNT - 1)));
-
-     if (cache_inode_fd(entry)) {
-          cache_inode_close(entry, client, CACHE_INODE_FLAG_REALLYCLOSE,
-                            &cache_status);
-          if (cache_status != CACHE_INODE_SUCCESS) {
-               LogCrit(COMPONENT_CACHE_INODE_LRU,
-                       "Error closing file in cleanup: %d.",
-                       cache_status);
-          } else {
-               --open_fd_count;
-          }
-     }
-
-     /* Clean up the associated ressources in the FSAL */
-     if (FSAL_IS_ERROR(fsal_status
-                       = FSAL_CleanObjectResources(&entry->handle))) {
-          LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_lru_clean: Couldn't free FSAL ressources "
-                  "fsal_status.major=%u", fsal_status.major);
-     }
-
-     cache_inode_clean_internal(entry, client);
-     entry->lru.refcount = 0;
-     cache_inode_clean_entry(entry);
-}
-
-/* If the queue specified in q is non-empty return its least recently
-   used entry.  Nota Bene: This function locks q, retaining the lock
-   if an entry is found and unlocking it otherwise. */
-
-static inline cache_inode_lru_t *
-try_reap_entry(struct lru_q_base *q)
-{
-     cache_inode_lru_t *lru = NULL;
-
-     pthread_mutex_lock(&q->mtx);
-     lru = glist_first_entry(&q->q, cache_inode_lru_t, q);
-     if (!lru) {
-          pthread_mutex_unlock(&q->mtx);
-     }
-     return NULL;
-}
-
-/*
- * cache_inode_lru_get aka EvictBlock()
+/**
+ * @brief Re-use or allocate an entry
  *
- * repurpose a resident entry in the LRU system, if the system is
- * above low-water mark, from pool otherwise.
+ * This function repurposes a resident entry in the LRU system if the
+ * system is above low-water mark, and allocates a new one otherwise.
+ *
+ * @param[in] client  Structure for per-thread resource management
+ * @param[in] status  Returned status
+ * @param[in] flags   Flags governing call
+ *
+ * @return CACHE_INODE_SUCCESS or error.
  */
+
 cache_entry_t *
 cache_inode_lru_get(cache_inode_client_t *client,
                     cache_inode_status_t *status,
@@ -543,93 +1117,35 @@ cache_inode_lru_get(cache_inode_client_t *client,
      /* If we are in reclaim state, try to find an entry to recycle. */
      pthread_mutex_lock(&lru_mtx);
      if (lru_state.flags & LRU_STATE_RECLAIMING) {
+          pthread_mutex_unlock(&lru_mtx);
 
-         pthread_mutex_unlock(&lru_mtx);
-
-         /* Search through logical L2 entry. */
-         for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
-             lru = try_reap_entry(&LRU_2[lane].lru);
-             if (lru)
-                 break;
-         }
+          /* Search through logical L2 entry. */
+          for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
+               lru = lru_try_reap_entry(&LRU_2[lane].lru);
+               if (lru)
+                    break;
+          }
 
           /* Search through logical L1 if nothing was found in L2
              (fall through, otherwise.) */
-         if (! lru) {
-             for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
-                 lru = try_reap_entry(&LRU_1[lane].lru);
-                 if (lru)
-                     break;
-             }
-         }
+          if (!lru) {
+               for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
+                    lru = lru_try_reap_entry(&LRU_1[lane].lru);
+                    if (lru)
+                         break;
+               }
+          }
 
-          /* If we found an entry, use it */
+          /* If we found an entry, we hold a lock on it and it is
+             ready to be recycled. */
           if (lru) {
                entry = container_of(lru, cache_entry_t, lru);
-
-               if (entry)
+               if (entry) {
                     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                                 "first entry %p refcount %"PRIu64" flags %d",
-                                 entry,
-                                 entry->lru.refcount,
-                                 entry->lru.flags);
-
-               /* Take the mutex here, before checking state and
-                  refcount. */
-               pthread_mutex_lock(&entry->lru.mtx);
-               /* I /THINK/ we get a special dispensation in here
-                  regarding the state lock because we're holding the
-                  ref mutex.  Nobody should be able to get the entry
-                  to put state on it we have the mutex, and if the
-                  we're at the sentinel refcount, nobody should have
-                  a reference they can use to put state on the
-                  object. */
-               /* if we can recycle this entry, do so. */
-               if ((entry->lru.refcount == LRU_SENTINEL_REFCOUNT) &&
-                   !cache_inode_file_holds_state(entry)) {
-                    /* If this entry is in L2, move to the LRU of L1.
-                       Otherwise leave it where it is.  Since this is
-                       effectively a new file, being in L1 already
-                       shouldn't count. */
-
-                    if (entry->lru.flags & LRU_ENTRY_L2) {
-                         lru_move_entry(&entry->lru,
-                                        LRU_HAVE_LOCKED_ENTRY |
-                                        LRU_HAVE_LOCKED_SRC);
-                         pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
-                    } else {
-                         pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
-                    }
-
-                    /* Since we locked the entry before checking state
-                       and refcount, nothing should have been able to
-                       put state on it.  However, someone might be
-                       waiting on it now.  Maybe the best way to deal
-                       with that is to require someone to check the
-                       handle after acquiring the mutex. */
-
-                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                                 "VICTIM entry %p refcount %"PRIu64" flags %d",
-                                 entry,
-                                 entry->lru.refcount,
-                                 entry->lru.flags);
-
-                    cache_inode_lru_clean(entry, client);
-
-                    if (flags & LRU_REQ_FLAG_REF)
-                         ++(entry->lru.refcount);
-
-                    *status = CACHE_INODE_SUCCESS;
-                    goto out;
-               } else {
-                    pthread_mutex_unlock(&entry->lru.mtx);
-                    if (entry->lru.flags & LRU_ENTRY_L2) {
-                         pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
-                    } else {
-                         pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
-                    }
-                    lru = NULL;
+                                 "Recycling entry at %p.",
+                                 entry);
                }
+               cache_inode_lru_clean(entry, client);
           }
      } else {
           pthread_mutex_unlock(&lru_mtx);
@@ -643,8 +1159,6 @@ cache_inode_lru_get(cache_inode_client_t *client,
                *status = CACHE_INODE_MALLOC_ERROR;
                goto out;
           }
-          entry->lru.flags = 0;
-          entry->lru.refcount = 0;
           if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
                ReleaseToPool(entry, &client->pool_entry);
                LogCrit(COMPONENT_CACHE_INODE_LRU,
@@ -654,76 +1168,105 @@ cache_inode_lru_get(cache_inode_client_t *client,
                *status = CACHE_INODE_INIT_ENTRY_FAILED;
                goto out;
           }
-
-          if (flags & LRU_REQ_FLAG_REF)
-               ++(entry->lru.refcount);
-
-          lru_insert_entry(&entry->lru, LRU_HAVE_LOCKED_ENTRY,
-                           lru_lane_of_entry(entry));
      }
+
+     assert(entry);
+     /* Set the sentinel refcount.  Since the entry isn't in a queue,
+        nobody can bump the refcount yet. */
+     entry->lru.refcount = 1;
+     if (flags & LRU_REQ_FLAG_REF) {
+          ++(entry->lru.refcount);
+     }
+     lru_insert_entry(&entry->lru, 0,
+                      lru_lane_of_entry(entry));
 
      *status = CACHE_INODE_SUCCESS;
 out:
      return (entry);
 }
 
-static inline cache_inode_status_t
-cache_inode_lru_pin(cache_entry_t * entry,
-                    uint32_t flags)
+/**
+ * @brief Function to let the state layer pin an entry
+ *
+ * This function moves the given entry to the pinned queue fragment
+ * for its lane.  If the entry is already pinned, it is a no-op.
+ *
+ * @param[in] entry  The entry to be moved
+ *
+ * @retval CACHE_INODE_SUCCESS if the entry was moved.
+ * @retval CACHE_INODE_DEAD_ENTRY if the entry is in the process of
+ *                                disposal
+ */
+
+cache_inode_status_t
+cache_inode_lru_pin(cache_entry_t *entry)
 {
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_lock(&entry->lru.mtx);
+     cache_inode_status_t rc = CACHE_INODE_SUCCESS;
+
+     pthread_mutex_lock(&entry->lru.mtx);
+
+     if (entry->lru.flags & LRU_ENTRY_UNPINNABLE) {
+          rc = CACHE_INODE_DEAD_ENTRY;
+     } else if (!(entry->lru.flags & LRU_ENTRY_PINNED)) {
+          lru_move_entry(&entry->lru, LRU_ENTRY_PINNED,
+                         entry->lru.lane);
      }
+     pthread_mutex_unlock(&entry->lru.mtx);
 
-     /* Already pinned? */
-     if (entry->lru.flags & LRU_ENTRY_PINNED)
-          goto unlock;
-
-     /* We make no effort to keep things in L2 when pinning them,
-        because almost anything that you could do to pin something
-        would invalidate the L2 guarantee of having been checked. */
-
-     lru_move_entry(&entry->lru,
-                    (flags | LRU_ENTRY_PINNED | LRU_HAVE_LOCKED_ENTRY));
-
-unlock:
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_unlock(&entry->lru.mtx);
-     }
-
-     return (CACHE_INODE_SUCCESS);
+     return rc;
 }
 
-static inline cache_inode_status_t
-cache_inode_lru_unpin(cache_entry_t *entry,
-                      uint32_t flags)
+/**
+ * @brief Function to let the state layer rlease a pin
+ *
+ * This function moves the given entry out of the pinned queue
+ * fragment for its lane.  If the entry is not pinned, it is a
+ * no-op.
+ *
+ * @param[in] entry  The entry to be moved
+ *
+ * @retval CACHE_INODE_SUCCESS if the entry was moved.
+ */
+
+cache_inode_status_t
+cache_inode_lru_unpin(cache_entry_t *entry)
 {
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_lock(&entry->lru.mtx);
+     pthread_mutex_lock(&entry->lru.mtx);
+     if (entry->lru.flags & LRU_ENTRY_PINNED) {
+          lru_move_entry(&entry->lru, 0, entry->lru.lane);
      }
+     pthread_mutex_unlock(&entry->lru.mtx);
 
-     /* Already pinned? */
-     if (!(entry->lru.flags & LRU_ENTRY_PINNED))
-          goto unlock;
-
-     lru_move_entry(&entry->lru, (flags & ~LRU_ENTRY_PINNED) |
-                    LRU_HAVE_LOCKED_ENTRY);
-
-unlock:
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_unlock(&entry->lru.mtx);
-     }
-
-     return (CACHE_INODE_SUCCESS);
+     return CACHE_INODE_SUCCESS;
 }
+
+/**
+ * @brief Get a reference
+ *
+ * This function acquires a reference on the given cache entry, if the
+ * entry is still live.  Terrible things will happen if you call this
+ * function and don't check its return value.
+ *
+ * @param[in] entry  The entry on which to get a reference
+ * @param[in] client Structure for per-thread resource management
+ * @param[in] flags  Flags indicating the type of reference sought
+ *
+ * @retval CACHE_INODE_SUCCESS if the reference was acquired
+ * @retval CACHE_INODE_DEAD_ENTRY if the object is being disposed
+ */
 
 cache_inode_status_t
 cache_inode_lru_ref(cache_entry_t *entry,
                     cache_inode_client_t *client,
                     uint32_t flags)
 {
-     /* Refuse to grant a reference if we're below the sentinel value */
-     if (entry->lru.refcount == 0) {
+     pthread_mutex_lock(&entry->lru.mtx);
+
+     /* Refuse to grant a reference if we're below the sentinel value
+        or the entry is being removed or recycled. */
+     if ((entry->lru.refcount == 0) ||
+         (entry->lru.flags & LRU_ENTRY_CONDEMNED)) {
+          pthread_mutex_unlock(&entry->lru.mtx);
           return CACHE_INODE_DEAD_ENTRY;
      }
 
@@ -735,22 +1278,6 @@ cache_inode_lru_ref(cache_entry_t *entry,
      assert(!((flags & LRU_REQ_INITIAL) &&
               (flags & LRU_REQ_SCAN)));
 
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_lock(&entry->lru.mtx);
-     }
-
-     /**
-      * @todo ACE: I think it might be better to redo this so that the
-      *       state layer calls the LRU to pin and unpin entries,
-      *       rather than having the LRU interrogate the entry about
-      *       its state every time it looks at it.
-      */
-
-     pthread_rwlock_rdlock(&entry->state_lock);
-     if (cache_inode_file_holds_state(entry)) {
-          flags |= LRU_ENTRY_PINNED;
-     }
-
      ++(entry->lru.refcount);
 
      /* Move an entry forward if this is an initial reference.  In the
@@ -760,393 +1287,76 @@ cache_inode_lru_ref(cache_entry_t *entry,
      if ((flags & LRU_REQ_INITIAL) ||
          ((flags & LRU_REQ_SCAN) &&
           (entry->lru.flags & LRU_ENTRY_L2))) {
-         lru_move_entry(&entry->lru, (flags | LRU_HAVE_LOCKED_ENTRY));
+          lru_move_entry(&entry->lru, flags, entry->lru.lane);
      }
 
-     pthread_rwlock_unlock(&entry->state_lock);
+     pthread_mutex_unlock(&entry->lru.mtx);
 
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_unlock(&entry->lru.mtx);
-     }
-
-     return (CACHE_INODE_SUCCESS);
+     return CACHE_INODE_SUCCESS;
 }
+
+/**
+ * @brief Relinquish a reference
+ *
+ * This function relinquishes a reference on the given cache entry.
+ * It follows the disposal/recycling lock discipline given at the
+ * beginning of the file.
+ *
+ * @param[in] entry  The entry on which to release a reference
+ * @param[in] client Structure for per-thread resource management
+ * @param[in] flags  Flags indicating the type of reference sought
+ *
+ * @retval CACHE_INODE_SUCCESS if the reference was acquired
+ */
 
 cache_inode_status_t
 cache_inode_lru_unref(cache_entry_t *entry,
                       cache_inode_client_t *client,
                       uint32_t flags)
 {
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_lock(&entry->lru.mtx);
-     }
 
+     pthread_mutex_lock(&entry->lru.mtx);
      assert(entry->lru.refcount >= 1);
 
-     if (--(entry->lru.refcount) == 0) {
-          /* entry is UNREACHABLE -- the call path is recycling entry */
-          cache_inode_lru_clean(entry, client);
-          lru_remove_entry(&entry->lru,
-                           (flags | LRU_HAVE_LOCKED_ENTRY));
+     if (entry->lru.refcount == 1) {
+          struct lru_q_base *q
+               = lru_select_queue(entry->lru.flags,
+                                  entry->lru.lane);
+          if (--(entry->lru.refcount) == 0) {
+               /* Refcount has fallen to zero.  Remove the entry from
+                  the queue and mark it as dead. */
+               entry->lru.flags = LRU_ENTRY_CONDEMNED;
+               glist_del(&entry->lru.q);
+               --(q->size);
+               entry->lru.lane = LRU_NO_LANE;
+               /* Give other threads a chance to see that */
+               pthread_mutex_unlock(&entry->lru.mtx);
+               pthread_mutex_unlock(&q->mtx);
+               pthread_yield();
+               /* We should not need to hold the LRU mutex at this
+                  point.  The hash table locks will ensure that by
+                  the time this function completes successfully,
+                  other threads will either have received
+                  CACHE_INDOE_DEAD_ENTRY in the attempt to gain a
+                  reference, or we will have removed the hash table
+                  entry. */
+               cache_inode_lru_clean(entry, client);
 
-          pthread_mutex_unlock(&entry->lru.mtx);
-          ReleaseToPool(entry, &client->pool_entry);
-          return (CACHE_INODE_SUCCESS);
-     }
-
-     /* Is this actually needed?  We should be set if we have the SAL
-        call cache_inode_lru_pin and cache_inode_lru_unpin */
-     pthread_rwlock_rdlock(&entry->state_lock);
-     if (cache_inode_file_holds_state(entry) &&
-         !(entry->lru.flags & LRU_ENTRY_PINNED)) {
-          cache_inode_lru_pin(entry,
-                              (flags | LRU_HAVE_LOCKED_ENTRY));
-     } else if (!cache_inode_file_holds_state(entry) &&
-                (entry->lru.flags & LRU_ENTRY_PINNED)) {
-          cache_inode_lru_unpin(entry,
-                                (flags | LRU_HAVE_LOCKED_ENTRY));
-     }
-     pthread_rwlock_unlock(&entry->state_lock);
-
-     if (!(flags & LRU_HAVE_LOCKED_ENTRY)) {
-          pthread_mutex_unlock(&entry->lru.mtx);
-     }
-
-    return (CACHE_INODE_SUCCESS);
-}
-
-#define S_NSECS 1000000000UL    /* nsecs in 1s */
-#define MS_NSECS 1000000UL      /* nsecs in 1ms */
-
-/**
- * @brief Sleep in the LRU thread for a specified time
- *
- * This function should only be called from the LRU thread.  It sleeps
- * for the specified time or until woken by lru_wake_thread.
- *
- * @param ms [in] The time to sleep, in milliseconds.
- *
- * @retval FALSE if the thread wakes by timeout.
- * @retval TRUE if the thread wakes by signal.
- */
-
-static bool_t
-lru_thread_delay_ms(unsigned long ms)
-{
-     time_t now = time(NULL);
-     uint64_t nsecs = (S_NSECS * now) + (MS_NSECS * ms);
-     struct timespec then = {
-          .tv_sec = nsecs / S_NSECS,
-          .tv_nsec = nsecs % S_NSECS
-     };
-     bool_t woke = FALSE;
-
-     pthread_mutex_lock(&lru_mtx);
-     lru_thread_state.flags |= LRU_SLEEPING;
-     woke = (pthread_cond_timedwait(&lru_cv, &lru_mtx, &then)
-             == ETIMEDOUT);
-     lru_thread_state.flags &= ~LRU_SLEEPING;
-     pthread_mutex_unlock(&lru_mtx);
-     return woke;
-}
-
-/**
- * @brief Function that executes in the lru thread
- *
- * This function performs long-term reorganization, compaction, and
- * other operations that are not performed in-line with referencing
- * and dereferencing.
- *
- * This function is responsible for cleaning the FD cache.  It works
- * by the following rules:
- *
- *  - If the number of open FDs is below the low water mark, do
- *    nothing.
- *
- *  - If the number of open FDs is between the low and high water
- *    mark, make one pass through the queues, and exit.  Each pass
- *    consists of taking an entry from L1, examining to see if it is a
- *    regular file not bearing state with an open FD, closing the open
- *    FD if it is, and then moving it to L2.  The advantage of the two
- *    level system is twofold: First, seldom used entries congregate
- *    in L2 and the promotion behaviour provides some scan
- *    resistance.  Second, once an entry is examined, it is moved to
- *    L2, so we won't examine the same cache entry repeatedly.
- *
- *  - If the number of open FDs is greater than the high water mark,
- *    we consider ourselves to be in extremis.  In this case we make a
- *    number of passes through the queue not to exceed the number of
- *    passes that would be required to process the number of entries
- *    equal to a biggest_window percent of the system specified
- *    maximum.
- *
- *  - If we are in extremis, and performing the maximum amount of work
- *    allowed has not moved the open FD count required_progress%
- *    toward the high water mark, increment lru_state.futility.  If
- *    lru_state.futility reaches futility_count, temporarily disable
- *    FD caching.
- *
- *  - Every time we wake through timeout, reset futility_count to 0.
- *
- *  - If we fall below the low water mark and FD caching has been
- *    temporarily disabled, re-enable it.
- *
- * @param arg [in] A void pointer, currently ignored.
- *
- * @return A void pointer, currently NULL.
- */
-static void *lru_thread(void *arg __attribute__((unused)))
-{
-     /* Index */
-     size_t lane = 0;
-     /* Temporary holder for flags */
-     uint32_t tmpflags = lru_state.flags;
-     /* Client required to make close calls. */
-     cache_inode_client_t client;
-     /* True if we are taking extreme measures to reclaim FDs. */
-     bool_t extremis = FALSE;
-     /* True if we were explicitly woke. */
-     bool_t woke = FALSE;
-
-     SetNameFunction("lru_thread");
-
-     /* Initialize BuddyMalloc (otherwise we crash whenever we call
-        into the FSAL and it tries to update its calls tats) */
-#ifndef _NO_BUDDY_SYSTEM
-     if ((BuddyInit(&nfs_param.buddy_param_worker)) != BUDDY_SUCCESS) {
-          /* Failed init */
-          LogFatal(COMPONENT_CACHE_INODE_LRU,
-                   "Memory manager could not be initialized");
-     }
-     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                  "Memory manager successfully initialized");
-#endif
-     /* Initialize the cache_inode_client_t so we can call into
-        cache_inode and not reimplement close. */
-     if (cache_inode_client_init(&client,
-                                 &(nfs_param.cache_layers_param
-                                   .cache_inode_client_param),
-                                 0, NULL)) {
-          /* Failed init */
-          LogFatal(COMPONENT_CACHE_INODE_LRU,
-                   "Cache Inode client could not be initialized");
-     }
-     LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                  "Cache Inode client successfully initialized");
-
-     while (1) {
-          if (lru_thread_state.flags & LRU_SHUTDOWN)
-               break;
-
-          extremis = (open_fd_count > lru_state.fds_hiwat);
-          LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                       "Reaper awakes.");
-
-          if (!woke) {
-               /* If we make it all the way through a timed sleep
-                  without being woken, we assume we aren't racing
-                  against the impossible. */
-               lru_state.futility = 0;
-          }
-
-          uint64_t t_count = 0;
-
-          /* First, sum the queue counts.  This lets us know where we
-             are relative to our watermarks. */
-
-          for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
-               pthread_mutex_lock(&LRU_1[lane].lru.mtx);
-               lru_state.last_count += LRU_1[lane].lru.size;
-               pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
-
-               pthread_mutex_lock(&LRU_1[lane].lru_pinned.mtx);
-               lru_state.last_count += LRU_1[lane].lru_pinned.size;
-               pthread_mutex_unlock(&LRU_1[lane].lru_pinned.mtx);
-
-               pthread_mutex_lock(&LRU_2[lane].lru.mtx);
-               lru_state.last_count += LRU_2[lane].lru.size;
-               pthread_mutex_unlock(&LRU_2[lane].lru.mtx);
-
-               pthread_mutex_lock(&LRU_2[lane].lru_pinned.mtx);
-               lru_state.last_count += LRU_2[lane].lru_pinned.size;
-               pthread_mutex_unlock(&LRU_2[lane].lru_pinned.mtx);
-          }
-
-          LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                       "%zu entries in cache.",
-                       t_count);
-
-          if (tmpflags & LRU_STATE_RECLAIMING) {
-              if (t_count < lru_state.entries_lowat) {
-                  tmpflags &= ~LRU_STATE_RECLAIMING;
-                  LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                               "Entry count below low water mark.  "
-                               "Disabling reclaim.");
-               }
+               pthread_mutex_destroy(&entry->lru.mtx);
+               ReleaseToPool(entry, &client->pool_entry);
+               return (CACHE_INODE_SUCCESS);
           } else {
-              if (t_count > lru_state.entries_hiwat) {
-                  tmpflags |= LRU_STATE_RECLAIMING;
-                  LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                               "Entry count above high water mark.  "
-                               "Enabling reclaim.");
-               }
+               pthread_mutex_unlock(&q->mtx);
           }
-
-          /* Update global state */
-          pthread_mutex_lock(&lru_mtx);
-
-          lru_state.last_count = t_count;
-          lru_state.flags = tmpflags;
-
-          pthread_mutex_unlock(&lru_mtx);
-
-          /* Reap file descriptors.  This is a preliminary example of
-             the L2 functionality rather than soemthing we expect to
-             be permanent.  (It will have to adapt heavily to the new
-             FSAL API, for example.) */
-
-          if (open_fd_count < lru_state.fds_lowat) {
-               LogDebug(COMPONENT_CACHE_INODE_LRU,
-                        "FD count is %zd and low water mark is "
-                        "%d: not reaping.",
-                        open_fd_count,
-                        lru_state.fds_lowat);
-               if (cache_inode_gc_policy.use_fd_cache &&
-                   !lru_state.caching_fds) {
-                    lru_state.caching_fds = TRUE;
-                    LogInfo(COMPONENT_CACHE_INODE_LRU,
-                            "Re-enabling FD cache.");
-               }
-          } else {
-               /* The count of open file descriptors before this run
-                  of the reaper. */
-               size_t formeropen = open_fd_count;
-               /* Total work done in all passes so far.  If this
-                  exceeds the window, stop. */
-               size_t totalwork = 0;
-               /* The current count (after reaping) of open FDs */
-               size_t currentopen = 0;
-               /* Work done in the most recent pass of all queues.  if
-                  value is less than the work to do in a single queue,
-                  don't spin through more passes. */
-               size_t workpass = 0;
-
-               LogDebug(COMPONENT_CACHE_INODE_LRU,
-                        "Starting to reap.");
-
-               if (extremis) {
-                    LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                                 "Open FDs over high water mark, "
-                                 "reapring aggressively.");
-               }
-
-               do {
-                    workpass = 0;
-                    for (lane = 0; lane < LRU_N_Q_LANES; ++lane) {
-                         /* The amount of work done on this lane on
-                            this pass. */
-                         size_t workdone = 0;
-                         /* The current entry being examined. */
-                         cache_inode_lru_t *lru = NULL;
-                         /* Number of entries closed in this run. */
-                         size_t closed = 0;
-
-                         LogDebug(COMPONENT_CACHE_INODE_LRU,
-                                  "Reaping up to %d entries from lane %zd",
-                                  lru_state.per_lane_work,
-                                  lane);
-                         pthread_mutex_lock(&LRU_1[lane].lru.mtx);
-                         while ((workdone < lru_state.per_lane_work) &&
-                                (lru = glist_first_entry(&LRU_1[lane].lru.q,
-                                                         cache_inode_lru_t,
-                                                         q))) {
-                              cache_inode_status_t cache_status
-                                   = CACHE_INODE_SUCCESS;
-                              cache_entry_t *entry
-                                   = container_of(lru, cache_entry_t, lru);
-
-                              pthread_mutex_lock(&lru->mtx);
-                              pthread_rwlock_rdlock(&entry->state_lock);
-                              if (!cache_inode_file_holds_state(entry)) {
-                                   if (cache_inode_fd(entry)) {
-                                        /* We would want the state
-                                           lock for this anyway, so
-                                           someone doesn't get an open
-                                           while we're disposing of
-                                           the descriptor. */
-                                        cache_inode_close(
-                                             entry, &client,
-                                             CACHE_INODE_FLAG_REALLYCLOSE,
-                                             &cache_status);
-                                        if (cache_status
-                                            != CACHE_INODE_SUCCESS) {
-                                             LogCrit(COMPONENT_CACHE_INODE_LRU,
-                                                     "Error closing file in "
-                                                     "LRU thread.");
-                                        } else {
-                                             ++closed;
-                                             --open_fd_count;
-                                        }
-                                   }
-                                   /* Move the entry to L2 whatever the
-                                      result of examining it.*/
-                                   lru_move_entry(lru,
-                                                  LRU_HAVE_LOCKED_SRC |
-                                                  LRU_HAVE_LOCKED_ENTRY |
-                                                  LRU_ENTRY_L2);
-                              } else {
-                                   /* Highly unlikely, this will probably
-                                      go away if we make the SAL
-                                      responsible for pinning/unpinning. */
-                                   lru_move_entry(lru,
-                                                  LRU_HAVE_LOCKED_SRC |
-                                                  LRU_HAVE_LOCKED_ENTRY |
-                                                  LRU_ENTRY_L2 |
-                                                  LRU_ENTRY_PINNED);
-                              }
-                              pthread_rwlock_unlock(&entry->state_lock);
-                              pthread_mutex_unlock(&lru->mtx);
-                              ++workdone;
-                         }
-                         pthread_mutex_unlock(&LRU_1[lane].lru.mtx);
-                         LogDebug(COMPONENT_CACHE_INODE_LRU,
-                                  "Actually processed %zd entries on lane %zd "
-                                  "closing %zd descriptors",
-                                  workdone,
-                                  lane,
-                                  closed);
-                         workpass += workdone;
-                    }
-                    totalwork += workpass;
-               } while (extremis &&
-                        (workpass >= lru_state.per_lane_work) &&
-                        (totalwork < lru_state.biggest_window));
-
-               currentopen = open_fd_count;
-               if (extremis &&
-                   ((currentopen > formeropen) ||
-                    (formeropen - currentopen >
-                     (((formeropen - lru_state.fds_hiwat) *
-                       cache_inode_gc_policy.required_progress) /
-                      100)))) {
-                    if (++lru_state.futility >
-                        cache_inode_gc_policy.futility_count) {
-                         LogCrit(COMPONENT_CACHE_INODE_LRU,
-                                 "Futility count exceeded.  The LRU thread is "
-                                 "unable to make progress in reclaiming FDs."
-                                 "Disabling FD cache.");
-                         lru_state.caching_fds = FALSE;
-                    }
-               }
-          }
-
-          lru_thread_delay_ms(lru_state.threadwait);
+     } else {
+          /* We may decrement the reference count without the queue
+             lock, since it cannot go to 0. */
+          --(entry->lru.refcount);
      }
 
-     LogEvent(COMPONENT_CACHE_INODE_LRU,
-              "Shutting down LRU thread.");
+     pthread_mutex_unlock(&entry->lru.mtx);
 
-     return NULL;
+     return (CACHE_INODE_SUCCESS);
 }
 
 /**
