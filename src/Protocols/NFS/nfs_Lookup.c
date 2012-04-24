@@ -65,15 +65,15 @@
 
 /**
  *
- *  nfs_Lookup: The NFS PROC2 and PROC3 LOOKUP
+ * @brief The NFS PROC2 and PROC3 LOOKUP
  *
  * Implements the NFS PROC LOOKUP function (for V2 and V3).
- * 
+ *
  * @param parg    [IN]    pointer to nfs arguments union
- * @param pexport [IN]    pointer to nfs export list 
+ * @param pexport [IN]    pointer to nfs export list
  * @param pcontext   [IN]    credentials to be used for this request
  * @param pclient [INOUT] client resource to be used
- * @param preq    [IN]    pointer to SVC request related to this call 
+ * @param preq    [IN]    pointer to SVC request related to this call
  * @param pres    [OUT]   pointer to the structure to contain the result of the call
  *
  * @return always NFS_REQ_OK (this routine does nothing)

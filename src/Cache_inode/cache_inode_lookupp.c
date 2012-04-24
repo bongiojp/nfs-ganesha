@@ -102,7 +102,14 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
           /* Bump the refcount on the current entry (so the caller's
              releasing decrementing it doesn't take us below the
              sentinel count */
-          cache_inode_ref(entry);
+          if (cache_inode_lru_ref(entry, client, 0) !=
+              CACHE_INODE_SUCCESS) {
+               /* This cannot actually happen */
+               LogFatal(COMPONENT_CACHE_INODE,
+                        "There has been a grave failure in consistency: "
+                        "Unable to increment reference count on an entry that "
+                        "on which we should have a referenced.");
+          }
           return entry;
      }
 

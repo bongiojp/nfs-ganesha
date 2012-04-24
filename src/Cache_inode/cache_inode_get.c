@@ -175,9 +175,7 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
           /* Get the cache_inode file type */
           type = cache_inode_fsal_type_convert(fsal_attributes.type);
           if (type == SYMBOLIC_LINK) {
-               FSAL_CLEAR_MASK(fsal_attributes.asked_attributes);
-               FSAL_SET_MASK(fsal_attributes.asked_attributes,
-                             client->attrmask);
+               fsal_attributes.asked_attributes = client->attrmask;
                fsal_status =
                     FSAL_readlink(file_handle, context,
                                   &create_arg.link_content,

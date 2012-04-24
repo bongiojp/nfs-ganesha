@@ -97,11 +97,6 @@ extern struct lru_state lru_state;
 static const uint32_t LRU_FLAG_NONE = 0x0000;
 
 /**
- * Take a reference on the created entry
- */
-static const uint32_t LRU_REQ_FLAG_REF = 0x0004;
-
-/**
  * The caller is fetching an initial reference
  */
 static const uint32_t LRU_REQ_INITIAL = 0x0040;
@@ -142,28 +137,6 @@ static inline uint32_t cache_inode_lru_thread_lane(int index)
 {
     return (uint32_t) (cache_inode_lru_thread_id(index) %
                        LRU_N_Q_LANES);
-}
-
-/* convenience function to increase entry refcount, permissible
- * IFF the caller has an initial reference */
-static inline void
-cache_inode_ref(struct cache_entry_t *entry)
-{
-    P(entry->lru.mtx);
-    ++(entry->lru.refcount);
-    V(entry->lru.mtx);
-}
-
-static inline int64_t
-cache_inode_lru_readref(struct cache_entry_t *entry)
-{
-    int64_t cnt;
-
-    P(entry->lru.mtx);
-    cnt = entry->lru.refcount;
-    V(entry->lru.mtx);
-
-    return (cnt);
 }
 
 extern struct cache_entry_t *cache_inode_lru_get(cache_inode_client_t *pclient,

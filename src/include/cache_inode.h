@@ -543,8 +543,6 @@ static const uint32_t CACHE_INODE_FLAG_CONTENT_HAVE = 0x20; /*< For a
                                                          that the
                                                          content lock
                                                          is held */
-static const uint32_t CACHE_INODE_FLAG_EXREF = 0x40; /*< Take an additional
-                                                  reference */
 static const uint32_t CACHE_INODE_FLAG_REALLYCLOSE = 0x80; /*< Close a file
                                                         even with
                                                         caching

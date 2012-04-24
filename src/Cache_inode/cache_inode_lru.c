@@ -872,6 +872,7 @@ lru_thread(void *arg __attribute__((unused)))
                                  result of examining it.*/
                               lru_move_entry(lru, LRU_ENTRY_L2,
                                              lru->lane);
+                              pthread_mutex_unlock(&lru->mtx);
                               ++workdone;
                               /* Reacquire the lock on the queue
                                  fragment for the next run through
@@ -1096,6 +1097,8 @@ cache_inode_lru_pkgshutdown(void)
  *
  * This function repurposes a resident entry in the LRU system if the
  * system is above low-water mark, and allocates a new one otherwise.
+ * On success, this function always returns an entry with two
+ * references (one for the sentinel, one to allow the caller's use.)
  *
  * @param[in] client  Structure for per-thread resource management
  * @param[in] status  Returned status
@@ -1177,14 +1180,14 @@ cache_inode_lru_get(cache_inode_client_t *client,
      assert(entry);
      /* Set the sentinel refcount.  Since the entry isn't in a queue,
         nobody can bump the refcount yet. */
-     entry->lru.refcount = 1;
-     if (flags & LRU_REQ_FLAG_REF) {
-          ++(entry->lru.refcount);
-     }
+     entry->lru.refcount = 2;
+     pthread_mutex_lock(&entry->lru.mtx);
      lru_insert_entry(&entry->lru, 0,
                       lru_lane_of_entry(entry));
+     pthread_mutex_unlock(&entry->lru.mtx);
 
      *status = CACHE_INODE_SUCCESS;
+
 out:
      return (entry);
 }

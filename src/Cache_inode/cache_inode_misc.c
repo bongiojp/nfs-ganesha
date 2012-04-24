@@ -272,7 +272,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      latched = TRUE;
 
      /* Pull an entry off the LRU */
-     entry = cache_inode_lru_get(client, status, LRU_REQ_FLAG_REF);
+     entry = cache_inode_lru_get(client, status, 0);
      if (entry == NULL) {
           LogCrit(COMPONENT_CACHE_INODE,
                   "cache_inode_new_entry: cache_inode_lru_get failed");
@@ -281,7 +281,6 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
      }
      /* This should be the sentinel, plus one to use the entry we
         just returned. */
-     assert(entry->lru.refcount == LRU_SENTINEL_REFCOUNT + 1);
      lrurefed = TRUE;
 
      memset(&entry->handle, 0, sizeof(entry->handle));

@@ -127,7 +127,14 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
           pentry = pentry_parent;
           /* Increment the refcount so the caller's decrementing it
              doesn't take us below the sentinel count. */
-          cache_inode_ref(pentry);
+          if (cache_inode_lru_ref(pentry, pclient, 0) !=
+              CACHE_INODE_SUCCESS) {
+               /* This cannot actually happen */
+               LogFatal(COMPONENT_CACHE_INODE,
+                        "There has been a grave failure in consistency: "
+                        "Unable to increment reference count on an entry that "
+                        "on which we should have a referenced.");
+          }
      } else if (!FSAL_namecmp(pname, (fsal_name_t *) & FSAL_DOT_DOT)) {
           /* Directory do only have exactly one parent. This a limitation
            * in all FS, which implies that hard link are forbidden on
