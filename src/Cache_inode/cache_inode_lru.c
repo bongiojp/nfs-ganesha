@@ -443,7 +443,7 @@ lru_move_entry(cache_inode_lru_t *lru,
      }
 
      lru->flags &= ~(LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
-     lru->flags |= (LRU_ENTRY_L2 | LRU_ENTRY_PINNED);
+     lru->flags |= (flags & (LRU_ENTRY_L2 | LRU_ENTRY_PINNED));
 }
 
 /**
@@ -1294,7 +1294,11 @@ cache_inode_lru_ref(cache_entry_t *entry,
      if ((flags & LRU_REQ_INITIAL) ||
          ((flags & LRU_REQ_SCAN) &&
           (entry->lru.flags & LRU_ENTRY_L2))) {
-          lru_move_entry(&entry->lru, flags, entry->lru.lane);
+          lru_move_entry(&entry->lru,
+                         /* Pinned stays pinned */
+                         flags | (entry->lru.flags &
+                                  LRU_ENTRY_PINNED),
+                         entry->lru.lane);
      }
 
      pthread_mutex_unlock(&entry->lru.mtx);
