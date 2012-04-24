@@ -203,7 +203,8 @@ int nfs_Mkdir(nfs_arg_t * parg,
              break;
          }
 
-       return NFS_REQ_OK ;
+       rc = NFS_REQ_OK ;
+       goto out;
      }
 #endif /* _USE_QUOTA */
 
@@ -320,7 +321,10 @@ int nfs_Mkdir(nfs_arg_t * parg,
                             nfs3_AllocateFH(&pres->res_mkdir3.MKDIR3res_u.resok.obj.post_op_fh3_u.
                                             handle);
                           if(pres->res_mkdir3.status !=  NFS3_OK)
-                            return NFS_REQ_OK;
+                            {
+                              rc = NFS_REQ_OK;
+                              goto out;
+                            }
 
                           if(nfs3_FSALToFhandle
                              (&pres->res_mkdir3.MKDIR3res_u.resok.obj.post_op_fh3_u.
@@ -502,9 +506,9 @@ out:
 
 /**
  * nfs_Mkdir_Free: Frees the result structure allocated for nfs_Mkdir.
- * 
+ *
  * Frees the result structure allocated for nfs_Mkdir.
- * 
+ *
  * @param pres        [INOUT]   Pointer to the result structure.
  *
  */

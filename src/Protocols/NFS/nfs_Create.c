@@ -246,7 +246,8 @@ int nfs_Create(nfs_arg_t * parg,
              break;
          }
 
-       return NFS_REQ_OK ;
+       rc = NFS_REQ_OK ;
+       goto out;
      }
 #endif /* _USE_QUOTA */
 
@@ -433,7 +434,10 @@ int nfs_Create(nfs_arg_t * parg,
                         nfs3_AllocateFH(&pres->res_create3.CREATE3res_u
                                         .resok.obj.post_op_fh3_u.handle);
                       if (pres->res_create3.status != NFS3_OK)
-                        return NFS_REQ_OK;
+                        {
+                          rc = NFS_REQ_OK;
+                          goto out;
+                        }
 
                       /* Set Post Op Fh3 structure */
                       if(nfs3_FSALToFhandle(
@@ -445,7 +449,8 @@ int nfs_Create(nfs_arg_t * parg,
                                    post_op_fh3_u.handle.data.data_val);
 
                           pres->res_create3.status = NFS3ERR_BADHANDLE;
-                          return NFS_REQ_OK;
+                          rc = NFS_REQ_OK;
+                          goto out;
                         }
 
                       /* Set Post Op Fh3 structure */
@@ -476,7 +481,8 @@ int nfs_Create(nfs_arg_t * parg,
                       pres->res_create3.status = NFS3_OK;
                       break;
                     }       /* switch */
-                  return NFS_REQ_OK;
+                  rc = NFS_REQ_OK;
+                  goto out;
                 }
             }
           else

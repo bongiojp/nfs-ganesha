@@ -487,7 +487,10 @@ int nfs3_Lookup_Xattr(nfs_arg_t * parg,
   pres->res_lookup3.status =
 	  nfs3_AllocateFH((nfs_fh3 *) & (pres->res_lookup3.LOOKUP3res_u.resok.object.data));
   if(pres->res_lookup3.status !=  NFS3_OK)
-    return NFS_REQ_OK;
+    {
+      rc = NFS_REQ_OK;
+      goto out;
+    }
 
   if(nfs3_FSALToFhandle((nfs_fh3 *) & (pres->res_lookup3.LOOKUP3res_u.resok.object.data),
                         pfsal_handle, pexport))
@@ -963,7 +966,10 @@ int nfs3_Create_Xattr(nfs_arg_t * parg,
   pres->res_create3.status =
        nfs3_AllocateFH(&resok->obj.post_op_fh3_u.handle);
   if(pres->res_create3.status != NFS3_OK)
-    return NFS_REQ_OK;
+    {
+      rc = NFS_REQ_OK;
+      goto out;
+    }
 
   /* Set Post Op Fh3 structure */
   if(nfs3_FSALToFhandle(&resok->obj.post_op_fh3_u.handle, pfsal_handle, pexport) == 0)

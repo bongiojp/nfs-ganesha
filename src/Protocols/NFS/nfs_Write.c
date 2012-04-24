@@ -199,8 +199,9 @@ int nfs_Write(nfs_arg_t * parg,
              pres->res_write3.status = nfs3_Errno(cache_status);
              break;
            }
-         return NFS_REQ_OK;
-        }
+         rc = NFS_REQ_OK;
+         goto out;
+       }
 
       rc = NFS_REQ_OK;
       goto out;
@@ -315,7 +316,8 @@ int nfs_Write(nfs_arg_t * parg,
              break;
          }
 
-       return NFS_REQ_OK ;
+       rc = NFS_REQ_OK ;
+       goto out;
      }
 #endif /* _USE_QUOTA */
 

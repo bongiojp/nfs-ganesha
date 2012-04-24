@@ -91,6 +91,7 @@ int nfs3_Pathconf(nfs_arg_t * parg,
   cache_inode_fsal_data_t fsal_data;
   fsal_attrib_list_t attr;
   fsal_staticfsinfo_t * pstaticinfo = pcontext->export_context->fe_static_fs_info;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -105,7 +106,10 @@ int nfs3_Pathconf(nfs_arg_t * parg,
 
   /* Convert file handle into a fsal_handle */
   if(nfs3_FhandleToFSAL(&(parg->arg_pathconf3.object), &fsal_data.fh_desc, pcontext) == 0)
-    return NFS_REQ_DROP;
+    {
+      rc = NFS_REQ_DROP;
+      goto out;
+    }
 
   /* Get the entry in the cache_inode */
   if((pentry = cache_inode_get(&fsal_data,
@@ -116,7 +120,8 @@ int nfs3_Pathconf(nfs_arg_t * parg,
     {
       /* Stale NFS FH ? */
       pres->res_pathconf3.status = NFS3ERR_STALE;
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   /* Build post op file attributes */
@@ -132,7 +137,14 @@ int nfs3_Pathconf(nfs_arg_t * parg,
   pres->res_pathconf3.PATHCONF3res_u.resok.case_insensitive = pstaticinfo->case_insensitive;
   pres->res_pathconf3.PATHCONF3res_u.resok.case_preserving = pstaticinfo->case_preserving;
 
-  return NFS_REQ_OK;
+ out:
+
+  if (pentry)
+    {
+      cache_inode_put(pentry, pclient);
+    }
+
+  return rc;
 }                               /* nfs3_Pathconf */
 
 /**

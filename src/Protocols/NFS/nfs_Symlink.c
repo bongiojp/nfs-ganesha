@@ -210,7 +210,8 @@ int nfs_Symlink(nfs_arg_t * parg /* IN  */ ,
              break;
          }
 
-       return NFS_REQ_OK ;
+       rc = NFS_REQ_OK;
+       goto out;
      }
 #endif /* _USE_QUOTA */
 

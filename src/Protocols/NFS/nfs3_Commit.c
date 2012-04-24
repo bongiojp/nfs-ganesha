@@ -93,6 +93,7 @@ int nfs3_Commit(nfs_arg_t * parg,
   fsal_attrib_list_t pre_attr;
   fsal_attrib_list_t *ppre_attr;
   uint64_t typeofcommit;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -109,7 +110,10 @@ int nfs3_Commit(nfs_arg_t * parg,
 
   /* Convert file handle into a fsal_handle */
   if(nfs3_FhandleToFSAL(&(parg->arg_commit3.file), &fsal_data.fh_desc, pcontext) == 0)
-    return NFS_REQ_DROP;
+    {
+      rc = NFS_REQ_DROP;
+      goto out;
+    }
 
   /* Get the entry in the cache_inode */
   if((pentry = cache_inode_get(&fsal_data,
@@ -120,7 +124,8 @@ int nfs3_Commit(nfs_arg_t * parg,
     {
       /* Stale NFS FH ? */
       pres->res_commit3.status = NFS3ERR_STALE;
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   if((pexport->use_commit == TRUE) &&
@@ -130,8 +135,11 @@ int nfs3_Commit(nfs_arg_t * parg,
           (pexport->use_ganesha_write_buffer == TRUE))
     typeofcommit = CACHE_INODE_UNSAFE_WRITE_TO_GANESHA_BUFFER;
   else
-    /* We only do stable writes with this export so no need to execute a commit */
-    return NFS_REQ_OK;
+    {
+      /* We only do stable writes with this export so no need to execute a commit */
+      rc = NFS_REQ_OK;
+      goto out;
+    }
 
   /* Do not use DC if data cache is enabled, the data is kept synchronous is the DC */
   if(cache_inode_commit(pentry,
@@ -150,7 +158,8 @@ int nfs3_Commit(nfs_arg_t * parg,
                      ppre_attr,
                      ppre_attr, &(pres->res_commit3.COMMIT3res_u.resfail.file_wcc));
 
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   /* Set the pre_attr */
@@ -166,7 +175,14 @@ int nfs3_Commit(nfs_arg_t * parg,
          sizeof(writeverf3));
   pres->res_commit3.status = NFS3_OK;
 
-  return NFS_REQ_OK;
+ out:
+
+  if (pentry)
+    {
+      cache_inode_put(pentry, pclient);
+    }
+
+  return rc;
 }                               /* nfs3_Commit */
 
 /**

@@ -170,6 +170,7 @@ nfs_Readdir(nfs_arg_t *arg,
      struct nfs3_readdir_cb_data cb3 = {NULL};
      cache_inode_readdir_cb_t cbfunc;
      void *cbdata;
+     cache_entry_t *parent_dir_entry = NULL;
 
      if (isDebug(COMPONENT_NFSPROTO) || isDebug(COMPONENT_NFS_READDIR)) {
           char str[LEN_FH_STR];
@@ -335,7 +336,6 @@ nfs_Readdir(nfs_arg_t *arg,
 
      /* Fills ".." */
      if ((cookie <= 1) && (estimated_num_entries > 1)) {
-          cache_entry_t *parent_dir_entry = NULL;
           fsal_attrib_list_t parent_dir_attr;
           /* Get parent pentry */
           parent_dir_entry = cache_inode_lookupp(dir_entry,
@@ -372,7 +372,8 @@ nfs_Readdir(nfs_arg_t *arg,
           if (!cbfunc(cbdata, "..", &parent_dir_entry->handle,
                       &parent_dir_attr, 2))
                 goto outerr;
-          cache_inode_lru_unref(parent_dir_entry, client, 0);
+          cache_inode_put(parent_dir_entry, client);
+          parent_dir_entry = NULL;
      }
 
 /* Some definitions that will be very useful to avoid very long names
@@ -438,6 +439,10 @@ out:
           cache_inode_put(dir_entry, client);
      }
 
+     if (parent_dir_entry) {
+          cache_inode_put(parent_dir_entry, client);
+     }
+
      /* Deallocate memory in the event of an error */
      if (req->rq_vers == NFS_V2) {
           if (((res->res_readdir2.status != NFS_OK) ||
@@ -465,6 +470,7 @@ outerr:
           assert(cbdata == &cb3);
           res->res_readdir3.status = cb3.error;
      }
+
      goto out;
 } /* nfs_Readdir */
 

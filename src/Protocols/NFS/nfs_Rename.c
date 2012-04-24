@@ -345,8 +345,10 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
 
             }
 
-          /* New entry already exists. In this case (see RFC), entry should be compatible: Both are non-directories or 
-           * both are directories and 'todir' is empty. If compatible, old 'todir' entry is scratched, if not returns EEXISTS */
+          /* New entry already exists. In this case (see RFC), entry
+           * should be compatible: Both are non-directories or both
+           * are directories and 'todir' is empty. If compatible, old
+           * 'todir' entry is scratched, if not returns EEXISTS */
           if(should_not_exists != NULL)
             {
               /* We need to lookup over the old entry also */
@@ -358,8 +360,9 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                                                      &cache_status))
                  != NULL)
                 {
-                  /* If pentry is the same for source and target, then we are trying to rename
-                   * a hard link to another hard link with the same inode. This is a noop. */
+                  /* If pentry is the same for source and target, then
+                   * we are trying to rename a hard link to another
+                   * hard link with the same inode. This is a noop. */
                   if (should_not_exists == should_exists)
                     {
                       switch (preq->rq_vers)
@@ -367,7 +370,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                         case NFS_V2:
                           pres->res_stat2 = NFS_OK;
                           break;
-                          
+
                         case NFS_V3:
                           /*
                            * Build Weak Cache Coherency
@@ -453,12 +456,12 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                         }
 
                     }
-                }               /*  if( cache_inode_type_are_rename_compatible( should_exists, should_not_exists ) ) */
+                }
             }
 
-          /* if( ( should_exists = cache_inode_lookup( parent_pentry, .... */
-          /* If this point is reached, then destination object already exists with that name in the directory 
-             and types are not compatible, we should return that the file exists */
+          /* If this point is reached, then destination object already
+             exists with that name in the directory and types are not
+             compatible, we should return that the file exists */
           cache_status = CACHE_INODE_ENTRY_EXISTS;
         }                       /* if( should_not_exists != NULL ) */
     }
@@ -483,7 +486,7 @@ int nfs_Rename(nfs_arg_t * parg /* IN  */ ,
                       pnew_pre_attr, &(pres->res_rename3.RENAME3res_u.resfail.todir_wcc));
 
   rc = NFS_REQ_OK;
-  
+
 out:
   if (parent_pentry)
       cache_inode_put(parent_pentry, pclient);

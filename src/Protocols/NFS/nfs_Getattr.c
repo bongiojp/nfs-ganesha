@@ -24,7 +24,7 @@
  */
 
 /**
- * \file	  nfs_Geattr.c 
+ * \file    nfs_Getattr.c
  * \author  $Author: deniel $
  * \data    $Date: 2005/11/28 17:02:53 $
  * \version $Revision: 1.15 $
@@ -192,8 +192,8 @@ int nfs_Getattr(nfs_arg_t * parg,
     }
 
   LogFullDebug(COMPONENT_CACHE_INODE,"nfs_Getattr: cache_inode_get() "
-	       "returned cache status %d(%s)",
-	       cache_status, cache_inode_err_str(cache_status));
+               "returned cache status %d(%s)",
+               cache_status, cache_inode_err_str(cache_status));
 
   if (cache_status != CACHE_INODE_FSAL_ESTALE)
     cache_status = CACHE_INODE_INVALID_ARGUMENT;

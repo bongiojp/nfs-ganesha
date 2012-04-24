@@ -92,6 +92,7 @@ int nfs3_Access(nfs_arg_t * parg,
   cache_entry_t *pentry = NULL;
   cache_inode_fsal_data_t fsal_data;
   fsal_attrib_list_t attr;
+  int rc = NFS_REQ_OK;
 
   if(isDebug(COMPONENT_NFSPROTO))
     {
@@ -103,14 +104,22 @@ int nfs3_Access(nfs_arg_t * parg,
 
   /* Is this a xattr FH ? */
   if(nfs3_Is_Fh_Xattr(&(parg->arg_access3.object)))
-    return nfs3_Access_Xattr(parg, pexport, pcontext, pclient, preq, pres);
+    {
+      rc = nfs3_Access_Xattr(parg, pexport, pcontext, pclient, preq, pres);
+      goto out;
+    }
 
   /* to avoid setting it on each error case */
-  pres->res_access3.ACCESS3res_u.resfail.obj_attributes.attributes_follow = FALSE;
+  pres->res_access3.ACCESS3res_u.resfail.obj_attributes.attributes_follow
+    = FALSE;
 
   /* Convert file handle into a fsal_handle */
-  if(nfs3_FhandleToFSAL(&(parg->arg_access3.object), &fsal_data.fh_desc, pcontext) == 0)
-    return NFS_REQ_DROP;
+  if(nfs3_FhandleToFSAL(&(parg->arg_access3.object),
+                        &fsal_data.fh_desc, pcontext) == 0)
+    {
+      rc = NFS_REQ_DROP;
+      goto out;
+    }
 
   /* Get the entry in the cache_inode */
   if((pentry = cache_inode_get(&fsal_data,
@@ -121,12 +130,14 @@ int nfs3_Access(nfs_arg_t * parg,
     {
       if(nfs_RetryableError(cache_status))
         {
-          return NFS_REQ_DROP;
+          rc = NFS_REQ_DROP;
+          goto out;
         }
       else
         {
           pres->res_access3.status = nfs3_Errno(cache_status);
-          return NFS_REQ_OK;
+          rc = NFS_REQ_OK;
+          goto out;
         }
     }
 
@@ -182,7 +193,8 @@ int nfs3_Access(nfs_arg_t * parg,
                           .resok.obj_attributes));
 
       pres->res_access3.status = NFS3_OK;
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   if(cache_status == CACHE_INODE_FSAL_EACCESS)
@@ -239,13 +251,15 @@ int nfs3_Access(nfs_arg_t * parg,
       nfs3_access_debug("reduced access", pres->res_access3.ACCESS3res_u.resok.access);
 
       pres->res_access3.status = NFS3_OK;
-      return NFS_REQ_OK;
+      rc = NFS_REQ_OK;
+      goto out;
     }
 
   /* If we are here, there was an error */
   if(nfs_RetryableError(cache_status))
     {
-      return NFS_REQ_DROP;
+      rc = NFS_REQ_DROP;
+      goto out;
     }
 
   nfs_SetFailedStatus(pcontext, pexport,
@@ -256,8 +270,15 @@ int nfs3_Access(nfs_arg_t * parg,
                       pentry,
                       &(pres->res_access3.ACCESS3res_u.resfail.obj_attributes),
                       NULL, NULL, NULL, NULL, NULL, NULL);
-  return NFS_REQ_OK;
 
+out:
+
+  if (pentry)
+    {
+      cache_inode_put(pentry, pclient);
+    }
+
+  return rc;
 }                               /* nfs3_Access */
 
 /**
