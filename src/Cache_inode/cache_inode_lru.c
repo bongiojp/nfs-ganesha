@@ -1162,6 +1162,7 @@ cache_inode_lru_get(cache_inode_client_t *client,
                *status = CACHE_INODE_MALLOC_ERROR;
                goto out;
           }
+          entry->lru.flags = 0;
           if (pthread_mutex_init(&entry->lru.mtx, NULL) != 0) {
                ReleaseToPool(entry, &client->pool_entry);
                LogCrit(COMPONENT_CACHE_INODE_LRU,
