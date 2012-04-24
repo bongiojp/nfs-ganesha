@@ -191,7 +191,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     {
       /* Bad type .... */
       *pstatus = CACHE_INODE_BAD_TYPE;
-      return *pstatus;
+      goto out;
     }
 
   /* Must take locks on directories now,
@@ -223,7 +223,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     else
       LogDebug(COMPONENT_CACHE_INODE, "Rename : stale source");
 
-    return *pstatus;
+    goto out;
   }
 
   /* Check if an object with the new name exists in the destination
@@ -247,7 +247,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
           /* Return EISDIR */
           *pstatus = CACHE_INODE_IS_A_DIRECTORY;
-          return *pstatus;
+          goto out;
         }
 
       if(pentry_lookup_dest->type != DIRECTORY &&
@@ -256,7 +256,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           /* Return ENOTDIR */
           *pstatus = CACHE_INODE_NOT_A_DIRECTORY;
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-          return *pstatus;
+          goto out;
         }
 
       /* If caller wants to rename a file on himself, let it do it:
@@ -272,7 +272,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                    pentry_dirsrc, poldname->name, pentry_dirdest,
                    pnewname->name);
 
-          return *pstatus;
+          goto out;
         }
 
       /* Entry with the newname exists, if it is a non-empty
@@ -289,7 +289,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                    "Rename (%p,%s)->(%p,%s) : destination is a non-empty directory",
                    pentry_dirsrc, poldname->name, pentry_dirdest,
                    pnewname->name);
-          return *pstatus;
+          goto out;
         }
 
       /* get rid of this entry by trying removing it */
@@ -307,7 +307,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                    "Rename : unable to remove destination");
 
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-          return *pstatus;
+          goto out;
         }
     }                           /* if( pentry_lookup_dest != NULL ) */
   else
@@ -318,7 +318,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
                    "Rename : stale destnation");
 
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-          return *pstatus;
+          goto out;
         }
     }
 
@@ -334,7 +334,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       *pstatus = CACHE_INODE_BAD_TYPE;
 
       src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-      return *pstatus;
+      goto out;
     }
 
   /* Get the handle for the dirdest pentry */
@@ -349,7 +349,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
       src_dest_unlock(pentry_dirsrc, pentry_dirdest);
       *pstatus = CACHE_INODE_BAD_TYPE;
 
-      return *pstatus;
+      goto out;
     }
 
   /* Perform the rename operation in FSAL,
@@ -364,7 +364,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
     {
       *pstatus = cache_inode_error_convert(fsal_status);
       src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-      return *pstatus;
+      goto out;
     }
 
   /* Manage the returned attributes */
@@ -398,7 +398,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
           *pstatus = status;
           /* Unlock the pentry and exits */
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-          return *pstatus;
+          goto out;
         }
     }
   else
@@ -418,7 +418,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         {
           *pstatus = status;
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-          return *pstatus;
+          goto out;
         }
 
       /* Remove the old entry */
@@ -429,11 +429,23 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
         {
           *pstatus = status;
           src_dest_unlock(pentry_dirsrc, pentry_dirdest);
-          return *pstatus;
+          goto out;
         }
     }
 
   /* unlock entries */
   src_dest_unlock(pentry_dirsrc, pentry_dirdest);
+
+out:
+
+  if (pentry_lookup_dest)
+    {
+      cache_inode_put(pentry_lookup_dest, pclient);
+    }
+  if (pentry_lookup_src)
+    {
+      cache_inode_put(pentry_lookup_src, pclient);
+    }
+
   return *pstatus;
 }                               /* cache_inode_rename */

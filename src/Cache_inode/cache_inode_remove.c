@@ -43,9 +43,9 @@
  *
  * @param pentry [IN] entry to be checked (should be of type DIRECTORY)
  *
- * @return CACHE_INODE_SUCCESS is directory is empty\n
- * @return CACHE_INODE_BAD_TYPE is pentry is not of type DIRECTORY\n
- * @return CACHE_INODE_DIR_NOT_EMPTY if pentry is not empty
+ * @retval CACHE_INODE_SUCCESS is directory is empty\n
+ * @retval CACHE_INODE_BAD_TYPE is pentry is not of type DIRECTORY
+ * @retval CACHE_INODE_DIR_NOT_EMPTY if pentry is not empty
  *
  */
 cache_inode_status_t cache_inode_is_dir_empty(cache_entry_t *pentry)
@@ -334,14 +334,7 @@ cache_inode_remove_impl(cache_entry_t *entry,
           /* Destroy the entry when everyone's references to it have
              been relinquished.  Most likely now. */
           pthread_rwlock_unlock(&to_remove_entry->attr_lock);
-          if ((*status =
-               cache_inode_lru_unref(to_remove_entry,
-                                     client,
-                                     0)) != CACHE_INODE_SUCCESS) {
-               goto out;
-          }
-          /* We call unref twice.  Once for the reference taken by
-             lookup, and once for the sentinel reference. */
+          /* This unref is for the sentinel */
           if ((*status =
                cache_inode_lru_unref(to_remove_entry,
                                      client,
@@ -359,6 +352,12 @@ out:
          !(flags & CACHE_INODE_FLAG_CONTENT_HOLD)) {
           pthread_rwlock_unlock(&entry->content_lock);
      }
+
+     /* This is for the reference taken by lookup */
+     if (to_remove_entry)
+       {
+         cache_inode_put(to_remove_entry, client);
+       }
 
      return *status;
 }
