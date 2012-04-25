@@ -172,7 +172,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
    */
   if((rc = nfs4_Check_Stateid(&arg_READ4.stateid,
                               pentry,
-#ifdef _USE_NFS41
+#ifdef _USE_NFS4_1
                               (data->minorversion == 0 ?
                                0LL : data->psession->clientid),
 #else
