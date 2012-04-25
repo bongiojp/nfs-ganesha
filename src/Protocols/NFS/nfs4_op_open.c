@@ -80,7 +80,7 @@ static nfsstat4 nfs4_create_fh(compound_data_t *, cache_entry_t *, char **);
  * @param data  [INOUT] Pointer to the compound request's data
  * @param resp  [IN]    Pointer to nfs4_op results
  *
- * @return NFS4_OK if successfull, other values show an error. 
+ * @return NFS4_OK if successfull, other values show an error.
  *
  */
 
