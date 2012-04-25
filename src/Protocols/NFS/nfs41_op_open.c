@@ -55,6 +55,7 @@
 #include "sal_functions.h"
 #include "nfs_proto_functions.h"
 #include "nfs_proto_tools.h"
+#include "cache_inode_lru.h"
 
 /**
  * nfs41_op_open: NFS4_OP_OPEN, opens and eventually creates a regular file.
@@ -65,7 +66,7 @@
  * @param data  [INOUT] Pointer to the compound request's data
  * @param resp  [IN]    Pointer to nfs4_op results
  *
- * @return NFS4_OK if successfull, other values show an error.  
+ * @return NFS4_OK if successfull, other values show an error.
  *
  */
 
@@ -576,6 +577,13 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                          newfh4.nfs_fh4_len);
 
                   data->current_entry = pentry_lookup;
+                  if (cache_inode_lru_ref(data->current_entry,
+                                          data->pclient, 0)
+                      != CACHE_INODE_SUCCESS)
+                    {
+                      LogFatal(COMPONENT_CACHE_INODE_LRU,
+                               "Inconsistency found in LRU management.");
+                    }
                   data->current_filetype = REGULAR_FILE;
 
                   /* regular exit */
@@ -637,6 +645,14 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                                      newfh4.nfs_fh4_len);
 
                               data->current_entry = pentry_lookup;
+                              if (cache_inode_lru_ref(data->current_entry,
+                                                      data->pclient, 0)
+                                  != CACHE_INODE_SUCCESS)
+                                {
+                                  LogFatal(COMPONENT_CACHE_INODE_LRU,
+                                           "Inconsistency found in LRU "
+                                           "management.");
+                                }
                               data->current_filetype = REGULAR_FILE;
 
                               pthread_rwlock_unlock(&pentry_lookup
@@ -1028,6 +1044,13 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   memcpy(data->currentFH.nfs_fh4_val, newfh4.nfs_fh4_val, newfh4.nfs_fh4_len);
 
   data->current_entry = pentry_newfile;
+  if (cache_inode_lru_ref(data->current_entry,
+                          data->pclient, 0)
+      != CACHE_INODE_SUCCESS)
+    {
+      LogFatal(COMPONENT_CACHE_INODE_LRU,
+               "Inconsistency found in LRU management.");
+    }
   data->current_filetype = REGULAR_FILE;
 
   /* Status of parent directory after the operation */
