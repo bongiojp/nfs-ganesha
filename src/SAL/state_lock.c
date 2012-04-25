@@ -2021,6 +2021,17 @@ state_status_t state_test(cache_entry_t        * pentry,
 
   pthread_rwlock_rdlock(&pentry->state_lock);
 
+  cache_status = cache_inode_pin(pentry);
+
+  if(cache_status != CACHE_INODE_SUCCESS)
+    {
+      pthread_rwlock_unlock(&pentry->state_lock);
+      *pstatus = cache_inode_status_to_state_status(cache_status);
+      LogDebug(COMPONENT_STATE,
+               "Could not pin file");
+      return *pstatus;
+    }
+
   found_entry = get_overlapping_entry(pentry, pcontext, powner, plock);
 
   if(found_entry != NULL)
@@ -2063,6 +2074,8 @@ state_status_t state_test(cache_entry_t        * pentry,
   if(isFullDebug(COMPONENT_STATE) && isFullDebug(COMPONENT_MEMLEAKS))
     LogList("Lock List", pentry, &pentry->object.file.lock_list);
 
+  state_cache_inode_unpin_locked(pentry);
+
   pthread_rwlock_unlock(&pentry->state_lock);
 
   return *pstatus;
@@ -2096,6 +2109,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
   cache_inode_status_t   cache_status;
   fsal_staticfsinfo_t  * pstatic = pcontext->export_context->fe_static_fs_info;
   fsal_lock_op_t         lock_op;
+
   if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, 0, &cache_status) != CACHE_INODE_SUCCESS)
     {
       *pstatus = cache_inode_status_to_state_status(cache_status);
@@ -2455,13 +2469,25 @@ state_status_t state_unlock(cache_entry_t        * pentry,
                             cache_inode_client_t * pclient,
                             state_status_t       * pstatus)
 {
-  bool_t empty = FALSE;
+  bool_t                 empty = FALSE;
+  cache_inode_status_t   cache_status;
 
   /* We need to iterate over the full lock list and remove
    * any mapping entry. And sle_lock.lock_start = 0 and sle_lock.lock_length = 0 nlm_lock
    * implies remove all entries
    */
   pthread_rwlock_wrlock(&pentry->state_lock);
+
+  cache_status = cache_inode_pin(pentry);
+
+  if(cache_status != CACHE_INODE_SUCCESS)
+    {
+      pthread_rwlock_unlock(&pentry->state_lock);
+      *pstatus = cache_inode_status_to_state_status(cache_status);
+      LogDebug(COMPONENT_STATE,
+               "Could not pin file");
+      return *pstatus;
+    }
 
   LogFullDebug(COMPONENT_STATE,
                "----------------------------------------------------------------------");
@@ -2497,6 +2523,9 @@ state_status_t state_unlock(cache_entry_t        * pentry,
       LogMajor(COMPONENT_STATE,
                "Unable to remove lock from list for unlock, error=%s",
                state_err_str(*pstatus));
+
+      state_cache_inode_unpin_locked(pentry);
+
       pthread_rwlock_unlock(&pentry->state_lock);
       return *pstatus;
     }
@@ -2710,6 +2739,11 @@ state_status_t state_nlm_notify(state_nsm_client_t   * pnsmclient,
           continue;
         }
 
+      /* Make sure we hold an lru ref to the cache inode while calling unlock */
+      if(cache_inode_lru_ref(pentry, pclient, 0) != CACHE_INODE_SUCCESS)
+        LogCrit(COMPONENT_STATE,
+                "Ugliness - cache_inode_lru_ref has returned non-success");
+
       /* Remove all locks held by this NLM Client on the file */
       if(state_unlock(pentry,
                       &fsal_context,
@@ -2728,6 +2762,9 @@ state_status_t state_nlm_notify(state_nsm_client_t   * pnsmclient,
                        state_err_str(*pstatus));
           errcnt++;
         }
+
+      /* Release the lru ref to the cache inode we held while calling unlock */
+      cache_inode_lru_unref(pentry, pclient, 0);
     }
 
   /* Put locks from current client incarnation onto end of list */
@@ -2796,6 +2833,11 @@ state_status_t state_owner_unlock_all(fsal_op_context_t    * pcontext,
       lock.lock_start  = 0;
       lock.lock_length = 0;
 
+      /* Make sure we hold an lru ref to the cache inode while calling unlock */
+      if(cache_inode_lru_ref(pentry, pclient, 0) != CACHE_INODE_SUCCESS)
+        LogCrit(COMPONENT_STATE,
+                "Ugliness - cache_inode_lru_ref has returned non-success");
+
       /* Remove all locks held by this owner on the file */
       if(state_unlock(pentry,
                       pcontext,
@@ -2814,6 +2856,9 @@ state_status_t state_owner_unlock_all(fsal_op_context_t    * pcontext,
                state_err_str(*pstatus));
           errcnt++;
         }
+
+      /* Release the lru ref to the cache inode we held while calling unlock */
+      cache_inode_lru_unref(pentry, pclient, 0);
     }
   return *pstatus;
 }

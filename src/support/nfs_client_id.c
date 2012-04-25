@@ -50,6 +50,7 @@
 #include "nfs4.h"
 #include "sal_data.h"
 #include "sal_functions.h"
+#include "cache_inode_lru.h"
 
 #ifdef _APPLE
 #define strnlen( s, l ) strlen( s )
@@ -434,6 +435,14 @@ static void release_lockstate(state_owner_t *plock_owner)
       state_t * pstate_found = glist_entry(glist,
 					  state_t,
 					  state_owner_list);  
+
+      /* Make sure we hold an lru ref to the cache inode while calling state_del */
+      if(cache_inode_lru_ref(pstate_found->state_pentry,
+                             plock_owner->so_pclient,
+                             0) != CACHE_INODE_SUCCESS)
+        LogCrit(COMPONENT_STATE,
+                "Ugliness - cache_inode_lru_ref has returned non-success");
+
       if(state_del(pstate_found,
                plock_owner->so_pclient,
                &state_status) != STATE_SUCCESS)
@@ -442,6 +451,11 @@ static void release_lockstate(state_owner_t *plock_owner)
                "release_lockstate failed to release stateid error %s",
                 state_err_str(state_status));
       }
+
+      /* Release the lru ref to the cache inode we held while calling state_del */
+      cache_inode_lru_unref(pstate_found->state_pentry,
+                            plock_owner->so_pclient,
+                            0);
     }
 }
 
@@ -462,6 +476,14 @@ static void release_openstate(state_owner_t *popen_owner)
 
       cache_entry_t    * pentry = pstate_found->state_pentry;
       cache_inode_status_t   cache_status;
+
+      /* Make sure we hold an lru ref to the cache inode while calling state_del */
+      if(cache_inode_lru_ref(pstate_found->state_pentry,
+                             popen_owner->so_pclient,
+                             0) != CACHE_INODE_SUCCESS)
+        LogCrit(COMPONENT_STATE,
+                "Ugliness - cache_inode_lru_ref has returned non-success");
+
       if(state_del(pstate_found,
                popen_owner->so_pclient,
                &state_status) != STATE_SUCCESS)
@@ -470,6 +492,12 @@ static void release_openstate(state_owner_t *popen_owner)
                "CLOSE failed to release stateid error %s",
                state_err_str(state_status));
       }
+
+      /* Release the lru ref to the cache inode we held while calling state_del */
+      cache_inode_lru_unref(pstate_found->state_pentry,
+                            popen_owner->so_pclient,
+                            0);
+
       /* Close the file in FSAL through the cache inode */
       cache_inode_close(pentry,
                         popen_owner->so_pclient,
