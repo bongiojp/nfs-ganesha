@@ -753,7 +753,7 @@ lru_thread(void *arg __attribute__((unused)))
           pthread_mutex_unlock(&lru_mtx);
 
           /* Reap file descriptors.  This is a preliminary example of
-             the L2 functionality rather than soemthing we expect to
+             the L2 functionality rather than something we expect to
              be permanent.  (It will have to adapt heavily to the new
              FSAL API, for example.) */
 
@@ -1287,17 +1287,23 @@ cache_inode_lru_ref(cache_entry_t *entry,
 
      ++(entry->lru.refcount);
 
-     /* Move an entry forward if this is an initial reference.  In the
-        case of a scan, move to the MRU of L2.  (lru_move_entry from
-        L2 to L2 will promote to the MRU.) */
+     /* Move an entry forward if this is an initial reference. */
 
-     if ((flags & LRU_REQ_INITIAL) ||
-         ((flags & LRU_REQ_SCAN) &&
-          (entry->lru.flags & LRU_ENTRY_L2))) {
+     if (flags & LRU_REQ_INITIAL) {
           lru_move_entry(&entry->lru,
                          /* Pinned stays pinned */
                          flags | (entry->lru.flags &
                                   LRU_ENTRY_PINNED),
+                         entry->lru.lane);
+     } else if ((flags & LRU_REQ_SCAN) &&
+                (entry->lru.flags & LRU_ENTRY_L2)) {
+          lru_move_entry(&entry->lru,
+                         /* Pinned stays pinned, L2 stays in L2. A
+                            reference got for SCAN must not be used
+                            to open an FD. */
+                         flags | (entry->lru.flags &
+                                  LRU_ENTRY_PINNED) |
+                         LRU_ENTRY_L2,
                          entry->lru.lane);
      }
 
