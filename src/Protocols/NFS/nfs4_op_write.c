@@ -198,12 +198,12 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
    */
   if((rc = nfs4_Check_Stateid(&arg_WRITE4.stateid,
                               pentry,
-#ifdef _USE_NFS41
+#ifdef _USE_NFS4_1
                               (data->minorversion == 0 ?
                                0LL : data->psession->clientid),
 #else
                               0LL,
-#endif /* _USE_NFS41 */
+#endif /* _USE_NFS4_1 */
                               &pstate_found,
                               data,
                               STATEID_SPECIAL_ANY,
@@ -230,9 +230,9 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
             break;
 
           case STATE_TYPE_DELEG:
-#ifdef _USE_NFS41
+#ifdef _USE_NFS4_1
           case STATE_TYPE_LAYOUT:
-#endif /* _USE_NFS41 */
+#endif /* _USE_NFS4_1 */
             pstate_open = NULL;
             // TODO FSF: should check that this is a write delegation?
             break;
