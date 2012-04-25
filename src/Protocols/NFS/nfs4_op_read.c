@@ -240,13 +240,21 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
            }
         }
 
-      /** @todo : this piece of code looks a bit suspicious (see
-          Rong's mail) */
+      /**
+       * @todo : this piece of code looks a bit suspicious (see
+       *  Rong's mail)
+       *
+       * @todo: ACE: This works for now.  How do we want to handle
+       * owner confirmation across NFSv4.0/NFSv4.1?  Do we want to
+       * mark every NFSv4.1 owner pre-confirmed, or make the check
+       * conditional on minorversion like we do here?
+       */
       switch( pstate_found->state_type )
         {
           case STATE_TYPE_SHARE:
-            if(pstate_found->state_powner->so_owner.so_nfs4_owner.so_confirmed
-               == FALSE)
+            if ((data->minorversion == 0) &&
+                ((pstate_found->state_powner->so_owner.so_nfs4_owner
+                  .so_confirmed) == FALSE))
               {
                  res_READ4.status = NFS4ERR_BAD_STATEID;
                  return res_READ4.status;
