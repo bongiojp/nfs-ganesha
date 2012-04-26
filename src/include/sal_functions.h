@@ -75,8 +75,6 @@ void dec_state_owner_ref(state_owner_t        * powner,
 state_status_t get_clientid_owner(clientid4 clientid,
                                   state_owner_t **clientid_owner);
 
-void state_cache_inode_unpin_locked(cache_entry_t * pentry);
-void state_cache_inode_unpin(cache_entry_t * pentry);
 void state_wipe_file(cache_entry_t        * pentry,
                      cache_inode_client_t * pclient);
 

@@ -141,16 +141,21 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
   char                   debug_str[OTHERSIZE * 2 + 1];
   struct glist_head    * glist;
   cache_inode_status_t   cache_status;
+  bool_t                 got_pinned = FALSE;
 
-  cache_status = cache_inode_pin(pentry);
-
-  if(cache_status != CACHE_INODE_SUCCESS)
+  if(glist_empty(&pentry->state_list))
     {
-      *pstatus = cache_inode_status_to_state_status(cache_status);
-      LogDebug(COMPONENT_STATE,
-               "Could not pin file");
-      state_cache_inode_unpin_locked(pentry);
-      return *pstatus;
+      cache_status = cache_inode_inc_pin_ref(pentry);
+
+      if(cache_status != CACHE_INODE_SUCCESS)
+        {
+          *pstatus = cache_inode_status_to_state_status(cache_status);
+          LogDebug(COMPONENT_STATE,
+                   "Could not pin file");
+          return *pstatus;
+        }
+
+      got_pinned = TRUE;
     }
 
   GetFromPool(pnew_state, &pclient->pool_state_v4, state_t);
@@ -162,13 +167,16 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
 
       /* stat */
       *pstatus = STATE_MALLOC_ERROR;
-      state_cache_inode_unpin_locked(pentry);
+
+      if(got_pinned)
+        cache_inode_dec_pin_ref(pentry);
+
       return *pstatus;
     }
 
   memset(pnew_state, 0, sizeof(*pnew_state));
 
-  /* Brwose the state's list */
+  /* Browse the state's list */
   glist_for_each(glist, &pentry->state_list)
     {
       piter_state = glist_entry(glist, state_t, state_list);
@@ -183,7 +191,10 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
           ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
           *pstatus = STATE_STATE_CONFLICT;
-          state_cache_inode_unpin_locked(pentry);
+
+          if(got_pinned)
+            cache_inode_dec_pin_ref(pentry);
+
           return *pstatus;
         }
     }
@@ -200,7 +211,10 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
       ReleaseToPool(pnew_state, &pclient->pool_state_v4);
 
       *pstatus = STATE_STATE_ERROR;
-      state_cache_inode_unpin_locked(pentry);
+
+      if(got_pinned)
+        cache_inode_dec_pin_ref(pentry);
+
       return *pstatus;
     }
 
@@ -230,7 +244,10 @@ state_status_t state_add_impl(cache_entry_t         * pentry,
        * to allocate memory.
        */
       *pstatus = STATE_MALLOC_ERROR;
-      state_cache_inode_unpin_locked(pentry);
+
+      if(got_pinned)
+        cache_inode_dec_pin_ref(pentry);
+
       return *pstatus;
     }
 
@@ -375,7 +392,9 @@ state_status_t state_del(state_t              * pstate,
 
   *pstatus = state_del_locked(pstate, pstate->state_pentry, pclient);
 
-  state_cache_inode_unpin_locked(entry);
+  if(*pstatus == STATE_SUCCESS &&
+     glist_empty(&pstate->state_pentry->state_list))
+    cache_inode_dec_pin_ref(pstate->state_pentry);
 
   pthread_rwlock_unlock(&entry->state_lock);
 
@@ -387,6 +406,9 @@ void state_nfs4_state_wipe(cache_entry_t        * pentry,
 {
   struct glist_head * glist;
   state_t           * pstate = NULL;
+
+  if(glist_empty(&pentry->state_list))
+    return;
 
   /* Iterate through file's state to wipe out all stateids */
   glist_for_each(glist, &pentry->state_list)
@@ -412,4 +434,6 @@ void state_nfs4_state_wipe(cache_entry_t        * pentry,
         }
       state_del_locked(pstate, pentry, pclient);
     }
+
+  cache_inode_dec_pin_ref(pstate->state_pentry);
 }
