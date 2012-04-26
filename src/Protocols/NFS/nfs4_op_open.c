@@ -1239,7 +1239,8 @@ static nfsstat4 nfs4_do_open(struct nfs_argop4  * op,
                 /* Attach this open to an export */
                 (*statep)->state_pexport = data->pexport;
                 P(data->pexport->exp_state_mutex);
-                glist_add_tail(&data->pexport->exp_state_list, &(*statep)->state_export_list);
+                glist_add_tail(&data->pexport->exp_state_list,
+                               &(*statep)->state_export_list);
                 V(data->pexport->exp_state_mutex);
         } else {
           /* Check if open from another export */
