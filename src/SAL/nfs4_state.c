@@ -369,13 +369,15 @@ state_status_t state_del(state_t              * pstate,
                          cache_inode_client_t * pclient,
                          state_status_t       * pstatus)
 {
-  pthread_rwlock_wrlock(&pstate->state_pentry->state_lock);
+  cache_entry_t *entry = pstate->state_pentry;
+
+  pthread_rwlock_wrlock(&entry->state_lock);
 
   *pstatus = state_del_locked(pstate, pstate->state_pentry, pclient);
 
-  state_cache_inode_unpin_locked(pstate->state_pentry);
+  state_cache_inode_unpin_locked(entry);
 
-  pthread_rwlock_unlock(&pstate->state_pentry->state_lock);
+  pthread_rwlock_unlock(&entry->state_lock);
 
   return *pstatus;
 }                               /* state_del */
