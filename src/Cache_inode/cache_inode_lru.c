@@ -1224,6 +1224,24 @@ cache_inode_pin(cache_entry_t *entry)
 }
 
 /**
+ * @brief Make it impossible to pin an entry
+ *
+ * This function makes it impossible to pin an entry, but does not
+ * unpin it.
+ *
+ * @param[in] entry  The entry to be moved
+ *
+ */
+
+void
+cache_inode_unpinnable(cache_entry_t *entry)
+{
+     pthread_mutex_lock(&entry->lru.mtx);
+     entry->lru.flags |= LRU_ENTRY_UNPINNABLE;
+     pthread_mutex_unlock(&entry->lru.mtx);
+}
+
+/**
  * @brief Function to let the state layer rlease a pin
  *
  * This function moves the given entry out of the pinned queue
