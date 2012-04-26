@@ -91,11 +91,11 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
   fsal_size_t              size;
   fsal_size_t              read_size, check_size;
   fsal_off_t               offset;
-  fsal_boolean_t           eof_met;
-  caddr_t                  bufferdata;
-  cache_inode_status_t     cache_status;
+  fsal_boolean_t           eof_met = FALSE;
+  caddr_t                  bufferdata = NULL;
+  cache_inode_status_t     cache_status = CACHE_INODE_SUCCESS;
   state_t                * pstate_found = NULL;
-  state_t                * pstate_open;
+  state_t                * pstate_open = NULL;
   /* This flag is set to true in the case of an anonymous read so that
      we know to release the state lock afterward.  The state lock does
      not need to be held during a non-anonymous read, since the open

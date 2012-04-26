@@ -1067,8 +1067,8 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
   res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 3;
   if((res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_val =
-      (uint32_t *) Mem_Alloc(res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len *
-                             sizeof(uint32_t))) == NULL)
+      Mem_Calloc(res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len,
+                 sizeof(uint32_t))) == NULL)
     {
       res_OPEN4.status = NFS4ERR_SERVERFAULT;
       res_OPEN4.OPEN4res_u.resok4.attrset.bitmap4_len = 0;
