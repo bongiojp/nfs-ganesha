@@ -152,6 +152,7 @@ extern cache_inode_status_t cache_inode_lru_unref(
      uint32_t flags);
 extern void lru_wake_thread();
 cache_inode_status_t cache_inode_pin(cache_entry_t *entry);
+void cache_inode_unpinnable(cache_entry_t *entry);
 cache_inode_status_t cache_inode_unpin(cache_entry_t *entry);
 
 /**
