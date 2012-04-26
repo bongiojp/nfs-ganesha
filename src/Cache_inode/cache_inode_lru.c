@@ -1206,18 +1206,22 @@ out:
  */
 
 cache_inode_status_t
-cache_inode_pin(cache_entry_t *entry)
+cache_inode_inc_pin_ref(cache_entry_t *entry)
 {
      cache_inode_status_t rc = CACHE_INODE_SUCCESS;
 
      pthread_mutex_lock(&entry->lru.mtx);
 
      if (entry->lru.flags & LRU_ENTRY_UNPINNABLE) {
-          rc = CACHE_INODE_DEAD_ENTRY;
-     } else if (!(entry->lru.flags & LRU_ENTRY_PINNED)) {
+          pthread_mutex_unlock(&entry->lru.mtx);
+          return CACHE_INODE_DEAD_ENTRY;
+     }
+
+     if (!entry->pin_refcnt && !(entry->lru.flags & LRU_ENTRY_PINNED)) {
           lru_move_entry(&entry->lru, LRU_ENTRY_PINNED,
                          entry->lru.lane);
      }
+     entry->pin_refcnt++;
      pthread_mutex_unlock(&entry->lru.mtx);
 
      return rc;
@@ -1236,10 +1240,12 @@ cache_inode_pin(cache_entry_t *entry)
  */
 
 cache_inode_status_t
-cache_inode_unpin(cache_entry_t *entry)
+cache_inode_dec_pin_ref(cache_entry_t *entry)
 {
      pthread_mutex_lock(&entry->lru.mtx);
-     if (entry->lru.flags & LRU_ENTRY_PINNED) {
+     assert(entry->pin_refcnt);
+     entry->pin_refcnt--;
+     if (!entry->pin_refcnt && (entry->lru.flags & LRU_ENTRY_PINNED)) {
           lru_move_entry(&entry->lru, 0, entry->lru.lane);
      }
      pthread_mutex_unlock(&entry->lru.mtx);

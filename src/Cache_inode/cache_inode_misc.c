@@ -318,6 +318,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
 
      entry->type = type;
      entry->flags = 0;
+     entry->pin_refcnt = 0;
      init_glist(&entry->state_list);
 
      switch (type) {

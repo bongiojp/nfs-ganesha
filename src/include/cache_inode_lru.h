@@ -151,8 +151,8 @@ extern cache_inode_status_t cache_inode_lru_unref(
      cache_inode_client_t *pclient,
      uint32_t flags);
 extern void lru_wake_thread();
-cache_inode_status_t cache_inode_pin(cache_entry_t *entry);
-cache_inode_status_t cache_inode_unpin(cache_entry_t *entry);
+cache_inode_status_t cache_inode_inc_pin_ref(cache_entry_t *entry);
+cache_inode_status_t cache_inode_dec_pin_ref(cache_entry_t *entry);
 
 /**
  * Return TRUE if there are FDs available to serve open requests,

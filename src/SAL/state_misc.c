@@ -900,20 +900,6 @@ void dec_state_owner_ref(state_owner_t        * powner,
   dec_state_owner_ref_locked(powner, pclient);
 }
 
-void state_cache_inode_unpin_locked(cache_entry_t * entry)
-{
-  if((entry->type != REGULAR_FILE || glist_empty(&entry->object.file.lock_list)) &&
-     glist_empty(&entry->state_list))
-    cache_inode_unpin(entry);
-}
-
-void state_cache_inode_unpin(cache_entry_t * pentry)
-{
-  pthread_rwlock_rdlock(&pentry->state_lock);
-  state_cache_inode_unpin_locked(pentry);
-  pthread_rwlock_unlock(&pentry->state_lock);
-}
-
 void state_wipe_file(cache_entry_t        * pentry,
                      cache_inode_client_t * pclient)
 {
