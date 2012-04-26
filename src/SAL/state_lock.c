@@ -1440,6 +1440,11 @@ void state_complete_grant(fsal_op_context_t     * pcontext,
   lock_entry = cookie_entry->sce_lock_entry;
   pentry     = cookie_entry->sce_pentry;
 
+  /* This routine does not call cache_inode_inc_pin_ref() because there MUST be
+   * at least one lock present for there to be a cookie_entry to even allow this
+   * routine to be called, and therefor the cache entry MUST be pinned.
+   */
+
   pthread_rwlock_wrlock(&pentry->state_lock);
 
   /* We need to make sure lock is ready to be granted */
@@ -1464,7 +1469,9 @@ void state_complete_grant(fsal_op_context_t     * pcontext,
    */
   free_cookie(cookie_entry, TRUE);
 
-  state_cache_inode_unpin_locked(pentry);
+  /* In case all locks have wound up free, we must release the pin reference. */
+  if(glist_empty(&pentry->object.file.lock_list))
+      cache_inode_inc_pin_ref(pentry);
 
   pthread_rwlock_unlock(&pentry->state_lock);
 }
@@ -1518,9 +1525,18 @@ void process_blocked_lock_upcall(state_block_data_t   * block_data,
   state_lock_entry_t * lock_entry = block_data->sbd_lock_entry;
   cache_entry_t      * pentry = lock_entry->sle_pentry;
 
+  /* This routine does not call cache_inode_inc_pin_ref() because there MUST be
+   * at least one lock present for there to be a block_data to even allow this
+   * routine to be called, and therefor the cache entry MUST be pinned.
+   */
+
   pthread_rwlock_wrlock(&pentry->state_lock);
 
   try_to_grant_lock(lock_entry, pclient);
+
+  /* In case all locks have wound up free, we must release the pin reference. */
+  if(glist_empty(&pentry->object.file.lock_list))
+      cache_inode_inc_pin_ref(pentry);
 
   pthread_rwlock_unlock(&pentry->state_lock);
 }
@@ -1709,6 +1725,11 @@ state_status_t state_release_grant(fsal_op_context_t     * pcontext,
   lock_entry = cookie_entry->sce_lock_entry;
   pentry     = cookie_entry->sce_pentry;
 
+  /* This routine does not call cache_inode_inc_pin_ref() because there MUST be
+   * at least one lock present for there to be a cookie_entry to even allow this
+   * routine to be called, and therefor the cache entry MUST be pinned.
+   */
+
   pthread_rwlock_wrlock(&pentry->state_lock);
 
   /* We need to make sure lock is only "granted" once...
@@ -1753,7 +1774,9 @@ state_status_t state_release_grant(fsal_op_context_t     * pcontext,
   /* Check to see if we can grant any blocked locks. */
   grant_blocked_locks(pentry, pcontext, pclient);
 
-  state_cache_inode_unpin_locked(pentry);
+  /* In case all locks have wound up free, we must release the pin reference. */
+  if(glist_empty(&pentry->object.file.lock_list))
+      cache_inode_inc_pin_ref(pentry);
 
   pthread_rwlock_unlock(&pentry->state_lock);
 
@@ -2011,26 +2034,28 @@ state_status_t state_test(cache_entry_t        * pentry,
           "TEST",
           pentry, pcontext, powner, plock);
 
-  if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, 0, &cache_status) != CACHE_INODE_SUCCESS)
-    {
-      *pstatus = cache_inode_status_to_state_status(cache_status);
-      LogFullDebug(COMPONENT_STATE,
-                   "Could not open file");
-      return *pstatus;
-    }
-
-  pthread_rwlock_rdlock(&pentry->state_lock);
-
-  cache_status = cache_inode_pin(pentry);
+  cache_status = cache_inode_inc_pin_ref(pentry);
 
   if(cache_status != CACHE_INODE_SUCCESS)
     {
-      pthread_rwlock_unlock(&pentry->state_lock);
       *pstatus = cache_inode_status_to_state_status(cache_status);
       LogDebug(COMPONENT_STATE,
                "Could not pin file");
       return *pstatus;
     }
+
+  if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, 0, &cache_status) != CACHE_INODE_SUCCESS)
+    {
+      *pstatus = cache_inode_status_to_state_status(cache_status);
+      LogFullDebug(COMPONENT_STATE,
+                   "Could not open file");
+
+      cache_inode_dec_pin_ref(pentry);
+
+      return *pstatus;
+    }
+
+  pthread_rwlock_rdlock(&pentry->state_lock);
 
   found_entry = get_overlapping_entry(pentry, pcontext, powner, plock);
 
@@ -2074,9 +2099,9 @@ state_status_t state_test(cache_entry_t        * pentry,
   if(isFullDebug(COMPONENT_STATE) && isFullDebug(COMPONENT_MEMLEAKS))
     LogList("Lock List", pentry, &pentry->object.file.lock_list);
 
-  state_cache_inode_unpin_locked(pentry);
-
   pthread_rwlock_unlock(&pentry->state_lock);
+
+  cache_inode_dec_pin_ref(pentry);
 
   return *pstatus;
 }
@@ -2110,6 +2135,16 @@ state_status_t state_lock(cache_entry_t         * pentry,
   fsal_staticfsinfo_t  * pstatic = pcontext->export_context->fe_static_fs_info;
   fsal_lock_op_t         lock_op;
 
+  cache_status = cache_inode_inc_pin_ref(pentry);
+
+  if(cache_status != CACHE_INODE_SUCCESS)
+    {
+      *pstatus = cache_inode_status_to_state_status(cache_status);
+      LogDebug(COMPONENT_STATE,
+               "Could not pin file");
+      return *pstatus;
+    }
+
   if(cache_inode_open(pentry, pclient, FSAL_O_RDWR, pcontext, 0, &cache_status) != CACHE_INODE_SUCCESS)
     {
       *pstatus = cache_inode_status_to_state_status(cache_status);
@@ -2121,18 +2156,6 @@ state_status_t state_lock(cache_entry_t         * pentry,
 #ifdef _USE_BLOCKING_LOCKS
 
   pthread_rwlock_wrlock(&pentry->state_lock);
-
-  cache_status = cache_inode_pin(pentry);
-
-  if(cache_status != CACHE_INODE_SUCCESS)
-    {
-      pthread_rwlock_unlock(&pentry->state_lock);
-      *pstatus = cache_inode_status_to_state_status(cache_status);
-      LogDebug(COMPONENT_STATE,
-               "Could not pin file");
-      return *pstatus;
-    }
-
 
   if(blocking != STATE_NON_BLOCKING)
     {
@@ -2153,8 +2176,10 @@ state_status_t state_lock(cache_entry_t         * pentry,
            */
           if(found_entry->sle_pexport != pexport)
             {
-              /* Don't need to unpin, we know there is state on file. */
               pthread_rwlock_unlock(&pentry->state_lock);
+
+              cache_inode_dec_pin_ref(pentry);
+
               LogEvent(COMPONENT_STATE,
                        "Lock Owner Export Conflict, Lock held for export %d (%s), request for export %d (%s)",
                        found_entry->sle_pexport->id,
@@ -2172,12 +2197,14 @@ state_status_t state_lock(cache_entry_t         * pentry,
           if(different_lock(&found_entry->sle_lock, plock))
             continue;
 
+          pthread_rwlock_unlock(&pentry->state_lock);
+
+          cache_inode_dec_pin_ref(pentry);
+
           /*
            * We have matched all atribute of the existing lock.
            * Just return with blocked status. Client may be polling.
-           * Don't need to unpin, we know there is state on file.
            */
-          pthread_rwlock_unlock(&pentry->state_lock);
           LogEntry("Found blocked", found_entry);
           *pstatus = STATE_LOCK_BLOCKED;
           return *pstatus;
@@ -2195,15 +2222,19 @@ state_status_t state_lock(cache_entry_t         * pentry,
       if(found_entry->sle_pexport != pexport &&
          !different_owners(found_entry->sle_owner, powner))
         {
-          /* Don't need to unpin, we know there is state on file. */
           pthread_rwlock_unlock(&pentry->state_lock);
+
+          cache_inode_dec_pin_ref(pentry);
+
           LogEvent(COMPONENT_STATE,
                    "Lock Owner Export Conflict, Lock held for export %d (%s), request for export %d (%s)",
                    found_entry->sle_pexport->id,
                    found_entry->sle_pexport->fullpath,
                    pexport->id,
                    pexport->fullpath);
+
           LogEntry("Found lock entry belonging to another export", found_entry);
+
           *pstatus = STATE_INVALID_ARGUMENT;
           return *pstatus;
         }
@@ -2266,9 +2297,12 @@ state_status_t state_lock(cache_entry_t         * pentry,
                                                pclient);
                 }
 #endif
-              /* Don't need to unpin, we know there is state on file. */
               pthread_rwlock_unlock(&pentry->state_lock);
+
+              cache_inode_dec_pin_ref(pentry);
+
               LogEntry("Found existing", found_entry);
+
               *pstatus = STATE_SUCCESS;
               return *pstatus;
             }
@@ -2301,9 +2335,11 @@ state_status_t state_lock(cache_entry_t         * pentry,
     {
       /* Can't do async blocking lock in FSAL and have a conflict.
        * Return it.
-       * Don't need to unpin, we know there is state on file.
        */
       pthread_rwlock_unlock(&pentry->state_lock);
+
+      cache_inode_dec_pin_ref(pentry);
+
       *pstatus = STATE_LOCK_CONFLICT;
       return *pstatus;
     }
@@ -2362,8 +2398,10 @@ state_status_t state_lock(cache_entry_t         * pentry,
                                         plock);
   if(!found_entry)
     {
-      state_cache_inode_unpin_locked(pentry);
       pthread_rwlock_unlock(&pentry->state_lock);
+
+      cache_inode_dec_pin_ref(pentry);
+
       *pstatus = STATE_MALLOC_ERROR;
       return *pstatus;
     }
@@ -2398,6 +2436,12 @@ state_status_t state_lock(cache_entry_t         * pentry,
       /* Insert entry into lock list */
       LogEntry("New", found_entry);
 
+      /* if the list is empty to start with; increment the pin ref count
+       * before adding it to the list
+       */
+      if(glist_empty(&pentry->object.file.lock_list))
+          cache_inode_inc_pin_ref(pentry);
+
       glist_add_tail(&pentry->object.file.lock_list, &found_entry->sle_list);
 
 #ifdef _USE_BLOCKING_LOCKS
@@ -2412,7 +2456,7 @@ state_status_t state_lock(cache_entry_t         * pentry,
 
       /* Discard lock entry */
       remove_from_locklist(found_entry, pclient);
-      state_cache_inode_unpin_locked(pentry);
+      //state_cache_inode_unpin_locked(pentry);
     }
 #ifdef _USE_BLOCKING_LOCKS
   else if(*pstatus == STATE_LOCK_BLOCKED)
@@ -2425,10 +2469,14 @@ state_status_t state_lock(cache_entry_t         * pentry,
       /* Insert entry into lock list */
       LogEntry("FSAL block for", found_entry);
 
+      if(glist_empty(&pentry->object.file.lock_list))
+          cache_inode_inc_pin_ref(pentry);
+
       glist_add_tail(&pentry->object.file.lock_list, &found_entry->sle_list);
 
-      /* Don't need to unpin, we know there is state on file. */
       pthread_rwlock_unlock(&pentry->state_lock);
+
+      cache_inode_dec_pin_ref(pentry);
 
       P(blocked_locks_mutex);
 
@@ -2447,10 +2495,11 @@ state_status_t state_lock(cache_entry_t         * pentry,
 
       /* Discard lock entry */
       remove_from_locklist(found_entry, pclient);
-      state_cache_inode_unpin_locked(pentry);
     }
 
   pthread_rwlock_unlock(&pentry->state_lock);
+
+  cache_inode_dec_pin_ref(pentry);
 
   return *pstatus;
 }
@@ -2472,20 +2521,32 @@ state_status_t state_unlock(cache_entry_t        * pentry,
   bool_t                 empty = FALSE;
   cache_inode_status_t   cache_status;
 
+  cache_status = cache_inode_inc_pin_ref(pentry);
+
+  if(cache_status != CACHE_INODE_SUCCESS)
+    {
+      *pstatus = cache_inode_status_to_state_status(cache_status);
+      LogDebug(COMPONENT_STATE,
+               "Could not pin file");
+      return *pstatus;
+    }
+
   /* We need to iterate over the full lock list and remove
    * any mapping entry. And sle_lock.lock_start = 0 and sle_lock.lock_length = 0 nlm_lock
    * implies remove all entries
    */
   pthread_rwlock_wrlock(&pentry->state_lock);
 
-  cache_status = cache_inode_pin(pentry);
-
-  if(cache_status != CACHE_INODE_SUCCESS)
+  /* If lock list is empty, there really isn't any work for us to do. */
+  if(glist_empty(&pentry->object.file.lock_list))
     {
       pthread_rwlock_unlock(&pentry->state_lock);
-      *pstatus = cache_inode_status_to_state_status(cache_status);
+
+      cache_inode_dec_pin_ref(pentry);
       LogDebug(COMPONENT_STATE,
-               "Could not pin file");
+               "Unlock success on file with no locks");
+
+      *pstatus = STATE_SUCCESS;
       return *pstatus;
     }
 
@@ -2524,11 +2585,17 @@ state_status_t state_unlock(cache_entry_t        * pentry,
                "Unable to remove lock from list for unlock, error=%s",
                state_err_str(*pstatus));
 
-      state_cache_inode_unpin_locked(pentry);
-
       pthread_rwlock_unlock(&pentry->state_lock);
+
+      cache_inode_dec_pin_ref(pentry);
+
       return *pstatus;
     }
+
+  /* If the lock list has become zero; decrement the pin ref count pt placed */
+  if(glist_empty(&pentry->object.file.lock_list))
+      cache_inode_dec_pin_ref(pentry);
+
 
   /* Unlocking the entire region will remove any FSAL locks we held, whether
    * from fully granted locks, or from blocking locks that were in the process
@@ -2566,15 +2633,14 @@ state_status_t state_unlock(cache_entry_t        * pentry,
   grant_blocked_locks(pentry, pcontext, pclient);
 #endif
 
-  /* Unpin cache inode entry if no more state */
-  state_cache_inode_unpin_locked(pentry);
-
   pthread_rwlock_unlock(&pentry->state_lock);
+
+  cache_inode_dec_pin_ref(pentry);
 
   if(isFullDebug(COMPONENT_STATE) &&
      isFullDebug(COMPONENT_MEMLEAKS) &&
      plock->lock_start == 0 && plock->lock_length == 0 &&
-    empty)
+     empty)
     dump_all_locks("All locks (after unlock)");
 
   return *pstatus;
@@ -2595,12 +2661,36 @@ state_status_t state_cancel(cache_entry_t        * pentry,
                             cache_inode_client_t * pclient,
                             state_status_t       * pstatus)
 {
-  struct glist_head *glist;
-  state_lock_entry_t *found_entry;
+  struct glist_head    * glist;
+  state_lock_entry_t   * found_entry;
+  cache_inode_status_t   cache_status;
 
   *pstatus = STATE_NOT_FOUND;
 
+  cache_status = cache_inode_inc_pin_ref(pentry);
+
+  if(cache_status != CACHE_INODE_SUCCESS)
+    {
+      *pstatus = cache_inode_status_to_state_status(cache_status);
+      LogDebug(COMPONENT_STATE,
+               "Could not pin file");
+      return *pstatus;
+    }
+
   pthread_rwlock_wrlock(&pentry->state_lock);
+
+  /* If lock list is empty, there really isn't any work for us to do. */
+  if(glist_empty(&pentry->object.file.lock_list))
+    {
+      pthread_rwlock_unlock(&pentry->state_lock);
+
+      cache_inode_dec_pin_ref(pentry);
+      LogDebug(COMPONENT_STATE,
+               "Cancel success on file with no locks");
+
+      *pstatus = STATE_SUCCESS;
+      return *pstatus;
+    }
 
   glist_for_each(glist, &pentry->object.file.lock_list)
     {
@@ -2625,10 +2715,13 @@ state_status_t state_cancel(cache_entry_t        * pentry,
       break;
     }
 
-  /* Unpin cache inode entry if no more state */
-  state_cache_inode_unpin_locked(pentry);
+  /* If the lock list has become zero; decrement the pin ref count pt placed */
+  if(glist_empty(&pentry->object.file.lock_list))
+      cache_inode_dec_pin_ref(pentry);
 
   pthread_rwlock_unlock(&pentry->state_lock);
+
+  cache_inode_dec_pin_ref(pentry);
 
   return *pstatus;
 }
@@ -2967,5 +3060,10 @@ void available_blocked_lock_upcall(cache_entry_t        * pentry,
 void state_lock_wipe(cache_entry_t        * pentry,
                      cache_inode_client_t * pclient)
 {
+  if(glist_empty(&pentry->object.file.lock_list))
+    return;
+
   free_list(&pentry->object.file.lock_list, pclient);
+
+  cache_inode_dec_pin_ref(pentry);
 }
