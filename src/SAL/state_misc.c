@@ -917,8 +917,21 @@ void state_cache_inode_unpin(cache_entry_t * pentry)
 void state_wipe_file(cache_entry_t        * pentry,
                      cache_inode_client_t * pclient)
 {
+  bool_t had_lock = FALSE;
+
+  /* The state lock may have been acquired by the caller. */
+  if (pthread_rwlock_trywrlock(&pentry->state_lock))
+    {
+      /* This thread already has some kind of lock, but we don't know
+         if it's a write lock. */
+      had_lock = TRUE;
+      pthread_rwlock_unlock(&pentry->state_lock);
+    }
   pthread_rwlock_wrlock(&pentry->state_lock);
   state_lock_wipe(pentry, pclient);
   state_nfs4_state_wipe(pentry, pclient);
-  pthread_rwlock_unlock(&pentry->state_lock);
+  if (!had_lock)
+    {
+      pthread_rwlock_unlock(&pentry->state_lock);
+    }
 }
