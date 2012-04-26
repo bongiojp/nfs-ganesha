@@ -170,6 +170,25 @@ cache_inode_status_t cache_inode_link(cache_entry_t * pentry_src,
                     plink_name, pcontext, &pentry_src->attributes);
      if (FSAL_IS_ERROR(fsal_status)) {
           *pstatus = cache_inode_error_convert(fsal_status);
+          if (fsal_status.major == ERR_FSAL_STALE) {
+               fsal_attrib_list_t attrs;
+               attrs.asked_attributes = pclient->attrmask;
+               fsal_status = FSAL_getattrs(&pentry_src->handle,
+                                           pcontext,
+                                           &attrs);
+               if (fsal_status.major == ERR_FSAL_STALE) {
+                    cache_inode_kill_entry(pentry_src,
+                                           pclient);
+               }
+               attrs.asked_attributes = pclient->attrmask;
+               fsal_status = FSAL_getattrs(&pentry_dir_dest->handle,
+                                           pcontext,
+                                           &attrs);
+               if (fsal_status.major == ERR_FSAL_STALE) {
+                    cache_inode_kill_entry(pentry_dir_dest,
+                                           pclient);
+               }
+          }
           goto out;
      } else {
 #ifdef _USE_NFS4_ACL

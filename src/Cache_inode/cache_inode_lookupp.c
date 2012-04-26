@@ -139,6 +139,9 @@ cache_inode_lookupp_impl(cache_entry_t *entry,
                            context, &parent_handle, &object_attributes);
 
           if(FSAL_IS_ERROR(fsal_status)) {
+               if (fsal_status.major == ERR_FSAL_STALE) {
+                    cache_inode_kill_entry(entry, client);
+               }
                *status = cache_inode_error_convert(fsal_status);
                return NULL;
           }

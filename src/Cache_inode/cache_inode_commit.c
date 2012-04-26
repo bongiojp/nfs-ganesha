@@ -131,6 +131,10 @@ cache_inode_commit(cache_entry_t *entry,
                         "cache_inode_rdwr: fsal_commit() failed: "
                         "fsal_status.major = %d", fsal_status.major);
 
+               if (fsal_status.major == ERR_FSAL_STALE) {
+                    cache_inode_kill_entry(entry, client);
+                    goto out;
+               }
                /* Close the FD if we opened it. No need to catch an
                   additional error form a close? */
                if (opened) {

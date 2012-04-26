@@ -928,10 +928,8 @@ void cache_inode_release_dirents(cache_entry_t           * pentry,
                                  cache_inode_client_t    * pclient,
                                  cache_inode_avl_which_t   which);
 
-cache_inode_status_t cache_inode_kill_entry(cache_entry_t *entry,
-                                            cache_inode_client_t *client,
-                                            cache_inode_status_t *status,
-                                            uint32_t flags);
+void cache_inode_kill_entry(cache_entry_t *entry,
+                            cache_inode_client_t *client);
 
 cache_inode_status_t cache_inode_invalidate(
      cache_inode_fsal_data_t *fsal_data,
@@ -1000,24 +998,6 @@ cache_inode_fixup_md(cache_entry_t *entry)
 }
 
 /**
- * @brief Prepare entry for FSAL_getattr
- *
- * Dereference ACL, zero attributes, and set requested_attributes from
- * the cache_inode_client_t.  FSAL_getattr may then be called
- * directory on entry->attributes.
- *
- * @param entry [in,out] The entry to be prepared
- * @param client [in] The client structure from which we get the
- *                    requested attributes.
- */
-
-static inline void
-cache_inode_prep_attrs(cache_entry_t *entry,
-                       cache_inode_client_t *client)
-{
-}
-
-/**
  * @brief Reload attributes from the FSAL.
  *
  * Load the FSAL attributes as specified in the client structure into
@@ -1067,16 +1047,18 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
                                       &entry->attributes);
      }
      if (FSAL_IS_ERROR(fsal_status)) {
-          return cache_inode_kill_entry(entry,
-                                        client,
-                                        &cache_status,
-                                        CACHE_INODE_FLAG_ATTR_HOLD);
+          cache_inode_kill_entry(entry,
+                                 client);
+          cache_status
+               = cache_inode_error_convert(fsal_status);
+          goto out;
      }
 
      cache_inode_fixup_md(entry);
 
      cache_status = CACHE_INODE_SUCCESS;
 
+out:
      return cache_status;
 }
 

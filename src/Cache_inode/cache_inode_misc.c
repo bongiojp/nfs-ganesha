@@ -960,7 +960,10 @@ cache_inode_check_trust(cache_entry_t *entry,
                                       NULL);
 
           if (FSAL_IS_ERROR(fsal_status)) {
-              status = cache_inode_error_convert(fsal_status);
+               if (fsal_status.major == ERR_FSAL_STALE) {
+                    cache_inode_kill_entry(entry, client);
+               }
+               status = cache_inode_error_convert(fsal_status);
           }
           pthread_rwlock_unlock(&entry->content_lock);
           goto out;

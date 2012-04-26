@@ -224,9 +224,13 @@ cache_inode_get(cache_inode_fsal_data_t *fsdata,
         checked with use (when the attributes are locked for reading,
         for example.) */
 
-     cache_inode_check_trust(entry,
-                             context,
-                             client);
+     if ((*status = cache_inode_check_trust(entry,
+                                            context,
+                                            client))
+         != CACHE_INODE_SUCCESS) {
+          cache_inode_put(entry, client);
+          entry = NULL;
+     }
 
      return entry;
 } /* cache_inode_get */
