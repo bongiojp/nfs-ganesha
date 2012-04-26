@@ -114,11 +114,13 @@ cache_inode_setattr(cache_entry_t *entry,
                                       NULL, NULL);
           if (FSAL_IS_ERROR(fsal_status)) {
                *status = cache_inode_error_convert(fsal_status);
+               if (fsal_status.major == ERR_FSAL_STALE) {
+                    cache_inode_kill_entry(entry, client);
+               }
                goto unlock;
           }
      }
 
-     cache_inode_prep_attrs(entry, client);
 #ifdef _USE_NFS4_ACL
      saved_acl = entry->attributes.acl;
 #endif /* _USE_NFS4_ACL */
@@ -126,6 +128,9 @@ cache_inode_setattr(cache_entry_t *entry,
                                  &entry->attributes);
      if (FSAL_IS_ERROR(fsal_status)) {
           *status = cache_inode_error_convert(fsal_status);
+          if (fsal_status.major == ERR_FSAL_STALE) {
+               cache_inode_kill_entry(entry, client);
+          }
           goto unlock;
      } else {
 #ifdef _USE_NFS4_ACL

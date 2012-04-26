@@ -168,8 +168,8 @@ int cache_inode_fsal_rbt_both_on_fsal(hash_parameter_t * p_hparam,
     unsigned int FSALrbt = 0;
 
     /**
-     * @todo ACE: This is a temporary hack so we don't have to change every FSAL
-     * right now.
+     * @todo ACE: This is a temporary hack so we don't have to change
+     * every FSAL right now.
      */
 
     rc = FSAL_Handle_to_Hash_both( buffclef->pdata, 0,

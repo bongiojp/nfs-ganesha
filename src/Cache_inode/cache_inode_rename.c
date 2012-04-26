@@ -57,7 +57,7 @@
 
 /**
  *
- * cache_inode_rename_cached_dirent: renames an entry in the same directory.
+ * @brief Renames an entry in the same directory.
  *
  * Renames an entry in the same directory.
  *
@@ -363,6 +363,25 @@ cache_inode_status_t cache_inode_rename(cache_entry_t * pentry_dirsrc,
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
+      if (fsal_status.major == ERR_FSAL_STALE) {
+           fsal_attrib_list_t attrs;
+           attrs.asked_attributes = pclient->attrmask;
+           fsal_status = FSAL_getattrs(&pentry_dirsrc->handle,
+                                       pcontext,
+                                       &attrs);
+           if (fsal_status.major == ERR_FSAL_STALE) {
+                cache_inode_kill_entry(pentry_dirsrc,
+                                       pclient);
+           }
+           attrs.asked_attributes = pclient->attrmask;
+           fsal_status = FSAL_getattrs(&pentry_dirdest->handle,
+                                       pcontext,
+                                       &attrs);
+           if (fsal_status.major == ERR_FSAL_STALE) {
+                cache_inode_kill_entry(pentry_dirdest,
+                                       pclient);
+           }
+      }
       src_dest_unlock(pentry_dirsrc, pentry_dirdest);
       goto out;
     }

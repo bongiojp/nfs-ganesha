@@ -32,7 +32,8 @@
  * \version $Revision: 1.63 $
  * \brief   Some routines for management of the cache_inode layer, shared by other calls.
  *
- * cache_inode_kill_entry.c : Some routines for management of the cache_inode layer, shared by other calls.
+ * Some routines for management of the cache_inode layer, shared by
+ * other calls.
  *
  *
  */
@@ -44,7 +45,14 @@
 #include "solaris_port.h"
 #endif                          /* _SOLARIS */
 
-#include "LRU_List.h"
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/param.h>
+#include <time.h>
+#include <pthread.h>
+#include <string.h>
+#include <assert.h>
+
 #include "log.h"
 #include "HashData.h"
 #include "HashTable.h"
@@ -54,61 +62,43 @@
 #include "cache_inode_weakref.h"
 #include "stuff_alloc.h"
 #include "nfs4_acls.h"
-
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/param.h>
-#include <time.h>
-#include <pthread.h>
-#include <string.h>
-#include <assert.h>
+#include "sal_functions.h"
 
 /**
  *
  * @brief Forcibly remove an entry from the cache
  *
- * @todo ACE: Enable killing of state-bearing files after changing
- *            states to use weak references.
- *
  * This function removes an entry from the cache immediately when it
  * has become unusable (for example, when the FSAL declares it to be
  * stale.)  This function removes only one reference.  The caller must
- * also un-reference any reference it holds above the sentinel.
+ * also un-reference any reference it holds above the sentinel.  This
+ * function does not touch locks.  Since the entry isn't actually
+ * removed until the refcount falls to 0, we just let the caller
+ * remove locks as for any error.
  *
  * @param entry [in] The entry to be killed
  * @param client [in,out] Structure to manage per-thread resources
- * @param status [out] CACHE_INODE_SUCCESS or various error codes
- * @param flags [in] A word whose bits indicate locking status
  */
 
-cache_inode_status_t
+void
 cache_inode_kill_entry(cache_entry_t *entry,
-                       cache_inode_client_t *client,
-                       cache_inode_status_t *status,
-                       uint32_t flags)
+                       cache_inode_client_t *client)
 {
      cache_inode_fsal_data_t fsaldata;
      hash_buffer_t key, old_key;
      hash_buffer_t old_value;
-     int rc;
-     fsal_status_t fsal_status = {0, 0};
-
-     if (cache_inode_file_holds_state(entry)) {
-          goto out;
-     }
-
-     /* You do not request that a lock be held on an object you are
-        destroying. */
-     assert(!(flags & (CACHE_INODE_FLAG_ATTR_HOLD |
-                       CACHE_INODE_FLAG_CONTENT_HOLD)));
+     int rc = 0;
 
      memset(&fsaldata, 0, sizeof(fsaldata));
 
      LogInfo(COMPONENT_CACHE_INODE,
              "Using cache_inode_kill_entry for entry %p", entry);
 
+     cache_inode_unpinnable(entry);
+     state_wipe_file(entry, client);
+
      fsaldata.fh_desc = entry->fh_desc;
-     FSAL_ExpandHandle(NULL,  /* pcontext but not used... */
+     FSAL_ExpandHandle(NULL,
                        FSAL_DIGEST_SIZEOF,
                        &fsaldata.fh_desc);
 
@@ -116,25 +106,14 @@ cache_inode_kill_entry(cache_entry_t *entry,
      key.pdata = fsaldata.fh_desc.start;
      key.len = fsaldata.fh_desc.len;
 
-     /* return HashTable (sentinel) reference */
-     cache_inode_lru_unref(entry, client, LRU_FLAG_NONE);
-
-     /* Clean up the associated ressources in the FSAL */
-     fsal_status = FSAL_CleanObjectResources(&entry->handle);
-     if (FSAL_IS_ERROR(fsal_status)) {
-          LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_kill_entry: Couldn't free FSAL ressources fsal_status.major=%u",
-                  fsal_status.major);
-     }
-
      /* Sanity check: old_value.pdata is expected to be equal to pentry,
       * and is released later in this function */
      if ((cache_entry_t *) old_value.pdata != entry ||
          ((fsal_handle_t *) ((cache_entry_t *)old_value.pdata)->fh_desc.start)
          != &entry->handle) {
           LogCrit(COMPONENT_CACHE_INODE,
-                  "cache_inode_kill_entry: unexpected pdata %p from hash table (entry=%p)",
-                  old_value.pdata, entry);
+                  "cache_inode_kill_entry: unexpected pdata %p from "
+                  "hash table (entry=%p)", old_value.pdata, entry);
      }
 
 
@@ -149,23 +128,8 @@ cache_inode_kill_entry(cache_entry_t *entry,
                        rc);
           }
      }
-
      cache_inode_weakref_delete(&entry->weakref);
 
-     entry = NULL;
-
-out:
-
-     if (entry) {
-          if (flags & CACHE_INODE_FLAG_ATTR_HAVE) {
-               pthread_rwlock_unlock(&entry->attr_lock);
-          }
-          if (flags & CACHE_INODE_FLAG_CONTENT_HAVE) {
-               pthread_rwlock_unlock(&entry->content_lock);
-          }
-     }
-
-
-     *status = CACHE_INODE_SUCCESS;
-     return *status;
+     /* return HashTable (sentinel) reference */
+     cache_inode_lru_unref(entry, client, LRU_FLAG_NONE);
 }                               /* cache_inode_kill_entry */

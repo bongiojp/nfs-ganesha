@@ -205,6 +205,9 @@ cache_inode_lookup_impl(cache_entry_t *pentry_parent,
                       pname, pcontext, &object_handle,
                       &object_attributes);
      if (FSAL_IS_ERROR(fsal_status)) {
+          if (fsal_status.major == ERR_FSAL_STALE) {
+               cache_inode_kill_entry(pentry_parent, pclient);
+          }
           *pstatus = cache_inode_error_convert(fsal_status);
           return NULL;
      }

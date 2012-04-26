@@ -455,23 +455,9 @@ cache_inode_status_t cache_inode_readdir_populate(
   if(FSAL_IS_ERROR(fsal_status))
     {
       *pstatus = cache_inode_error_convert(fsal_status);
-
-      if(fsal_status.major == ERR_FSAL_STALE)
-        {
-          cache_inode_status_t kill_status;
-
-          LogEvent(COMPONENT_CACHE_INODE,
-                   "cache_inode_readdir: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                   pentry_dir, fsal_status.major, fsal_status.minor);
-
-          if(cache_inode_kill_entry(pentry_dir, pclient, &kill_status,
-                                    0) != CACHE_INODE_SUCCESS)
-            LogCrit(COMPONENT_CACHE_INODE,
-                    "cache_inode_readdir: Could not kill entry %p, status = %u",
-                    pentry_dir, kill_status);
-
-          *pstatus = CACHE_INODE_FSAL_ESTALE;
-        }
+      if (fsal_status.major == ERR_FSAL_STALE) {
+           cache_inode_kill_entry(pentry_dir, pclient);
+      }
       return *pstatus;
     }
 
@@ -522,27 +508,11 @@ cache_inode_status_t cache_inode_readdir_populate(
 
               if(FSAL_IS_ERROR(fsal_status))
                 {
-                  *pstatus = cache_inode_error_convert(fsal_status);
-
-                  if(fsal_status.major == ERR_FSAL_STALE)
-                    {
-                      cache_inode_status_t kill_status;
-
-                      LogEvent(COMPONENT_CACHE_INODE,
-                               "cache_inode_readdir: Stale FSAL File Handle detected for pentry = %p, fsal_status=(%u,%u)",
-                               pentry_dir, fsal_status.major, fsal_status.minor );
-
-                      if(cache_inode_kill_entry(pentry_dir, pclient,
-                                                &kill_status, 0)
-                         != CACHE_INODE_SUCCESS)
-                        LogCrit(COMPONENT_CACHE_INODE,
-                                "cache_inode_readdir: Could not kill entry %p, status = %u",
-                                pentry_dir, kill_status);
-
-                      *pstatus = CACHE_INODE_FSAL_ESTALE;
-                    }
-
-                  return *pstatus;
+                     *pstatus = cache_inode_error_convert(fsal_status);
+                     if (fsal_status.major == ERR_FSAL_STALE) {
+                          cache_inode_kill_entry(pentry_dir, pclient);
+                     }
+                     return *pstatus;
                 }
             }
 

@@ -251,6 +251,10 @@ cache_inode_rdwr(cache_entry_t *entry,
                              fsal_status.major);
                }
 
+               if (fsal_status.major == ERR_FSAL_STALE) {
+                    cache_inode_kill_entry(entry, client);
+               }
+
                if ((fsal_status.major != ERR_FSAL_NOT_OPENED)
                    && (entry->object.file.open_fd.openflags
                        != FSAL_O_CLOSED)) {

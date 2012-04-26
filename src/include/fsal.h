@@ -196,7 +196,7 @@ fsal_status_t FSAL_load_FS_common_parameter_from_conf(config_file_t in_config,
 fsal_status_t FSAL_load_FS_specific_parameter_from_conf(config_file_t in_config,
                                                         fsal_parameter_t * out_parameter);
 
-/** 
+/**
  *  FSAL_Init:
  *  Initializes Filesystem abstraction layer.
  */
@@ -350,7 +350,7 @@ int FSAL_handlecmp(fsal_handle_t * handle1, fsal_handle_t * handle2,
  * in order to dispatch entries into the hash table array.
  *
  * \param p_handle	The handle to be hashed
- * \param cookie 	Makes it possible to have different hash value for the
+ * \param cookie        Makes it possible to have different hash value for the
  *			same handle, when cookie changes.
  * \param alphabet_len	Parameter for polynomial hashing algorithm
  * \param index_size	The range of hash value will be [0..index_size-1]
@@ -362,13 +362,13 @@ unsigned int FSAL_Handle_to_HashIndex(fsal_handle_t * p_handle,
                                       unsigned int cookie,
                                       unsigned int alphabet_len, unsigned int index_size);
 
-/*
- * FSAL_Handle_to_RBTIndex 
+/**
+ * FSAL_Handle_to_RBTIndex
  * This function is used for generating a RBT node ID 
  * in order to identify entries into the RBT.
  *
  * \param p_handle	The handle to be hashed
- * \param cookie 	Makes it possible to have different hash value for the
+ * \param cookie        Makes it possible to have different hash value for the
  *			same handle, when cookie changes.
  *
  * \return The hash value
@@ -376,13 +376,13 @@ unsigned int FSAL_Handle_to_HashIndex(fsal_handle_t * p_handle,
 
 unsigned int FSAL_Handle_to_RBTIndex(fsal_handle_t * p_handle, unsigned int cookie);
 
-/*
- * FSAL_Handle_to_Hash_Both 
+/**
+ * FSAL_Handle_to_Hash_Both
  * This function is used for generating both a RBT node ID and a hash index in one pass
  * in order to identify entries into the RBT.
  *
  * \param p_handle	The handle to be hashed
- * \param cookie 	Makes it possible to have different hash value for the
+ * \param cookie        Makes it possible to have different hash value for the
  *			same handle, when cookie changes.
  * \param alphabet_len	Parameter for polynomial hashing algorithm
  * \param index_size	The range of hash value will be [0..index_size-1]

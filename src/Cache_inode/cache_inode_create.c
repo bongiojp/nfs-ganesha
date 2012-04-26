@@ -200,6 +200,9 @@ cache_inode_create(cache_entry_t *parent,
 
      /* Check for the result */
      if (FSAL_IS_ERROR(fsal_status)) {
+          if (fsal_status.major == ERR_FSAL_STALE) {
+               cache_inode_kill_entry(parent, client);
+          }
           *status = cache_inode_error_convert(fsal_status);
           entry = NULL;
           goto out;
