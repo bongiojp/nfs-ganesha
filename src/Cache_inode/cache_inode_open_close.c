@@ -172,6 +172,7 @@ cache_inode_open(cache_entry_t *entry,
           /* This seems the best idea, let the client try again later
              after the reap. */
           *status = CACHE_INODE_DELAY;
+          goto out;
      }
 
      if (!(flags & CACHE_INODE_FLAG_CONTENT_HAVE)) {

@@ -473,8 +473,6 @@ cache_inode_lru_clean(cache_entry_t *entry,
                LogCrit(COMPONENT_CACHE_INODE_LRU,
                        "Error closing file in cleanup: %d.",
                        cache_status);
-          } else {
-               --open_fd_count;
           }
      }
 
@@ -863,10 +861,8 @@ lru_thread(void *arg __attribute__((unused)))
                                         LogCrit(COMPONENT_CACHE_INODE_LRU,
                                                 "Error closing file in "
                                                 "LRU thread.");
-                                   } else {
-                                        ++closed;
-                                        --open_fd_count;
-                                   }
+                                   } else
+                                     ++closed;
                               }
                               /* Move the entry to L2 whatever the
                                  result of examining it.*/
