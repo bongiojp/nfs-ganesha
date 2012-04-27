@@ -42,10 +42,6 @@
 #define FALSE 0
 #endif
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #ifdef _USE_NFS4_ACL
 #include <openssl/md5.h>
 #endif                          /* _USE_NFS4_ACL */
@@ -718,6 +714,24 @@ typedef enum fsal_seektype__
   FSAL_SEEK_CUR,
   FSAL_SEEK_END
 } fsal_seektype_t;
+
+/*
+ * Debug formatting
+ */
+static inline const char *format_seek_whence(fsal_seektype_t  whence)
+{
+    switch (whence) {
+    case FSAL_SEEK_SET:
+	return "SEEK_SET";
+    case FSAL_SEEK_CUR:
+	return "SEEK_CUR";
+    case FSAL_SEEK_END:
+	return "SEEK_END";
+    default:
+	return "ERROR";
+    }
+}
+
 
 typedef struct fsal_seek__
 {
