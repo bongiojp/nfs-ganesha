@@ -1471,7 +1471,7 @@ void state_complete_grant(fsal_op_context_t     * pcontext,
 
   /* In case all locks have wound up free, we must release the pin reference. */
   if(glist_empty(&pentry->object.file.lock_list))
-      cache_inode_inc_pin_ref(pentry);
+      cache_inode_dec_pin_ref(pentry);
 
   pthread_rwlock_unlock(&pentry->state_lock);
 }
@@ -1536,7 +1536,7 @@ void process_blocked_lock_upcall(state_block_data_t   * block_data,
 
   /* In case all locks have wound up free, we must release the pin reference. */
   if(glist_empty(&pentry->object.file.lock_list))
-      cache_inode_inc_pin_ref(pentry);
+      cache_inode_dec_pin_ref(pentry);
 
   pthread_rwlock_unlock(&pentry->state_lock);
 }
@@ -1776,7 +1776,7 @@ state_status_t state_release_grant(fsal_op_context_t     * pcontext,
 
   /* In case all locks have wound up free, we must release the pin reference. */
   if(glist_empty(&pentry->object.file.lock_list))
-      cache_inode_inc_pin_ref(pentry);
+      cache_inode_dec_pin_ref(pentry);
 
   pthread_rwlock_unlock(&pentry->state_lock);
 
@@ -2456,7 +2456,6 @@ state_status_t state_lock(cache_entry_t         * pentry,
 
       /* Discard lock entry */
       remove_from_locklist(found_entry, pclient);
-      //state_cache_inode_unpin_locked(pentry);
     }
 #ifdef _USE_BLOCKING_LOCKS
   else if(*pstatus == STATE_LOCK_BLOCKED)

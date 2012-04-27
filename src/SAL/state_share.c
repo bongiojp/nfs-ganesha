@@ -124,15 +124,12 @@ state_status_t state_share_add(cache_entry_t         * pentry,
   unsigned int            new_share_deny = 0;
   fsal_share_param_t      share_param;
 
-  pthread_rwlock_wrlock(&pentry->state_lock);
-
   /* Check if new share state has conflicts. */
   status = state_share_check_conflict_no_mutex(pentry,
                                                &(pstate->state_data),
                                                pstatus);
   if(status != STATE_SUCCESS)
     {
-      pthread_rwlock_unlock(&pentry->state_lock);
       LogEvent(COMPONENT_STATE, "Share conflicts detected during add");
       *pstatus = STATE_STATE_CONFLICT;
       return *pstatus;
@@ -176,7 +173,6 @@ state_status_t state_share_add(cache_entry_t         * pentry,
                                      new_share_deny,
                                      0,
                                      0);
-          pthread_rwlock_unlock(&pentry->state_lock);
           LogDebug(COMPONENT_STATE, "do_share_op failed");
           *pstatus = status;
           return *pstatus;
@@ -190,7 +186,6 @@ state_status_t state_share_add(cache_entry_t         * pentry,
   /* Update previously seen share state in the bitmap. */
   state_share_set_prev(pstate, &(pstate->state_data));
 
-  pthread_rwlock_unlock(&pentry->state_lock);
 
   return status;
 }
@@ -212,7 +207,9 @@ state_status_t state_share_remove(cache_entry_t         * pentry,
   unsigned int            removed_share_deny = 0;
   fsal_share_param_t      share_param;
 
+/*
   pthread_rwlock_wrlock(&pentry->state_lock);
+*/
 
   /* Get the current union of share states of this file. */
   old_pentry_share_access = state_share_get_share_access(pentry);
@@ -252,7 +249,9 @@ state_status_t state_share_remove(cache_entry_t         * pentry,
                                      0,
                                      removed_share_access,
                                      removed_share_deny);
+/*
           pthread_rwlock_unlock(&pentry->state_lock);
+*/
           LogDebug(COMPONENT_STATE, "do_share_op failed");
           *pstatus = status;
           return *pstatus;
@@ -265,7 +264,9 @@ state_status_t state_share_remove(cache_entry_t         * pentry,
                removed_share_access,
                removed_share_deny);
 
+/*
   pthread_rwlock_unlock(&pentry->state_lock);
+*/
 
   return status;
 }
@@ -290,15 +291,12 @@ state_status_t state_share_upgrade(cache_entry_t         * pentry,
   unsigned int            new_share_deny = 0;
   fsal_share_param_t share_param;
 
-  pthread_rwlock_wrlock(&pentry->state_lock);
-
   /* Check if new share state has conflicts. */
   status = state_share_check_conflict_no_mutex(pentry,
                                                pstate_data,
                                                pstatus);
   if(status != STATE_SUCCESS)
     {
-      pthread_rwlock_unlock(&pentry->state_lock);
       LogEvent(COMPONENT_STATE, "Share conflicts detected during upgrade");
       *pstatus = STATE_STATE_CONFLICT;
       return *pstatus;
@@ -346,7 +344,6 @@ state_status_t state_share_upgrade(cache_entry_t         * pentry,
                                      new_share_deny,
                                      old_share_access,
                                      old_share_deny);
-          pthread_rwlock_unlock(&pentry->state_lock);
           LogDebug(COMPONENT_STATE, "do_share_op failed");
           *pstatus = status;
           return *pstatus;
@@ -364,7 +361,6 @@ state_status_t state_share_upgrade(cache_entry_t         * pentry,
   /* Update previously seen share state. */
   state_share_set_prev(pstate, pstate_data);
 
-  pthread_rwlock_unlock(&pentry->state_lock);
 
   return status;
 }

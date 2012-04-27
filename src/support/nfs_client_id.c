@@ -499,7 +499,7 @@ static void release_openstate(state_owner_t *popen_owner)
       if(FSAL_IS_ERROR(fsal_status))
         {
           /* log error here , and continue? */
-          LogDebug(COMPONENT_STATE,
+          LogEvent(COMPONENT_STATE,
                    "FSAL_GetClientConext failed");
           continue;
         }
@@ -513,7 +513,7 @@ static void release_openstate(state_owner_t *popen_owner)
                                 popen_owner->so_pclient,
                                 &state_status) != STATE_SUCCESS)
             {
-              LogDebug(COMPONENT_STATE,
+              LogEvent(COMPONENT_STATE,
                        "EXPIRY failed to release share stateid error %s",
                        state_err_str(state_status));
             }
