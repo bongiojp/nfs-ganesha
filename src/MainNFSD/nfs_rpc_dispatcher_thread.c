@@ -699,6 +699,7 @@ unsigned int nfs_core_select_worker_queue()
   static unsigned int last;
 
   worker_available_rc rc_worker;
+  worker_available_rc rc_pause;
 
   P(lock_worker_selection);
   counter++;

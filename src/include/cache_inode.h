@@ -373,6 +373,7 @@ struct cache_entry_t
       cache_inode_opened_file_t open_fd;/*< Cached fsal_file_t for
                                             optimized access */
       struct glist_head lock_list; /*< Pointers for lock list */
+      struct glist_head state_list; /*< Pointers for state list */
       cache_inode_unstable_data_t
         unstable_data; /*< Unstable data, for use with WRITE/COMMIT */
       cache_inode_share_t share_state; /**< The ref counted share reservation state              */

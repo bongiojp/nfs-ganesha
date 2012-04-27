@@ -101,15 +101,9 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
      not need to be held during a non-anonymous read, since the open
      state itself prevents a conflict. */
   bool_t                   anonymous = FALSE;
-  cache_content_status_t   content_status;
-  fsal_attrib_list_t       attr;
   cache_entry_t          * pentry = NULL;
   int                      rc = 0;
   fsal_staticfsinfo_t    * pstaticinfo = NULL ;
-
-  cache_content_policy_data_t datapol;
-
-  datapol.UseMaxCacheSize = FALSE;
 
   /* Say we are managing NFS4_OP_READ */
   resp->resop = NFS4_OP_READ;
@@ -345,7 +339,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
       
       LogFullDebug(COMPONENT_NFS_V4,
                "NFS4_OP_READ: read requested size = %llu  read allowed size = %llu",
-               size, check_size);
+               (long long unsigned int)size, (long long unsigned int)check_size);
       size = check_size;
     }
 

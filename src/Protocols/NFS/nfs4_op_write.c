@@ -87,7 +87,6 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 {
   char __attribute__ ((__unused__)) funcname[] = "nfs4_op_write";
 
-  fsal_seek_t              seek_descriptor;
   fsal_size_t              size, check_size;
   fsal_size_t              written_size;
   fsal_off_t               offset;
@@ -332,7 +331,7 @@ int nfs4_op_write(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
       LogFullDebug(COMPONENT_NFS_V4,
                "NFS4_OP_WRITE: write requested size = %llu  write allowed size = %llu",
-               size, check_size);
+               (long long unsigned int)size, (long long unsigned int)check_size);
 
       size = check_size;
     }

@@ -96,7 +96,7 @@ cache_inode_truncate_impl(cache_entry_t *pentry,
 
   /* Call FSAL to actually truncate */
   pentry->attributes.asked_attributes = pclient->attrmask;
-  if (pentry->object.file.open_fd.fileno == 0)
+  if (pentry->object.file.open_fd.openflags == FSAL_O_CLOSED)
     fd = NULL;
   else 
     fd = &(pentry->object.file.open_fd.fd);

@@ -263,7 +263,6 @@ cache_inode_rdwr(cache_entry_t *entry,
                     FSAL_close(&(entry->object.file.open_fd.fd));
                     entry->object.file.open_fd.openflags
                          = FSAL_O_CLOSED;
-                    entry->object.file.open_fd.fileno = 0;
                     *status = cache_inode_error_convert(fsal_status);
                }
 

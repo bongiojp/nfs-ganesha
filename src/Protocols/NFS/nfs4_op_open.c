@@ -1224,10 +1224,9 @@ static nfsstat4 nfs4_do_open(struct nfs_argop4  * op,
         if (pentry_parent != NULL) {    /* claim null */
                 LogDebug(COMPONENT_STATE, "Open filename %s", filename->name);
                 /* Open the file */
-                if(cache_inode_open_by_name(pentry_parent, filename,
-                    pentry_newfile, data->pclient, openflags, data->pcontext,
-                    &cache_status) != CACHE_INODE_SUCCESS) {
-                        *cause2 = " cache_inode_open_by_name";
+                if(cache_inode_open(pentry_newfile, data->pclient, openflags, data->pcontext,
+                    0, &cache_status) != CACHE_INODE_SUCCESS) {
+                        *cause2 = " cache_inode_open";
                         return NFS4ERR_ACCESS;
                 }
         } else { /* claim previous */
@@ -1247,6 +1246,7 @@ static nfsstat4 nfs4_do_open(struct nfs_argop4  * op,
                                data->pclient, &state_status) != STATE_SUCCESS)
               {
                 if(cache_inode_close(pentry_newfile, data->pclient,
+                                     CACHE_INODE_FLAG_REALLYCLOSE,
                                      &cache_status) != CACHE_INODE_SUCCESS)
                   {
                     /* Log bad close and continue. */
@@ -1270,6 +1270,7 @@ static nfsstat4 nfs4_do_open(struct nfs_argop4  * op,
                                        &state_status) != STATE_SUCCESS)
                   {
                     if(cache_inode_close(pentry_newfile, data->pclient,
+                                         CACHE_INODE_FLAG_REALLYCLOSE,
                                          &cache_status) != CACHE_INODE_SUCCESS)
                       {
                         /* Log bad close and continue. */

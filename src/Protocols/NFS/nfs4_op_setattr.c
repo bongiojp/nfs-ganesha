@@ -86,7 +86,6 @@ int nfs4_op_setattr(struct nfs_argop4 *op,
   fsal_attrib_list_t sattr;
   fsal_attrib_list_t parent_attr;
   cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
-  int rc = 0;
   char __attribute__ ((__unused__)) funcname[] = "nfs4_op_setattr";
   int                    rc = 0;
   const char           * tag = "SETATTR";
@@ -163,7 +162,7 @@ int nfs4_op_setattr(struct nfs_argop4 *op,
           return res_SETATTR4.status;
         }
       /* Object should be a file */
-      if(data->current_entry->internal_md.type != REGULAR_FILE)
+      if(data->current_entry->type != REGULAR_FILE)
         {
           res_SETATTR4.status = NFS4ERR_INVAL;
           return res_SETATTR4.status;
