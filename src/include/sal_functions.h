@@ -28,7 +28,7 @@
  * \author  $Author: deniel $
  * \date    $Date: 2006/01/24 11:43:15 $
  * \version $Revision: 1.95 $
- * \brief   Management of the state abstraction layer. 
+ * \brief   Management of the state abstraction layer.
  *
  * sal_functions.h : Management of the state abstraction layer
  *
@@ -74,6 +74,8 @@ void dec_state_owner_ref(state_owner_t        * powner,
                          cache_inode_client_t * pclient);
 state_status_t get_clientid_owner(clientid4 clientid,
                                   state_owner_t **clientid_owner);
+
+int DisplayOpaqueValue(char * value, int len, char * str);
 
 void state_wipe_file(cache_entry_t        * pentry,
                      cache_inode_client_t * pclient);
@@ -302,7 +304,7 @@ state_status_t state_lock_init(state_status_t * pstatus);
 
 void LogLock(log_components_t     component,
              log_levels_t         debug,
-             const char         * reason, 
+             const char         * reason,
              cache_entry_t      * pentry,
              fsal_op_context_t  * pcontext,
              state_owner_t      * powner,
