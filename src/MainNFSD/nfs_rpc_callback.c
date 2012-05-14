@@ -52,6 +52,7 @@
 #include "gssd.h"
 #include "gss_util.h"
 #include "krb5_util.h"
+#include "sal_data.h"
 
 /**
  *

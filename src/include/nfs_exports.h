@@ -323,6 +323,12 @@ typedef struct nfs_client_cred__
 /*
  * NFS v4 Compound Data 
  */
+
+/* Forward references to SAL types */
+typedef struct nfs41_session__ nfs41_session_t;
+typedef struct nfs_client_id_t nfs_client_id_t;
+typedef struct COMPOUND4res_extended COMPOUND4res_extended;
+
 /* this structure contains the necessary stuff for keeping the state of a V4 compound request */
 typedef struct compoud_data
 {
@@ -344,10 +350,10 @@ typedef struct compoud_data
   exportlist_t *pfullexportlist;                      /**< Pointer to the whole exportlist                               */
   pseudofs_t *pseudofs;                               /**< Pointer to the pseudo filesystem tree                         */
   char MntPath[MAXPATHLEN];                           /**< Path (in pseudofs) of the current mounted entry               */
-  struct svc_req *reqp;                               /**< Raw RPC credentials                                           */
+  struct svc_req *reqp;                               /**< RPC Request related to the compound                           */
   hash_table_t *ht;                                   /**< hashtable for cache_inode                                     */
   cache_inode_client_t *pclient;                      /**< client ressource for the request                              */
-  nfs_client_cred_t credential;                       /**< RPC Request related to the compound                           */
+  nfs_client_cred_t credential;                       /**< Raw RPC credentials                                           */
 #ifdef _USE_NFS4_1
   caddr_t pcached_res;                                /**< NFv41: pointer to cached RPC res in a session's slot          */
   bool_t use_drc;                                     /**< Set to TRUE if session DRC is to be used                      */
