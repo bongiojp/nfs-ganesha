@@ -41,7 +41,7 @@
 #include "solaris_port.h"
 #endif
 
-#include "sal_data.h"
+#include "sal_functions.h"
 #include "nfs_tools.h"
 
 typedef struct nfs4_op_desc__
@@ -461,6 +461,17 @@ int nfs4_Compound(nfs_arg_t * parg /* IN     */ ,
           memcpy(data.pcached_res, (char *)pres,
                  (COMPOUND4_ARRAY.argarray_len) * sizeof(struct nfs_resop4));
         }
+    }
+
+  /* If we have reserved a lease, update it and release it */
+  if(data.preserved_clientid != NULL)
+    {
+      /* Update and release lease */
+      P(data.preserved_clientid->cid_mutex);
+
+      update_lease(data.preserved_clientid);
+
+      V(data.preserved_clientid->cid_mutex);
     }
 #endif
 

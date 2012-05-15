@@ -354,6 +354,7 @@ typedef struct compoud_data
   hash_table_t *ht;                                   /**< hashtable for cache_inode                                     */
   cache_inode_client_t *pclient;                      /**< client ressource for the request                              */
   nfs_client_cred_t credential;                       /**< Raw RPC credentials                                           */
+  nfs_client_id_t *preserved_clientid;                /**< clientid that has lease reserved if any                       */
 #ifdef _USE_NFS4_1
   caddr_t pcached_res;                                /**< NFv41: pointer to cached RPC res in a session's slot          */
   bool_t use_drc;                                     /**< Set to TRUE if session DRC is to be used                      */

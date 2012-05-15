@@ -75,8 +75,6 @@
 
 int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop4 *resp)
 {
-  char __attribute__ ((__unused__)) funcname[] = "nfs41_op_open";
-
   cache_entry_t           * pentry_parent = NULL;
   cache_entry_t           * pentry_lookup = NULL;
   cache_entry_t           * pentry_newfile = NULL;
@@ -315,6 +313,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           /* This open owner is not known yet, allocated and set up a new one */
           powner = create_nfs4_owner(data->pclient,
                                      &owner_name,
+                                     data->psession->pclientid_record,
                                      STATE_OPEN_OWNER_NFSV4,
                                      NULL,
                                      1); /* NFSv4.1 specific, initial seqid is 1 */
@@ -767,7 +766,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                               &cache_status) != CACHE_INODE_SUCCESS)
             {
               res_OPEN4.status = NFS4ERR_ACCESS;
-              cause2 = " cache_inode_open_by_name";
+              cause2 = " cache_inode_open";
               goto out;
             }
 
@@ -982,7 +981,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
                               &cache_status) != CACHE_INODE_SUCCESS)
             {
               res_OPEN4.status = NFS4ERR_ACCESS;
-              cause2 = " cache_inode_open_by_name";
+              cause2 = " cache_inode_open";
               goto out;
             }
           break;

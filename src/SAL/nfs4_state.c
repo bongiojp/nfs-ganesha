@@ -403,10 +403,14 @@ void state_nfs4_state_wipe(cache_entry_t        * pentry,
 }
 
 /**
- * release_lockstate: traverse the state list of the lock owner
- *   
+ * release_lockstate: Remove every state belonging to the lock owner.
+ *
+ * Remove every state belonging to the lock owner.
+ *
+ * @param plock_owner   [IN]   lock owner to release state for.
+ *
  */
-void release_lockstate(state_owner_t *plock_owner)
+void release_lockstate(state_owner_t * plock_owner)
 {
   state_status_t         state_status;
   struct glist_head    * glist, * glistn;
@@ -414,21 +418,21 @@ void release_lockstate(state_owner_t *plock_owner)
   glist_for_each_safe(glist, glistn, &plock_owner->so_owner.so_nfs4_owner.so_state_list)
     {
       state_t * pstate_found = glist_entry(glist,
-					  state_t,
-					  state_owner_list);  
+					   state_t,
+					   state_owner_list);
 
       /* Make sure we hold an lru ref to the cache inode while calling state_del */
       if(cache_inode_lru_ref(pstate_found->state_pentry,
                              plock_owner->so_pclient,
                              0) != CACHE_INODE_SUCCESS)
-        LogCrit(COMPONENT_STATE,
+        LogCrit(COMPONENT_CLIENTID,
                 "Ugliness - cache_inode_lru_ref has returned non-success");
 
       if(state_del(pstate_found,
-               plock_owner->so_pclient,
-               &state_status) != STATE_SUCCESS)
-      { 
-        LogDebug(COMPONENT_STATE,
+                   plock_owner->so_pclient,
+                   &state_status) != STATE_SUCCESS)
+      {
+        LogDebug(COMPONENT_CLIENTID,
                "release_lockstate failed to release stateid error %s",
                 state_err_str(state_status));
       }
@@ -438,13 +442,20 @@ void release_lockstate(state_owner_t *plock_owner)
                             plock_owner->so_pclient,
                             0);
     }
+
+  /* Release the reference to the lock owner that keeps it in the hash table */
+  dec_state_owner_ref(plock_owner, plock_owner->so_pclient);
 }
 
 /**
- * release_openstate: traverse the state list of the open owner
- *   
+ * release_openstate: Remove every state belonging to the open owner.
+ *
+ * Remove every state belonging to the open owner.
+ *
+ * @param popen_owner   [IN]   open owner to release state for.
+ *
  */
-void release_openstate(state_owner_t *popen_owner)
+void release_openstate(state_owner_t * popen_owner)
 {
   state_status_t         state_status;
   struct glist_head    * glist, * glistn;
@@ -456,8 +467,8 @@ void release_openstate(state_owner_t *popen_owner)
 
       state_t * pstate_found = glist_entry(glist,
 					   state_t,
-					   state_owner_list);  
-				     
+					   state_owner_list);
+
       cache_entry_t        * pentry = pstate_found->state_pentry;
       cache_inode_status_t   cache_status;
 
@@ -465,7 +476,7 @@ void release_openstate(state_owner_t *popen_owner)
       if(cache_inode_lru_ref(pentry,
                              popen_owner->so_pclient,
                              0) != CACHE_INODE_SUCCESS)
-        LogCrit(COMPONENT_STATE,
+        LogCrit(COMPONENT_CLIENTID,
                 "Ugliness - cache_inode_lru_ref has returned non-success");
       
       pthread_rwlock_wrlock(&pentry->state_lock);
@@ -477,11 +488,10 @@ void release_openstate(state_owner_t *popen_owner)
                                           NULL,
                                           0);
 
-
       if(FSAL_IS_ERROR(fsal_status))
         {
           /* log error here , and continue? */
-          LogEvent(COMPONENT_STATE,
+          LogEvent(COMPONENT_CLIENTID,
                    "FSAL_GetClientConext failed");
         }
       else if(pstate_found->state_type == STATE_TYPE_SHARE)
@@ -493,7 +503,7 @@ void release_openstate(state_owner_t *popen_owner)
                                 popen_owner->so_pclient,
                                 &state_status) != STATE_SUCCESS)
             {
-              LogEvent(COMPONENT_STATE,
+              LogEvent(COMPONENT_CLIENTID,
                        "EXPIRY failed to release share stateid error %s",
                        state_err_str(state_status));
             }
@@ -504,19 +514,25 @@ void release_openstate(state_owner_t *popen_owner)
                              pentry,
                              popen_owner->so_pclient)) != STATE_SUCCESS)
         { 
-          LogDebug(COMPONENT_STATE,
+          LogDebug(COMPONENT_CLIENTID,
                    "EXPIRY failed to release stateid error %s",
                    state_err_str(state_status));
         }
+
       /* Close the file in FSAL through the cache inode */
       cache_inode_close(pentry,
                         popen_owner->so_pclient,
                         0,
                         &cache_status);
+
       pthread_rwlock_unlock(&pentry->state_lock);
+
       /* Release the lru ref to the cache inode we held while calling state_del */
-      cache_inode_lru_unref(pstate_found->state_pentry,
+      cache_inode_lru_unref(pentry,
                             popen_owner->so_pclient,
                             0);
     }
+
+  /* Release the reference to the open owner that keeps it in the hash table */
+  dec_state_owner_ref(popen_owner, popen_owner->so_pclient);
 }
