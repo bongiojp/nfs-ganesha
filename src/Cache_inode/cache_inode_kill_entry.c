@@ -95,7 +95,9 @@ cache_inode_kill_entry(cache_entry_t *entry,
              "Using cache_inode_kill_entry for entry %p", entry);
 
      cache_inode_unpinnable(entry);
-     state_wipe_file(entry, client);
+
+     if (entry->type == REGULAR_FILE)
+       state_wipe_file(entry, client);
 
      fsaldata.fh_desc = entry->fh_desc;
      FSAL_ExpandHandle(NULL,
