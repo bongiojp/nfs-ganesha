@@ -118,30 +118,25 @@ static const uint32_t LRU_ENTRY_CONDEMNED = 0x0004;
 static const uint32_t LRU_ENTRY_UNPINNABLE = 0x0008;
 
 /**
- * Asserting that we wish to delete an entry
- */
-static const uint32_t LRU_FLAG_DELETE = 0x0010;
-
-/**
  * Flag indicating that cache_inode_lru_kill has already been called,
  * making it idempotent and fixing a possible unref leak.
  */
-static const uint32_t LRU_ENTRY_KILLED = 0x0020;
+static const uint32_t LRU_ENTRY_KILLED = 0x0010;
 
 /**
  * The caller is fetching an initial reference
  */
-static const uint32_t LRU_REQ_INITIAL = 0x0040;
+static const uint32_t LRU_REQ_INITIAL = 0x0020;
 
 /**
  * The caller is scanning the entry (READDIR)
  */
-static const uint32_t LRU_REQ_SCAN = 0x0080;
+static const uint32_t LRU_REQ_SCAN = 0x0040;
 
 /**
  * The caller holds the lock on the LRU entry.
  */
-static const uint32_t LRU_FLAG_LOCKED = 0x0100;
+static const uint32_t LRU_FLAG_LOCKED = 0x0080;
 
 /* The minimum reference count for a cache entry not being recycled. */
 
@@ -175,10 +170,9 @@ extern cache_inode_status_t cache_inode_lru_ref(
      uint32_t flags) __attribute__((warn_unused_result));
 extern void cache_inode_lru_kill(cache_entry_t *entry,
                                  cache_inode_client_t *client);
-extern cache_inode_status_t cache_inode_lru_unref(
-     cache_entry_t *entry,
-     cache_inode_client_t *pclient,
-     uint32_t flags);
+extern void cache_inode_lru_unref(cache_entry_t *entry,
+                                  cache_inode_client_t *pclient,
+                                  uint32_t flags);
 extern void lru_wake_thread(uint32_t flags);
 extern cache_inode_status_t cache_inode_inc_pin_ref(cache_entry_t *entry);
 extern void cache_inode_unpinnable(cache_entry_t *entry);
