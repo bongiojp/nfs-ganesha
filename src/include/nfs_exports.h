@@ -356,7 +356,7 @@ typedef struct compoud_data
   nfs_client_cred_t credential;                       /**< Raw RPC credentials                                           */
   nfs_client_id_t *preserved_clientid;                /**< clientid that has lease reserved if any                       */
 #ifdef _USE_NFS4_1
-  caddr_t pcached_res;                                /**< NFv41: pointer to cached RPC res in a session's slot          */
+  COMPOUND4res_extended *pcached_res;                 /**< NFv41: pointer to cached RPC res in a session's slot          */
   bool_t use_drc;                                     /**< Set to TRUE if session DRC is to be used                      */
   uint32_t oppos;                                     /**< Position of the operation within the request processed        */
   nfs41_session_t *psession;                          /**< Related session (found by OP_SEQUENCE)                        */
