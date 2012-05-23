@@ -654,8 +654,8 @@ cache_entry_t *cache_inode_get(cache_inode_fsal_data_t * fsdata,
                                fsal_op_context_t *context,
                                cache_entry_t *associated,
                                cache_inode_status_t *status);
-cache_inode_status_t cache_inode_put(cache_entry_t *entry,
-                                     cache_inode_client_t *client);
+void cache_inode_put(cache_entry_t *entry,
+                     cache_inode_client_t *client);
 
 cache_inode_status_t cache_inode_access_sw(cache_entry_t * pentry,
                                            fsal_accessflags_t access_type,
@@ -1146,7 +1146,7 @@ cache_inode_lock_trust_attrs(cache_entry_t *entry,
 }
 
 /**
- * \brief Atomically increment a 32-bit integer
+ * \brief Atomically increment a 64-bit signed integer
  *
  * This function is a wrapper around a GCC atomic primitive and
  * adds 1 thirty-two bit integer.
@@ -1155,13 +1155,13 @@ cache_inode_lock_trust_attrs(cache_entry_t *entry,
  */
 
 static inline void
-atomic_inc_int(uint32_t *var)
+atomic_inc_quad(int64_t *var)
 {
      __sync_fetch_and_add(var, 1);
 }
 
 /**
- * \brief Atomically decrement a 32-bit integer
+ * \brief Atomically decrement a 64-bit signed integer
  *
  * This function is a wrapper around a GCC atomic primitive and
  * subtracts 1 thirty-two bit integer.
@@ -1170,7 +1170,37 @@ atomic_inc_int(uint32_t *var)
  */
 
 static inline void
-atomic_dec_int(uint32_t *var)
+atomic_dec_quad(int64_t *var)
+{
+     __sync_fetch_and_sub(var, 1);
+}
+
+/**
+ * \brief Atomically increment a 32-bit unsigned integer
+ *
+ * This function is a wrapper around a GCC atomic primitive and
+ * adds 1 thirty-two bit integer.
+ *
+ * @param var [in,out] Pointer to the integer to modify
+ */
+
+static inline void
+atomic_inc_uint(uint32_t *var)
+{
+     __sync_fetch_and_add(var, 1);
+}
+
+/**
+ * \brief Atomically decrement a 32-bit unsigned integer
+ *
+ * This function is a wrapper around a GCC atomic primitive and
+ * subtracts 1 thirty-two bit integer.
+ *
+ * @param var [in,out] Pointer to the integer to modify
+ */
+
+static inline void
+atomic_dec_uint(uint32_t *var)
 {
      __sync_fetch_and_sub(var, 1);
 }
