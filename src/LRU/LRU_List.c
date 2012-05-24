@@ -384,6 +384,9 @@ int LRU_invalidate_by_function(LRU_list_t * plru,
   if(plru->MRU->prev == NULL)   /* One entry only, returns success (the MRU cannot be set invalid) */
     return LRU_LIST_SUCCESS;
 
+  if(plru->LRU == NULL)
+    return LRU_LIST_EMPTY_LIST;
+
   /* From the LRU to the entry BEFORE the MRU */
   rc = LRU_LIST_SUCCESS;
 
