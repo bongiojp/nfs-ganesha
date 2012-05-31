@@ -139,6 +139,7 @@ int nlm4_Cancel(nfs_arg_t * parg /* IN     */ ,
   dec_nsm_client_ref(nsm_client);
   dec_nlm_client_ref(nlm_client);
   dec_state_owner_ref(nlm_owner, pclient);
+  cache_inode_put(pentry, pclient);
 
   LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Cancel %s",
            lock_result_str(pres->res_nlm4.stat.stat));

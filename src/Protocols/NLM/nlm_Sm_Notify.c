@@ -67,7 +67,7 @@ int nlm4_Sm_Notify(nfs_arg_t * parg /* IN     */ ,
            "REQUEST PROCESSING: Calling nlm4_sm_notify for %s",
            arg->name);
 
-  nsm_client = get_nsm_client(TRUE, NULL, arg->name);
+  nsm_client = get_nsm_client(CARE_NOT, NULL, arg->name);
   if(nsm_client != NULL)
     {
       /* Cast the state number into a state pointer to protect
@@ -81,9 +81,9 @@ int nlm4_Sm_Notify(nfs_arg_t * parg /* IN     */ ,
         {
           /* TODO FSF: Deal with error */
         }
-    }
 
-  dec_nsm_client_ref(nsm_client);
+      dec_nsm_client_ref(nsm_client);
+    }
 
   LogDebug(COMPONENT_NLM,
            "REQUEST RESULT: nlm4_sm_notify DONE");

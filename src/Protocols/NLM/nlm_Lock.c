@@ -68,6 +68,7 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
   state_owner_t      * nlm_owner, * holder;
   fsal_lock_param_t    lock, conflict;
   int                  rc;
+  int                  grace = nfs_in_grace();
   state_block_data_t * pblock_data;
 
   netobj_to_string(&arg->cookie, buffer, 1024);
@@ -86,16 +87,9 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
       return NFS_REQ_OK;
     }
 
-  /* allow only reclaim lock request during recovery */
-  if(nfs_in_grace() && !arg->reclaim)
-    {
-      pres->res_nlm4.stat.stat = NLM4_DENIED_GRACE_PERIOD;
-      LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Lock %s",
-               lock_result_str(pres->res_nlm4.stat.stat));
-      return NFS_REQ_OK;
-    }
-
-  if(!nfs_in_grace() && arg->reclaim)
+  /* allow only reclaim lock request during recovery and visa versa */
+  if((grace && !arg->reclaim) ||
+     (!grace && arg->reclaim))
     {
       pres->res_nlm4.stat.stat = NLM4_DENIED_GRACE_PERIOD;
       LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Lock %s",
@@ -165,6 +159,7 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
   dec_nsm_client_ref(nsm_client);
   dec_nlm_client_ref(nlm_client);
   dec_state_owner_ref(nlm_owner, pclient);
+  cache_inode_put(pentry, pclient);
 
   LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Lock %s",
            lock_result_str(pres->res_nlm4.stat.stat));
