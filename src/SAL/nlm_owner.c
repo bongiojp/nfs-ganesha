@@ -873,6 +873,7 @@ state_nsm_client_t *get_nsm_client(care_t       care,
   pclient->ssc_nlm_caller_name[pclient->ssc_nlm_caller_name_len] = '\0';
 
   init_glist(&pclient->ssc_lock_list);
+  init_glist(&pclient->ssc_share_list);
 
   if(isFullDebug(COMPONENT_STATE))
     {
@@ -1486,6 +1487,7 @@ state_owner_t *get_nlm_owner(care_t               care,
   /* Copy everything over */
   *powner = *pkey;
   init_glist(&powner->so_lock_list);
+  init_glist(&powner->so_owner.so_nlm_owner.so_nlm_shares);
 
   if(pthread_mutex_init(&powner->so_mutex, NULL) == -1)
     {
