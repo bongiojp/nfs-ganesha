@@ -79,8 +79,12 @@ typedef struct dupreq_entry__
   int checksum;
   int ipproto ;
 
-  pthread_mutex_t dupreq_mutex;
-  int processing; /* if currently being processed, this should be = 1 */
+  int processing; /* if currently being processed, this should be = 1
+                   * if invalid and to be gc'ed, this should be = -1
+                   * otherwise = 0 */
+
+  int ref; /* Number of workers using this entry for a request.
+            * note: dupreq is a write once read many model. */
 
   nfs_res_t res_nfs;
   u_long rq_prog;               /* service program number        */
@@ -123,5 +127,6 @@ void nfs_dupreq_get_stats(hash_stat_t * phstat_udp, hash_stat_t * phstat_tcp ) ;
 #define DUPREQ_NOT_FOUND           2
 #define DUPREQ_BEING_PROCESSED     3
 #define DUPREQ_ALREADY_EXISTS      4
+#define DUPREQ_STILL_REF           5
 
 #endif                          /* _NFS_DUPREQ_H */

@@ -756,6 +756,8 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
       /* Found the reuqest in the dupreq cache. It's an old request so resend
        * old reply. */
     case DUPREQ_ALREADY_EXISTS:
+      /* We received the duplicate request entry, it is referenced so it
+       * won't be freed. */
       if(do_dupreq_cache)
         {
           /* Request was known, use the previous reply */
@@ -782,6 +784,9 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
 
           svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
 
+          /* Now decrement the dupreq entry reference so it can be GC'd.*/
+          nfs_dupreq_release(rpcxid, preqnfs->xprt);
+
           LogFullDebug(COMPONENT_DISPATCH,
                        "After svc_sendreply on socket %d (dup req)",
                        xprt->xp_fd);
@@ -793,6 +798,11 @@ static void nfs_rpc_execute(nfs_request_data_t * preqnfs,
                   "Error: Duplicate request rejected because it was found "
                   "in the cache but is not allowed to be cached.");
           svcerr_systemerr(xprt);
+
+          /* Now decrement the dupreq entry reference so it can be GC'd.
+           * Hopefully soon! */
+          nfs_dupreq_release(rpcxid, preqnfs->xprt);
+
           return;
         }
       break;

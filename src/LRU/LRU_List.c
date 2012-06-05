@@ -337,7 +337,8 @@ int LRU_gc_invalid(LRU_list_t * plru, void *cleanparam)
           if(plru->parameter.clean_entry(pentry, cleanparam) != 0)
             {
               LogDebug(COMPONENT_LRU, "Error cleaning pentry %p", pentry);
-              rc = LRU_LIST_BAD_RELEASE_ENTRY;
+              //rc = LRU_LIST_BAD_RELEASE_ENTRY;
+              continue;
             }
 
 	  _LRU_remove_entry(plru, pentry);

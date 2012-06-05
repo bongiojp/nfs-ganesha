@@ -189,20 +189,54 @@ int print_entry_dupreq(LRU_data_t data, char *str)
   return 0;
 }
 
-static int _remove_dupreq(hash_table_t * ht_dupreq, hash_buffer_t *buffkey, dupreq_entry_t *pdupreq,
+/* Gets a lock on the ht entry to remove. Checks if it's still in use.
+ * Removes the entry. Frees related structures. Called by both
+ * clean_entry_dupreq() and nfs_dupreq_delete(). */
+static int _remove_dupreq(hash_table_t * ht_dupreq, hash_buffer_t *buffkey,
                           struct prealloc_pool *dupreq_pool, int nfs_req_status)
 {
   int rc;
   nfs_function_desc_t funcdesc = nfs2_func_desc[0];
-  hash_buffer_t usedbuffkey;
+  hash_buffer_t stored_key;
+  hash_buffer_t stored_val;
+  struct hash_latch latch;
+  dupreq_entry_t *pdupreq;
 
-  rc = HashTable_Del(ht_dupreq, buffkey, &usedbuffkey, NULL);
-
+  rc = HashTable_GetLatch(ht_dupreq, buffkey, &stored_val, 1, &latch);
   /* if hashtable no such key => dupreq garbaged by another thread */
-  if(rc != HASHTABLE_SUCCESS && rc != HASHTABLE_ERROR_NO_SUCH_KEY)
+  if(rc != HASHTABLE_SUCCESS && rc != HASHTABLE_ERROR_NO_SUCH_KEY) {
+    LogCrit(COMPONENT_DUPREQ, "Could not get latch for dupreq entry.");
     return 1;                   /* Error while cleaning */
-  else if(rc == HASHTABLE_ERROR_NO_SUCH_KEY)
+  }
+  else if(rc == HASHTABLE_ERROR_NO_SUCH_KEY) {
+    LogDebug(COMPONENT_DUPREQ, "Dupreq entry key doesn't exist in hashtable.");
     return 0;                   /* don't free the dupreq twice */
+  }
+
+  pdupreq = (dupreq_entry_t *) stored_val.pdata;
+  if (nfs_req_status == NFS_REQ_OK) /* called from clean_entry_dupreq() */
+    {
+      LogDupReq("Garbage collection on",
+                &pdupreq->addr, pdupreq->xid, pdupreq->rq_prog);
+      if (pdupreq->ref > 0)
+        {
+          HashTable_ReleaseLatched(ht_dupreq, &latch);
+          return DUPREQ_STILL_REF;
+        }
+    }
+  else /* called from nfs_dupreq_delete() */
+    {
+      LogDupReq("REMOVING", &pdupreq->addr, pdupreq->xid, pdupreq->rq_prog);
+      pdupreq->ref--;
+    }
+
+  rc = HashTable_DeleteLatched(ht_dupreq, buffkey, &latch,
+                               &stored_key, NULL);
+  if (rc != HASHTABLE_SUCCESS)
+    {
+      LogCrit(COMPONENT_DUPREQ, "Could not delete latched dupreq ht entry.");
+      return DUPREQ_NOT_FOUND;
+    }
 
   /* Locate the function descriptor associated with this cached request */
   if(pdupreq->rq_prog == nfs_param.core_param.program[P_NFS])
@@ -290,21 +324,20 @@ static int _remove_dupreq(hash_table_t * ht_dupreq, hash_buffer_t *buffkey, dupr
 
   /* Send the entry back to the pool */
   ReleaseToPool(pdupreq, dupreq_pool);
-  Mem_Free(usedbuffkey.pdata);
+  Mem_Free(stored_key.pdata);
 
   return DUPREQ_SUCCESS;
 }
 
+/* Used to delete an entry from the worker thread where processing==1
+ * because the NFS request is idempotent. */
 int nfs_dupreq_delete(long xid, struct svc_req *ptr_req, SVCXPRT *xprt,
                       struct prealloc_pool *dupreq_pool)
 {
-  int status;
-
   hash_buffer_t buffkey;
-  hash_buffer_t buffval;
   dupreq_key_t dupkey;
-  dupreq_entry_t *pdupreq;
   hash_table_t * ht_dupreq = NULL ;
+  int status;
 
   /* Get correct HT depending on proto used */
   ht_dupreq = get_ht_by_xprt( xprt ) ;
@@ -320,23 +353,8 @@ int nfs_dupreq_delete(long xid, struct svc_req *ptr_req, SVCXPRT *xprt,
    * this also means that buffkey->len will be 0 */
   buffkey.pdata = (caddr_t) &dupkey;
   buffkey.len = sizeof(dupreq_key_t);
-
-  if(HashTable_Get(ht_dupreq, &buffkey, &buffval) == HASHTABLE_SUCCESS)
-    {
-      pdupreq = (dupreq_entry_t *) buffval.pdata;
-
-      /* reset timestamp */
-      pdupreq->timestamp = time(NULL);
-
-      status = DUPREQ_SUCCESS;
-    }
-  else {
-    return DUPREQ_NOT_FOUND;
-  }
-
-  LogDupReq("REMOVING", &pdupreq->addr, pdupreq->xid, pdupreq->rq_prog);
-
-  status = _remove_dupreq( ht_dupreq, &buffkey, pdupreq, dupreq_pool, ! NFS_REQ_OK);
+  
+  status = _remove_dupreq(ht_dupreq, &buffkey, dupreq_pool, ! NFS_REQ_OK);
   return status;
 }
 
@@ -359,6 +377,7 @@ int clean_entry_dupreq(LRU_entry_t * pentry, void *addparam)
   dupreq_entry_t *pdupreq = (dupreq_entry_t *) (pentry->buffdata.pdata);
   dupreq_key_t dupkey;
   hash_table_t * ht_dupreq = NULL ;
+  int status;
   
   /* Get the socket address for the key */
   memcpy((char *)&dupkey.addr, (char *)&pdupreq->addr, sizeof(dupkey.addr));
@@ -376,9 +395,8 @@ int clean_entry_dupreq(LRU_entry_t * pentry, void *addparam)
   else
      ht_dupreq = ht_dupreq_udp ;
 
-  LogDupReq("Garbage collection on", &pdupreq->addr, pdupreq->xid, pdupreq->rq_prog);
-
-  return _remove_dupreq(ht_dupreq, &buffkey, pdupreq, dupreq_pool, NFS_REQ_OK);
+  status = _remove_dupreq(ht_dupreq, &buffkey, dupreq_pool, NFS_REQ_OK);
+  return status;
 }                               /* clean_entry_dupreq */
 
 /**
@@ -568,6 +586,7 @@ int nfs_dupreq_add_not_finished(long xid,
   int status = 0;
   dupreq_key_t *pdupkey = NULL;
   hash_table_t * ht_dupreq = NULL ;
+  struct hash_latch latch;
 
   /* Get correct HT depending on proto used */
   ht_dupreq = get_ht_by_xprt( xprt ) ;
@@ -578,11 +597,6 @@ int nfs_dupreq_add_not_finished(long xid,
     return DUPREQ_INSERT_MALLOC_ERROR;
 
   memset(pdupreq, 0, sizeof(*pdupreq));
-  if(pthread_mutex_init(&pdupreq->dupreq_mutex, NULL) == -1)
-    {
-      ReleaseToPool(pdupreq, dupreq_pool);
-      return DUPREQ_INSERT_MALLOC_ERROR;
-    }
 
   if((pdupkey = (dupreq_key_t *) Mem_Alloc(sizeof(dupreq_key_t))) == NULL)
     {
@@ -617,6 +631,7 @@ int nfs_dupreq_add_not_finished(long xid,
   pdupreq->rq_proc = ptr_req->rq_proc;
   pdupreq->timestamp = time(NULL);
   pdupreq->processing = 1;
+  pdupreq->ref = 1;
   pdupreq->ipproto = get_ipproto_by_xprt( xprt ) ;
   buffdata.pdata = (caddr_t) pdupreq;
   buffdata.len = sizeof(dupreq_entry_t);
@@ -628,33 +643,75 @@ int nfs_dupreq_add_not_finished(long xid,
 
   if (status == HASHTABLE_ERROR_KEY_ALREADY_EXISTS)
     {
-      if(HashTable_Get(ht_dupreq, &buffkey, &buffval) == HASHTABLE_SUCCESS)
+      /* Gets a reference that is READ ONLY. */
+      if(HashTable_GetLatch(ht_dupreq, &buffkey, &buffval, 1, &latch)
+         == HASHTABLE_SUCCESS)
         {
-          P(((dupreq_entry_t *)buffval.pdata)->dupreq_mutex);
           if ( ((dupreq_entry_t *)buffval.pdata)->processing == 1)
-            {
               status = DUPREQ_BEING_PROCESSED;
-            }
           else
             {
               *res_nfs = ((dupreq_entry_t *) buffval.pdata)->res_nfs;
               status = DUPREQ_ALREADY_EXISTS;
+              ((dupreq_entry_t *) buffval.pdata)->ref++;
             }
-          V(((dupreq_entry_t *)buffval.pdata)->dupreq_mutex);
+          /* Now free the write lock on the entry. */
+          HashTable_ReleaseLatched(ht_dupreq, &latch);
         }
       else
         status = DUPREQ_NOT_FOUND;
     }
   else if (status == HASHTABLE_INSERT_MALLOC_ERROR)
       status = DUPREQ_INSERT_MALLOC_ERROR;
-  else
+  else {
+    
     status = DUPREQ_SUCCESS;
+  }
   if (status != DUPREQ_SUCCESS) {
     ReleaseToPool(pdupreq, dupreq_pool);
     Mem_Free(pdupkey);
   }
   return status;
 }                               /* nfs_dupreq_add_not_finished */
+
+nfs_dupreq_release(long xid, SVCXPRT *xprt)
+{
+  hash_buffer_t buffkey;
+  hash_buffer_t buffval;
+  LRU_entry_t *pentry = NULL;
+  LRU_status_t lru_status;
+  dupreq_key_t dupkey;
+  dupreq_entry_t *pdupreq;
+  hash_table_t * ht_dupreq = NULL ;
+  struct hash_latch latch;
+
+  /* Get correct HT depending on proto used */
+  ht_dupreq = get_ht_by_xprt( xprt );
+
+  /* Get the socket address for the key */
+  if(copy_xprt_addr(&dupkey.addr, xprt) == 0)
+    return DUPREQ_NOT_FOUND;
+
+  dupkey.xid = xid;
+  dupkey.checksum = 0;
+
+  /* I have to keep an integer as key, I wil use the pointer buffkey->pdata for this,
+   * this also means that buffkey->len will be 0 */
+  buffkey.pdata = (caddr_t) &dupkey;
+  buffkey.len = sizeof(dupreq_key_t);
+  /* Fourth parameter means this will be a writeable reference. */
+  if(HashTable_GetLatch(ht_dupreq, &buffkey, &buffval, 1, &latch)
+     != HASHTABLE_SUCCESS)
+    return DUPREQ_NOT_FOUND;
+
+  pdupreq = (dupreq_entry_t *)buffval.pdata;
+
+  LogDupReq("Finish", &pdupreq->addr, pdupreq->xid, pdupreq->rq_prog);
+  pdupreq->ref--;
+
+  /* Now free the write lock on the entry. */
+  HashTable_ReleaseLatched(ht_dupreq, &latch);
+}
 
 /**
  *
@@ -686,6 +743,7 @@ int nfs_dupreq_finish(long xid,
   dupreq_key_t dupkey;
   dupreq_entry_t *pdupreq;
   hash_table_t * ht_dupreq = NULL ;
+  struct hash_latch latch;
 
   /* Get correct HT depending on proto used */
   ht_dupreq = get_ht_by_xprt( xprt ) ;
@@ -702,20 +760,22 @@ int nfs_dupreq_finish(long xid,
    * this also means that buffkey->len will be 0 */
   buffkey.pdata = (caddr_t) &dupkey;
   buffkey.len = sizeof(dupreq_key_t);
-  if(HashTable_Get(ht_dupreq, &buffkey, &buffval) != HASHTABLE_SUCCESS)
+  /* Fourth parameter means this will be a writeable reference. */
+  if(HashTable_GetLatch(ht_dupreq, &buffkey, &buffval, 1, &latch)
+     != HASHTABLE_SUCCESS)
     return DUPREQ_NOT_FOUND;
 
   pdupreq = (dupreq_entry_t *)buffval.pdata;
 
   LogDupReq("Finish", &pdupreq->addr, pdupreq->xid, pdupreq->rq_prog);
 
-  P(pdupreq->dupreq_mutex);
-
   pdupreq->res_nfs = *p_res_nfs;
   pdupreq->timestamp = time(NULL);
   pdupreq->processing = 0;
+  pdupreq->ref--;
 
-  V(pdupreq->dupreq_mutex);
+  /* Now free the write lock on the entry. */
+  HashTable_ReleaseLatched(ht_dupreq, &latch);
 
   /* Add it to lru list */
   if((pentry = LRU_new_entry(lru_dupreq, &lru_status)) == NULL)
@@ -728,68 +788,12 @@ int nfs_dupreq_finish(long xid,
 
 /**
  *
- * nfs_dupreq_get: Tries to get a duplicated requests for dupreq cache
+ * nfs_dupreq_gc_function: Tests if an entry in dupreq cache is to be set
+ * invalid (has expired).
  *
- * Tries to get a duplicated requests for dupreq cache.
- *
- * @param xid [IN] the transfer id we are looking for
- * @param pstatus [OUT] the pointer to the status for the operation
- *
- * @return the result previously set if *pstatus == DUPREQ_SUCCESS
- *
- */
-nfs_res_t nfs_dupreq_get(long xid, struct svc_req *ptr_req, SVCXPRT *xprt, int *pstatus)
-{
-  hash_buffer_t buffkey;
-  hash_buffer_t buffval;
-  nfs_res_t res_nfs;
-  dupreq_key_t dupkey;
-  hash_table_t * ht_dupreq = NULL ;
-
-  /* Get correct HT depending on proto used */
-  ht_dupreq = get_ht_by_xprt( xprt ) ;
- 
-
-  memset(&res_nfs, 0, sizeof(res_nfs));
-
-  /* Get the socket address for the key */
-  if(copy_xprt_addr(&dupkey.addr, xprt) == 0)
-    {
-      *pstatus = DUPREQ_NOT_FOUND;
-      return res_nfs;
-    }
-
-  dupkey.xid = xid;
-  dupkey.checksum = 0;
-
-  /* I have to keep an integer as key, I wil use the pointer buffkey->pdata for this,
-   * this also means that buffkey->len will be 0 */
-  buffkey.pdata = (caddr_t) &dupkey;
-  buffkey.len = sizeof(dupreq_key_t);
-  if(HashTable_Get(ht_dupreq, &buffkey, &buffval) == HASHTABLE_SUCCESS)
-    {
-      dupreq_entry_t *pdupreq = (dupreq_entry_t *)buffval.pdata;
-      /* reset timestamp */
-      pdupreq->timestamp = time(NULL);
-
-      *pstatus = DUPREQ_SUCCESS;
-      res_nfs = pdupreq->res_nfs;
-      LogDupReq(" dupreq_get: Hit in the dupreq cache for", &pdupreq->addr,
-		pdupreq->xid, pdupreq->rq_prog);
-    }
-  else
-    {
-      LogDupReq("Failed to get dupreq entry", &dupkey.addr, dupkey.xid, ptr_req->rq_prog);
-      *pstatus = DUPREQ_NOT_FOUND;
-    }
-  return res_nfs;
-}                               /* nfs_dupreq_get */
-
-/**
- *
- * nfs_dupreq_gc_function: Tests is an entry in dupreq cache is to be set invalid (has expired).
- *
- * Tests is an entry in dupreq cache is to be set invalid (has expired).
+ * Tests if an entry in dupreq cache is to be set invalid (has expired).
+ * This is based on whether there are any references to the entry and
+ * how long ago the entry was created.
  *
  * @param pentry [IN] pointer to the entry to test
  *
@@ -801,15 +805,18 @@ nfs_res_t nfs_dupreq_get(long xid, struct svc_req *ptr_req, SVCXPRT *xprt, int *
  */
 int nfs_dupreq_gc_function(LRU_entry_t * pentry, void *addparam)
 {
+  int status = LRU_LIST_DO_NOT_SET_INVALID;
   dupreq_entry_t *pdupreq = NULL;
 
   pdupreq = (dupreq_entry_t *) (pentry->buffdata.pdata);
 
-  /* Test if entry is expired */
-  if(time(NULL) - pdupreq->timestamp > nfs_param.core_param.expiration_dupreq)
-    return LRU_LIST_SET_INVALID;
-
-  return LRU_LIST_DO_NOT_SET_INVALID;
+  /* Test if entry is expired */  
+  if (time(NULL) - pdupreq->timestamp > nfs_param.core_param.expiration_dupreq)
+    {
+      status = LRU_LIST_SET_INVALID;
+    }
+  
+  return status;
 }                               /* nfs_dupreq_fc_function */
 
 /**
