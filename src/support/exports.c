@@ -45,8 +45,8 @@
 #endif
 
 #include "cidr.h"
-#include "log.h"
 #include "ganesha_rpc.h"
+#include "log.h"
 #include "stuff_alloc.h"
 #include "fsal.h"
 #include "nfs23.h"
@@ -2844,6 +2844,8 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
       cache_entry_t *pentry = NULL;
 
       fsal_op_context_t context;
+      fsal_staticfsinfo_t *pstaticinfo = NULL;
+      fsal_export_context_t *export_context = NULL;
 
       /* setting the 'small_client' structure */
       small_client_param.nb_prealloc_entry = 10;
@@ -2863,6 +2865,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
 #else
       small_client_param.attrmask = FSAL_ATTR_MASK_V2_V3;
 #endif
+#define LASTDEFAULT 32768
 
       /* creating the 'small_client' */
       if(cache_inode_client_init(&small_client, &small_client_param, SMALL_CLIENT_INDEX, NULL))
@@ -2939,7 +2942,26 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
             }
 
           *pcurrent->proot_handle = fsal_handle;
-
+          export_context = &pcurrent->FS_export_context;
+          pstaticinfo = export_context->fe_static_fs_info;
+          if( ((pcurrent->options & EXPORT_OPTION_MAXREAD) != EXPORT_OPTION_MAXREAD )) 
+             {
+               if ( pstaticinfo && pstaticinfo->maxread )
+                  pcurrent->MaxRead = pstaticinfo->maxread;
+               else
+                  pcurrent->MaxRead = LASTDEFAULT;
+             }
+          if( ((pcurrent->options & EXPORT_OPTION_MAXWRITE) != EXPORT_OPTION_MAXWRITE )) 
+             {
+               if ( pstaticinfo && pstaticinfo->maxwrite )
+                  pcurrent->MaxWrite = pstaticinfo->maxwrite;
+               else
+                  pcurrent->MaxWrite = LASTDEFAULT;
+             }
+          LogFullDebug(COMPONENT_INIT,
+                      "Set MaxRead MaxWrite for Path=%s Options = 0x%x MaxRead = 0x%x MaxWrite = 0x%x",
+                      pcurrent->fullpath, pcurrent->options, pcurrent->MaxRead, pcurrent->MaxWrite);
+             
           /* Add this entry to the Cache Inode as a "root" entry */
           fsdata.fh_desc.start = (caddr_t) &fsal_handle;
           fsdata.fh_desc.len = 0;
