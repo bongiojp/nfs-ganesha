@@ -147,6 +147,15 @@ cache_inode_invalidate(cache_inode_fsal_data_t *fsal_data,
         so we can do things like free the directory entries we just
         marked untrustworthy. */
 
+     if (entry->type == REGULAR_FILE) {
+          cache_inode_close(entry,
+                            NULL,
+                            (CACHE_INODE_FLAG_REALLYCLOSE |
+                             CACHE_INODE_FLAG_CONTENT_HAVE |
+                             CACHE_INODE_FLAG_CONTENT_HOLD),
+                            status);
+     }
+
      pthread_rwlock_unlock(&entry->attr_lock);
      pthread_rwlock_unlock(&entry->content_lock);
 
