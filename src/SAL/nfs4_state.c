@@ -395,6 +395,7 @@ void state_nfs4_state_wipe(cache_entry_t        * pentry,
 
   glist_for_each_safe(glist, glistn, &pentry->state_list)
     {
+      pstate = glist_entry(glist, state_t, state_list);
       state_del_locked(pstate, pentry, pclient);
     }
 
