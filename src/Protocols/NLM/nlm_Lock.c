@@ -43,6 +43,9 @@
 /**
  * nlm4_Lock: Set a range lock
  *
+ * Also handles NLM_NM_LOCK which is the same except that it will not
+ * monitor the NLM Client.
+ *
  *  @param parg        [IN]
  *  @param pexportlist [IN]
  *  @param pcontextp   [IN]
@@ -70,10 +73,22 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
   int                  rc;
   int                  grace = nfs_in_grace();
   state_block_data_t * pblock_data;
+  const char         * proc_name = "nlm4_Lock";
+  care_t               care = CARE_MONITOR;
+
+  if(preq->rq_proc == NLMPROC4_NM_LOCK)
+    {
+      /* If call is a NM lock, indicate that we care about NLM client but
+       * will not monitor.
+       */
+      proc_name = "nlm4_NM_Lock";
+      care = CARE_NO_MONITOR;
+    }
 
   netobj_to_string(&arg->cookie, buffer, 1024);
   LogDebug(COMPONENT_NLM,
-           "REQUEST PROCESSING: Calling nlm4_Lock svid=%d off=%llx len=%llx cookie=%s reclaim=%s",
+           "REQUEST PROCESSING: Calling %s svid=%d off=%llx len=%llx cookie=%s reclaim=%s",
+           proc_name,
            (int) arg->alock.svid,
            (unsigned long long) arg->alock.l_offset,
            (unsigned long long) arg->alock.l_len, buffer,
@@ -82,8 +97,8 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
   if(!copy_netobj(&pres->res_nlm4test.cookie, &arg->cookie))
     {
       pres->res_nlm4.stat.stat = NLM4_FAILED;
-      LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Lock %s",
-               lock_result_str(pres->res_nlm4.stat.stat));
+      LogDebug(COMPONENT_NLM, "REQUEST RESULT: %s %s",
+               proc_name, lock_result_str(pres->res_nlm4.stat.stat));
       return NFS_REQ_OK;
     }
 
@@ -92,8 +107,8 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
      (!grace && arg->reclaim))
     {
       pres->res_nlm4.stat.stat = NLM4_DENIED_GRACE_PERIOD;
-      LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Lock %s",
-               lock_result_str(pres->res_nlm4.stat.stat));
+      LogDebug(COMPONENT_NLM, "REQUEST RESULT: %s %s",
+               proc_name, lock_result_str(pres->res_nlm4.stat.stat));
       return NFS_REQ_OK;
     }
 
@@ -104,7 +119,7 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
                               &pentry,
                               pcontext,
                               pclient,
-                              CARE_MONITOR,
+                              care,
                               &nsm_client,
                               &nlm_client,
                               &nlm_owner,
@@ -114,8 +129,8 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
     {
       /* Present the error back to the client */
       pres->res_nlm4.stat.stat = (nlm4_stats)rc;
-      LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Unlock %s",
-               lock_result_str(pres->res_nlm4.stat.stat));
+      LogDebug(COMPONENT_NLM, "REQUEST RESULT: %s %s",
+               proc_name, lock_result_str(pres->res_nlm4.stat.stat));
       return NFS_REQ_OK;
     }
 
@@ -161,8 +176,8 @@ int nlm4_Lock(nfs_arg_t            * parg     /* IN     */ ,
   dec_state_owner_ref(nlm_owner, pclient);
   cache_inode_put(pentry, pclient);
 
-  LogDebug(COMPONENT_NLM, "REQUEST RESULT: nlm4_Lock %s",
-           lock_result_str(pres->res_nlm4.stat.stat));
+  LogDebug(COMPONENT_NLM, "REQUEST RESULT: %s %s",
+           proc_name, lock_result_str(pres->res_nlm4.stat.stat));
   return NFS_REQ_OK;
 }
 
