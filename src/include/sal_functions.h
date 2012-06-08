@@ -647,8 +647,33 @@ state_status_t state_share_check_prev(state_t      * pstate,
                                     state_data_t * pstate_data);
 
 state_status_t state_share_check_conflict(cache_entry_t  * pentry,
-                                          state_data_t   * pstate_data,
+                                          int              share_acccess,
+                                          int              share_deny,
                                           state_status_t * pstatus);
+
+state_status_t state_share_anonymous_io_start(cache_entry_t  * pentry,
+                                              int              share_access,
+                                              state_status_t * pstatus);
+
+void state_share_anonymous_io_done(cache_entry_t  * pentry,
+                                   int              share_access);
+
+state_status_t state_nlm_share(cache_entry_t        * pentry,
+                               fsal_op_context_t    * pcontext,
+                               exportlist_t         * pexport,
+                               int                    share_access,
+                               int                    share_deny,
+                               state_owner_t        * powner,
+                               cache_inode_client_t * pclient,
+                               state_status_t       * pstatus);
+
+state_status_t state_nlm_unshare(cache_entry_t        * pentry,
+                                 fsal_op_context_t    * pcontext,
+                                 int                    share_access,
+                                 int                    share_deny,
+                                 state_owner_t        * powner,
+                                 cache_inode_client_t * pclient,
+                                 state_status_t       * pstatus);
 
 /******************************************************************************
  *
