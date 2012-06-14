@@ -75,8 +75,9 @@ gsh_malloc(size_t n)
 static inline void *
 gsh_malloc_aligned(size_t a, size_t n)
 {
-     void *p = NULL;
-     posix_memalign(&p, a, n);
+     void *p;
+     if(posix_memalign(&p, a, n) != 0)
+       p = NULL;
      return p;
 }
 

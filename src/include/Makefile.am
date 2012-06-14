@@ -1,4 +1,5 @@
 noinst_HEADERS = abstract_mem.h                  \
+                 abstract_atomic.h               \
 		 BuddyMalloc.h                   \
                  fsal.h                          \
                  fsal_pnfs.h                     \
