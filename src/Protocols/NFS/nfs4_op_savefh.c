@@ -142,6 +142,7 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
        if (cache_inode_lru_ref(data->saved_entry,
                                data->pclient,
                                LRU_FLAG_NONE) != CACHE_INODE_SUCCESS) {
+            data->saved_entry = NULL;
             resp->nfs_resop4_u.opsavefh.status = NFS4ERR_STALE;
             return resp->nfs_resop4_u.opsavefh.status;
        }

@@ -166,6 +166,7 @@ int nfs4_op_restorefh(struct nfs_argop4 *op,
                                data->pclient,
                                LRU_FLAG_NONE) != CACHE_INODE_SUCCESS) {
             resp->nfs_resop4_u.opgetfh.status = NFS4ERR_STALE;
+            data->current_entry = NULL;
             return resp->nfs_resop4_u.opgetfh.status;
        }
   }
