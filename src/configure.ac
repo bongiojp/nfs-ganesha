@@ -701,6 +701,8 @@ case $FSAL in
 		FSAL_LDFLAGS=""
 		FSAL_LIB="\$(top_builddir)/FSAL/FSAL_PT/libfsalpt.la"
 		FS_NAME="pt"
+		AC_SUBST(RELEASE, [1])
+		AC_SUBST(DIST_VER, [_2012June20])
 		;;
         ZFS)
                 AC_DEFINE([_USE_ZFS], 1, [GANESHA exports ZFS Filesystem])
@@ -831,6 +833,8 @@ AC_SUBST(ac_configure_args)
 
 # for using fs name in binairies
 AC_DEFINE_UNQUOTED([FS_NAME], "$FS_NAME", [Name of the filesystem])
+AC_DEFINE_UNQUOTED([RELEASE], "$RELEASE", [Release of the software])
+AC_DEFINE_UNQUOTED([DIST_VER], "$DIST_VER", [Distribution version])
 
 AC_CONFIG_FILES([include/Makefile
                  include/FSAL/Makefile
