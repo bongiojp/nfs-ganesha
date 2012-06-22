@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/resource.h>
 
 #define MAX_2( x, y )    ( (x) > (y) ? (x) : (y) )
 #define MAX_3( x, y, z ) ( (x) > (y) ? MAX_2((x),(z)) : MAX_2((y),(z)) )
@@ -32,6 +33,8 @@
 static int gpfs_acl_2_fsal_acl(fsal_attrib_list_t * p_object_attributes,
                                gpfs_acl_t *p_gpfsacl);
 #endif                          /* _USE_NFS4_ACL */
+
+extern uint32_t open_fd_count;
 
 /**
  * posix2fsal_error :
@@ -46,6 +49,10 @@ static int gpfs_acl_2_fsal_acl(fsal_attrib_list_t * p_object_attributes,
  */
 int posix2fsal_error(int posix_errorcode)
 {
+  struct rlimit rlim = {
+    .rlim_cur = RLIM_INFINITY,
+    .rlim_max = RLIM_INFINITY
+  };
 
   switch (posix_errorcode)
     {
@@ -76,6 +83,14 @@ int posix2fsal_error(int posix_errorcode)
     case EPIPE:
 
       /* all shown as IO errors */
+      if (getrlimit(RLIMIT_NOFILE, &rlim) != 0) {
+         LogCrit(COMPONENT_FSAL, "%s mapping %d to ERR_FSAL_IO, open_fd_count=%d getrlimit failed",
+                        __FUNCTION__, posix_errorcode, open_fd_count);
+      }
+      else {
+         LogCrit(COMPONENT_FSAL, "%s mapping %d to ERR_FSAL_IO, open_fd_count=%d rlim_cur=%ld rlim_max=%ld",
+                        __FUNCTION__, posix_errorcode, open_fd_count, rlim.rlim_cur, rlim.rlim_max);
+      }
       return ERR_FSAL_IO;
 
       /* no such device */
