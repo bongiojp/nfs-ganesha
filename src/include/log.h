@@ -140,6 +140,7 @@ typedef enum log_components
   COMPONENT_9P,
   COMPONENT_9P_DISPATCH,
   COMPONENT_FSAL_UP,
+  LOG_MESSAGE_DEBUGINFO,
   LOG_MESSAGE_VERBOSITY,
   COMPONENT_COUNT
 } log_components_t;
@@ -367,6 +368,12 @@ typedef struct cleanup_list_element
   struct cleanup_list_element *next;
   cleanup_function             clean;
 } cleanup_list_element;
+
+/* Allocates buffer containing debug info to be printed.
+ * Returned buffer needs to be freed. Returns number of
+ * characeters in size if size != NULL.
+ */
+char *get_debug_info(int *size);
 
 /* les prototypes des fonctions de la lib */
 

@@ -139,6 +139,10 @@ int posix2fsal_error(int posix_errorcode)
     case EFBIG:
       return ERR_FSAL_FBIG;
 
+    case ETXTBSY:
+      LogCrit(COMPONENT_FSAL, "FSAL ERR: ETXTBSY %d", posix_errorcode);
+      return ERR_FSAL_EXIST;
+
     case ENOSPC:
       return ERR_FSAL_NOSPC;
 
