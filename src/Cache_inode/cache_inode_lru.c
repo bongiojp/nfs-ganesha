@@ -836,6 +836,13 @@ lru_thread(void *arg __attribute__((unused)))
                         (totalwork < lru_state.biggest_window));
 
                currentopen = open_fd_count;
+               LogInfo(COMPONENT_CACHE_INODE_LRU, "formeropen=%zd"
+                       " currentopen=%zd futility=%d totalwork=%zd"
+                       " biggest_window=%d extremis=%d lanes=%d"
+                       " perlanework=%d",
+                       formeropen, currentopen, lru_state.futility,
+                       totalwork, lru_state.biggest_window, extremis,
+                       LRU_N_Q_LANES, lru_state.per_lane_work);
                if (extremis &&
                    ((currentopen > formeropen) ||
                     (formeropen - currentopen <
