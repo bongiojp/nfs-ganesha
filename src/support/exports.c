@@ -727,7 +727,7 @@ int parseAccessParam(char                * var_name,
 
 bool_t fsal_specific_checks(exportlist_t *p_entry)
 {
-  #ifdef _USE_GPFS
+  #if defined(_USE_GPFS) || defined (_USE_PT)
   if (p_entry->use_ganesha_write_buffer != FALSE)
     {
       LogWarn(COMPONENT_CONFIG,
