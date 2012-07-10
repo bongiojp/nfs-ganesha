@@ -114,6 +114,8 @@ int posix2fsal_error(int posix_errorcode)
 
     case ENOMEM:
     case ENOLCK:
+      LogCrit(COMPONENT_FSAL, "%s mapping %d to ERR_FSAL_NOMEM",
+                        __FUNCTION__, posix_errorcode);
       return ERR_FSAL_NOMEM;
 
     case EACCES:
@@ -135,9 +137,13 @@ int posix2fsal_error(int posix_errorcode)
       return ERR_FSAL_ISDIR;
 
     case EINVAL:
+      LogCrit(COMPONENT_FSAL, "%s mapping %d to ERR_FSAL_INVAL",
+                        __FUNCTION__, posix_errorcode);
       return ERR_FSAL_INVAL;
 
     case EFBIG:
+      LogCrit(COMPONENT_FSAL, "%s mapping %d to ERR_FSAL_EFBIG",
+                        __FUNCTION__, posix_errorcode);
       return ERR_FSAL_FBIG;
 
     case ETXTBSY:
