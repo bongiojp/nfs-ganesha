@@ -81,7 +81,9 @@ struct lru_state
      uint32_t per_lane_work;
      uint32_t biggest_window;
      uint32_t flags;
-     uint64_t last_count;
+     uint64_t prev_entry_count; /* previous # of inode entries*/
+     uint64_t prev_fd_count; /* previous # of open fds */
+     time_t prev_time; /* previous time the gc thread was run. */
      uint64_t threadwait;
      bool_t caching_fds;
 };

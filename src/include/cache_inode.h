@@ -448,6 +448,11 @@ typedef struct cache_inode_gc_policy__
                                   which Ganesha will not reap file
                                   descriptonot reap file
                                   descriptorsrs. */
+  uint32_t interval_adjustment; /*< The percentage of the lru run interval
+                                  should be decreased so that we can keep
+                                  up with fd usage. The run interval will be
+                                  decreased in increments. If interval adjust
+                                  is 90, then the interval is 10% at a time. */
   uint32_t reaper_work; /*< Roughly, the amount of work to do on each
                             pass through the thread under normal
                             conditions.  (Ideally, a multipel of the

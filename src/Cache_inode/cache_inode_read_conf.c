@@ -408,6 +408,10 @@ cache_inode_read_conf_gc_policy(config_file_t config,
         {
           policy->lru_run_interval = atoi(key_value);
         }
+      else if(!strcasecmp(key_name, "Interval_Adjustment_Percent"))
+        {
+          policy->interval_adjustment = atoi(key_value);
+        }
       else if(!strcasecmp(key_name, "FD_Limit_Percent"))
         {
           policy->fd_limit_percent = atoi(key_value);
@@ -419,10 +423,6 @@ cache_inode_read_conf_gc_policy(config_file_t config,
       else if(!strcasecmp(key_name, "FD_LWMark_Percent"))
         {
           policy->fd_lwmark_percent = atoi(key_value);
-        }
-      else if(!strcasecmp(key_name, "Reaper_Work"))
-        {
-          policy->reaper_work = atoi(key_value);
         }
       else if(!strcasecmp(key_name, "Biggest_Window"))
         {
