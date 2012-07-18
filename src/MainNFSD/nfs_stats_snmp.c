@@ -530,13 +530,13 @@ static register_get_set snmp_export_stat_general[] = {
 #define SNMPADM_STAT_GENERAL_COUNT 1
 
 static register_get_set snmp_export_stat_cache[] = {
-  {"cache_nb_entries", "cache_inode", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO, get_hash,
+  {"cache_nb_entries", "cache_inode", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO, get_hash,
    NULL, (void *)0x00},
-  {"cache_min_rbt_num_node", "cache_inode", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO,
+  {"cache_min_rbt_num_node", "cache_inode", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO,
    get_hash, NULL, (void *)0x01},
-  {"cache_max_rbt_num_node", "cache_inode", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO,
+  {"cache_max_rbt_num_node", "cache_inode", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO,
    get_hash, NULL, (void *)0x02},
-  {"cache_avg_rbt_num_node", "cache_inode", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO,
+  {"cache_avg_rbt_num_node", "cache_inode", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO,
    get_hash, NULL, (void *)0x03}
 };
 
@@ -570,13 +570,13 @@ static register_get_set snmp_export_stat_req[] = {
   {"average_pending_requests", "NFS/MOUNT STATISTICS", SNMP_ADM_INTEGER,
    SNMP_ADM_ACCESS_RO, get_pending, NULL, (void *)3},
 
-  {"dupreq_nb_entries", "DUP_REQ_HASH", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO, get_hash,
+  {"dupreq_nb_entries", "DUP_REQ_HASH", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO, get_hash,
    NULL, (void *)0x10},
-  {"dupreq_min_rbt_num_node", "DUP_REQ_HASH", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO,
+  {"dupreq_min_rbt_num_node", "DUP_REQ_HASH", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO,
    get_hash, NULL, (void *)0x11},
-  {"dupreq_max_rbt_num_node", "DUP_REQ_HASH", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO,
+  {"dupreq_max_rbt_num_node", "DUP_REQ_HASH", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO,
    get_hash, NULL, (void *)0x12},
-  {"dupreq_avg_rvt_num_node", "DUP_REQ_HASH", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO,
+  {"dupreq_avg_rvt_num_node", "DUP_REQ_HASH", SNMP_ADM_BIGINT, SNMP_ADM_ACCESS_RO,
    get_hash, NULL, (void *)0x13},
   {"dupreq_nbset_ok", "DUP_REQ_HASH", SNMP_ADM_INTEGER, SNMP_ADM_ACCESS_RO, get_hash,
    NULL, (void *)0x14},
