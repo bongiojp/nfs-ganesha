@@ -671,10 +671,17 @@ lru_thread(void *arg __attribute__((unused)))
                pthread_mutex_unlock(&LRU_2[lane].lru_pinned.mtx);
           }
 
-          LogFullDebug(COMPONENT_CACHE_INODE_LRU,
-                       "%zu entries in cache.",
-                       t_count);
-
+          if (isFullDebug(COMPONENT_CACHE_INODE_LRU))
+            {
+              uint64_t entries = 0;
+              int i;
+              for (i = 0; i < fh_to_cache_entry_ht->parameter.index_size; i++)
+                entries += fh_to_cache_entry_ht->partitions[i].count;
+              LogFullDebug(COMPONENT_CACHE_INODE_LRU,
+                           "%zu entries in LRU. %zu entries in CACHE.",
+                           t_count, entries);
+            }
+          
           if (tmpflags & LRU_STATE_RECLAIMING) {
               if (t_count < lru_state.entries_lowat) {
                   tmpflags &= ~LRU_STATE_RECLAIMING;
