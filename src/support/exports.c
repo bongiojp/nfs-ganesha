@@ -2930,9 +2930,9 @@ int nfs_export_check_access(sockaddr_t *hostaddr,
  * @return TRUE is successfull, FALSE if something wrong occured.
  *
  */
-int nfs_export_create_root_entry(exportlist_t * pexportlist)
+int nfs_export_create_root_entry(exportlist_t **pexportlist)
 {
-      exportlist_t *pcurrent = NULL;
+  exportlist_t *pcurrent = NULL, *pprev = NULL;
       cache_inode_status_t cache_status;
 #ifdef _CRASH_RECOVERY_AT_STARTUP
       cache_content_status_t cache_content_status;
@@ -2947,6 +2947,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
       fsal_op_context_t context;
       fsal_staticfsinfo_t *pstaticinfo = NULL;
       fsal_export_context_t *export_context = NULL;
+      int retval = TRUE;
 
       /* Get the context for FSAL super user */
       fsal_status = FSAL_InitClientContext(&context);
@@ -2958,14 +2959,14 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
         }
 
       /* loop the export list */
-
-      for(pcurrent = pexportlist; pcurrent != NULL; pcurrent = pcurrent->next)
+      for(pprev = NULL, pcurrent = *pexportlist;
+          pcurrent != NULL;
+          pprev = pcurrent, pcurrent = pcurrent->next)
         {
-
           /* Build the FSAL path */
           if(FSAL_IS_ERROR((fsal_status = FSAL_str2path(pcurrent->fullpath,
                                                         strsize, &exportpath_fsal))))
-            return FALSE;
+            goto removeit;
 
           /* inits context for the current export entry */
 
@@ -2978,7 +2979,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
               LogCrit(COMPONENT_INIT,
                       "Couldn't build export context for %s",
                       pcurrent->fullpath);
-              return FALSE;
+              goto removeit;
             }
 
           /* get the related client context */
@@ -2988,7 +2989,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
             {
               LogCrit(COMPONENT_INIT,
                       "Couldn't get the credentials for FSAL super user");
-              return FALSE;
+              goto removeit;
             }
 
           /* Lookup for the FSAL Path */
@@ -2998,7 +2999,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
                       "Couldn't access the root of the exported namespace, ExportId=%u Path=%s FSAL_ERROR=(%u,%u)",
                       pcurrent->id, pcurrent->fullpath, fsal_status.major,
                       fsal_status.minor);
-              return FALSE;
+              goto removeit;
             }
 
           /* stores handle to the export entry */
@@ -3009,7 +3010,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
             {
               LogCrit(COMPONENT_INIT,
                       "Couldn't allocate memory");
-              return FALSE;
+              goto removeit;
             }
 
           *pcurrent->proot_handle = fsal_handle;
@@ -3063,7 +3064,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
               LogCrit(COMPONENT_INIT,
                       "Error when creating root cached entry for %s, export_id=%d, cache_status=%d",
                       pcurrent->fullpath, pcurrent->id, cache_status);
-              return FALSE;
+              goto removeit;
             }
           else
             LogInfo(COMPONENT_INIT,
@@ -3078,6 +3079,28 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
               LogInfo(COMPONENT_INIT, "A referral is set : %s",
                       pentry->object.dir.referral);
             }
+
+removeit:
+              retval = FALSE;
+              if (pprev == NULL && pcurrent->next == NULL) /* HEAD node and only node */
+                {
+                  RemoveExportEntry(pcurrent);
+                  *pexportlist = NULL;
+                  break;
+                }
+              else if (pprev == NULL && pcurrent->next != NULL) /* HEAD node */
+                {
+                  pprev = pcurrent->next;
+                  
+                  /* Changed the old export list head to the new export list head.
+                   * All references to the exports list should be up-to-date now. */
+                  memcpy(pcurrent, pcurrent->next, sizeof(exportlist_t));
+                  RemoveExportEntry(pprev);
+                }
+              else
+                pprev->next = RemoveExportEntry(pcurrent);
+
+              continue;          
         }
 
   /* Note: As mentioned above, we are returning with an extra
@@ -3085,7 +3108,7 @@ int nfs_export_create_root_entry(exportlist_t * pexportlist)
      export list.  If we ever have a function to remove objects from
      the export list, it must return this extra reference. */
 
-  return TRUE;
+  return retval;
 
 } /* nfs_export_create_root_entry */
 

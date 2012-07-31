@@ -1078,7 +1078,6 @@ int nfs_set_param_from_conf(nfs_start_info_t * p_start_info)
     {
       LogCrit(COMPONENT_INIT,
               "Error while parsing export entries");
-      return -1;
     }
   else if(rc == 0)
     {
@@ -1865,10 +1864,10 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
 #endif /* _USE_9P */
 
   /* Create the root entries for each exported FS */
-  if((rc = nfs_export_create_root_entry(nfs_param.pexportlist)) != TRUE)
+  if((rc = nfs_export_create_root_entry(&nfs_param.pexportlist)) != TRUE)
     {
-      LogFatal(COMPONENT_INIT,
-               "Error initializing Cache Inode root entries");
+      LogCrit(COMPONENT_INIT,
+              "Error initializing Cache Inode root entries");
     }
 
   LogInfo(COMPONENT_INIT,

@@ -726,7 +726,7 @@ int nfs_read_session_id_conf(config_file_t in_config,
                              nfs_session_id_parameter_t * pparam);
 #endif                          /* _USE_NFS4_1 */
 
-int nfs_export_create_root_entry(exportlist_t * pexportlist);
+int nfs_export_create_root_entry(exportlist_t ** pexportlist);
 
 /* Add a list of clients to the client array of either an exports entry or
  * another service that has a client array (like snmp or statistics exporter) */
