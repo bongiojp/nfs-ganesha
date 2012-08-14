@@ -1986,7 +1986,8 @@ int nfs2_FSALattr_To_Fattr(exportlist_t * pexport,      /* In: the related expor
  * 
  * nfs4_SetCompoundExport
  * 
- * This routine fills in the pexport field in the compound data.
+ * This routine fills in the pexport field in the compound data and then
+ * calls nfs4_MakeCred to fill in and check the credential information.
  *
  * @param pfh [OUT] pointer to compound data to be used. 
  * 
@@ -1997,23 +1998,34 @@ int nfs2_FSALattr_To_Fattr(exportlist_t * pexport,      /* In: the related expor
 int nfs4_SetCompoundExport(compound_data_t * data)
 {
   short exportid;
+  exportlist_t * pexport;
 
-  /* This routine is not related to pseudo fs file handle, do not handle them */
+  /* This routine can not handle pseudo fs file handle. */
   if(nfs4_Is_Fh_Pseudo(&(data->currentFH)))
-    return NFS4_OK;
+    {
+      LogCrit(COMPONENT_NFS_V4,
+              "Can not set export for pseudo fs");
+      return NFS4ERR_INVAL;
+    }
 
   /* Get the export id */
   if((exportid = nfs4_FhandleToExportId(&(data->currentFH))) == 0)
     return NFS4ERR_BADHANDLE;
 
-  if((data->pexport = nfs_Get_export_by_id(data->pfullexportlist, exportid)) == NULL)
-    return NFS4ERR_BADHANDLE;
+  pexport = nfs_Get_export_by_id(nfs_param.pexportlist, exportid);
 
-  if((data->pexport->options & EXPORT_OPTION_NFSV4) == 0)
-    return NFS4ERR_ACCESS;
+  if(pexport == NULL)
+    {
+      data->pexport = NULL;
+      return NFS4ERR_BADHANDLE;
+    }
 
-  if(nfs4_MakeCred(data) != NFS4_OK)
-    return NFS4ERR_WRONGSEC;
+  if(pexport != data->pexport)
+    {
+      data->pexport = pexport;
+
+      return nfs4_MakeCred(data);
+    }
 
   return NFS4_OK;
 }                               /* nfs4_SetCompoundExport */
@@ -4230,60 +4242,81 @@ int nfs4_AllocateFH(nfs_fh4 * fh)
  */
 int nfs4_MakeCred(compound_data_t * data)
 {
-  exportlist_client_entry_t related_client;
-  struct user_cred user_credentials;
-  unsigned int export_check_result;
+  xprt_type_t xprt_type = svc_get_xprt_type(data->reqp->rq_xprt);
+  int         port = get_port(&data->pworker->hostaddr);
 
-  user_credentials.caller_garray = NULL;
   if (get_req_uid_gid(data->reqp,
-                      data->pexport,
-                      &user_credentials) == FALSE)
-    return NFS4ERR_WRONGSEC;
+                      &data->user_credentials) == FALSE)
+    return NFS4ERR_ACCESS;
 
-  LogFullDebug(COMPONENT_DISPATCH,
+  LogFullDebug(COMPONENT_NFS_V4,
                "nfs4_MakeCred about to call nfs_export_check_access");
-  export_check_result = nfs_export_check_access(&data->pworker->hostaddr,
-                             data->reqp,
-                             data->pexport,
-                             nfs_param.core_param.program[P_NFS],
-                             nfs_param.core_param.program[P_MNT],
-                             data->pworker->ht_ip_stats,
-                             ip_stats_pool,
-                             &related_client,
-                             &user_credentials,
-                             FALSE); /* So check_access() doesn't deny based on whether this is a RO export. */
-  if (export_check_result != EXPORT_PERMISSION_GRANTED)
-  {
-#ifdef _HAVE_GSSAPI
-    if((data->reqp->rq_cred.oa_flavor == RPCSEC_GSS) && (user_credentials.caller_garray != NULL))
-    {
-      gsh_free(user_credentials.caller_garray);
-    }
-#endif
-    return NFS4ERR_WRONGSEC;
-  }
 
-  if(nfs_check_anon(&related_client, data->pexport, &user_credentials) == FALSE
-     || nfs_build_fsal_context(data->reqp,
+  nfs_export_check_access(&data->pworker->hostaddr,
+                          data->pexport,
+                          &data->export_perms);
+
+  /* Check protocol version */
+  if((data->export_perms.options & EXPORT_OPTION_NFSV4) == 0)
+    {
+      LogInfo(COMPONENT_NFS_V4,
+              "NFS4 not allowed on Export_Id %d %s for client %s",
+              data->pexport->id, data->pexport->fullpath,
+              data->pworker->hostaddr_str);
+
+      return NFS4ERR_ACCESS;
+    }
+
+  /* Check transport type */
+  if(((xprt_type == XPRT_UDP) &&
+      ((data->export_perms.options & EXPORT_OPTION_UDP) == 0)) ||
+     ((xprt_type == XPRT_TCP) &&
+      ((data->export_perms.options & EXPORT_OPTION_TCP) == 0)))
+    {
+      LogInfo(COMPONENT_NFS_V4,
+              "NFS4 over %s not allowed on Export_Id %d %s for client %s",
+              xprt_type_to_str(xprt_type),
+              data->pexport->id, data->pexport->fullpath,
+              data->pworker->hostaddr_str);
+
+      return NFS4ERR_ACCESS;
+    }
+
+  /* Check if client is using a privileged port. */
+  if(((data->export_perms.options & EXPORT_OPTION_PRIVILEGED_PORT) != 0) &&
+     (port >= IPPORT_RESERVED))
+    {
+      LogInfo(COMPONENT_NFS_V4,
+              "Non-reserved Port %d is not allowed on Export_Id %d %s for client %s",
+              port, data->pexport->id, data->pexport->fullpath,
+              data->pworker->hostaddr_str);
+
+      return NFS4ERR_ACCESS;
+    }
+
+  /* Test if export allows the authentication provided */
+  if (nfs_export_check_security(data->reqp,
+                                &data->export_perms,
+                                data->pexport) == FALSE)
+    {
+      LogInfo(COMPONENT_NFS_V4,
+              "NFS4 auth not allowed on Export_Id %d %s for client %s",
+              data->pexport->id, data->pexport->fullpath,
+              data->pworker->hostaddr_str);
+
+      return NFS4ERR_WRONGSEC;
+    }
+
+  nfs_check_anon(&data->export_perms,
+                 data->pexport,
+                 &data->user_credentials);
+
+  if(nfs_build_fsal_context(data->reqp,
                             data->pexport,
                             data->pcontext,
-                            &user_credentials) == FALSE)
-  {
-#ifdef _HAVE_GSSAPI
-    if((data->reqp->rq_cred.oa_flavor == RPCSEC_GSS) && (user_credentials.caller_garray != NULL))
-    {
-      gsh_free(user_credentials.caller_garray);
-    }
-#endif
-    return NFS4ERR_WRONGSEC;
-  }
+                            &data->user_credentials) == FALSE)
+    return NFS4ERR_ACCESS;
 
-#ifdef _HAVE_GSSAPI
-  if((data->reqp->rq_cred.oa_flavor == RPCSEC_GSS) && (user_credentials.caller_garray != NULL))
-  {
-    gsh_free(user_credentials.caller_garray);
-  }
-#endif
   return NFS4_OK;
 }                               /* nfs4_MakeCred */
 

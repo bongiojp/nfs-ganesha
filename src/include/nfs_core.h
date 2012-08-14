@@ -333,7 +333,7 @@ typedef struct nfs_param__
   external_tools_parameter_t extern_param;
 
   /* list of exports declared in config file */
-  exportlist_t *pexportlist;
+  struct glist_head *pexportlist;
 } nfs_parameter_t;
 
 typedef struct nfs_dupreq_stat__
@@ -543,6 +543,7 @@ struct nfs_worker_data__
   nfs_worker_stat_t stats;
   unsigned int passcounter;
   sockaddr_t hostaddr;
+  char       hostaddr_str[SOCK_NAME_MAX];
   sigset_t sigmask; /* masked signals */
   unsigned int gc_in_progress;
   unsigned int current_xid;
@@ -723,31 +724,25 @@ int nfs_read_session_id_conf(config_file_t in_config,
                              nfs_session_id_parameter_t * pparam);
 #endif                          /* _USE_NFS4_1 */
 
-int nfs_export_create_root_entry(exportlist_t * pexportlist);
+int nfs_export_create_root_entry(struct glist_head * pexportlist);
 
-/* Add a list of clients to the client array of either an exports entry or
- * another service that has a client array (like snmp or statistics exporter) */
-int nfs_AddClientsToClientArray(exportlist_client_t *clients, int new_clients_number,
-    char **new_clients_name, int option);
+/* Add a list of clients to the client list of either an exports entry or
+ * another service that has a client list (like snmp or statistics exporter) */
+int nfs_AddClientsToClientList(exportlist_client_t * clients,
+                               int                   new_clients_number,
+                               char               ** new_clients_name,
+                               int                   option,
+                               char                * var_name);
 
-int parseAccessParam(char *var_name, char *var_value,
-                     exportlist_t *p_entry, int access_option);
-
-/* Checks an access list for a specific client */
-int export_client_match(sockaddr_t *hostaddr,
-                        char *ipstring,
-                        exportlist_client_t *clients,
-                        exportlist_client_entry_t * pclient_found,
-                        unsigned int export_option);
-int export_client_matchv6(struct in6_addr *paddrv6,
-                          exportlist_client_t *clients,
-                          exportlist_client_entry_t * pclient_found,
-                          unsigned int export_option);
+int parseAccessParam(char                * var_name,
+                     char                * var_value,
+                     exportlist_client_t * clients,
+                     int                   access_option,
+                     const char          * label);
 
 /* Config reparsing routines */
 void admin_replace_exports();
 int CleanUpExportContext(fsal_export_context_t * p_export_context);
-exportlist_t *RemoveExportEntry(exportlist_t * exportEntry);
 exportlist_t *GetExportEntry(char *exportPath);
 
 /* Tools */

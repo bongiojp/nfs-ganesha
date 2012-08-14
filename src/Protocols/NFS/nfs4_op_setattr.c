@@ -102,13 +102,6 @@ int nfs4_op_setattr(struct nfs_argop4 *op,
   if(res_SETATTR4.status != NFS4_OK)
     return res_SETATTR4.status;
 
-  /* Pseudo Fs is explictely a Read-Only File system */
-  if(nfs4_Is_Fh_Pseudo(&(data->currentFH)))
-    {
-      res_SETATTR4.status = NFS4ERR_ROFS;
-      return res_SETATTR4.status;
-    }
-
   /* Get only attributes that are allowed to be read */
   if(!nfs4_Fattr_Check_Access(&arg_SETATTR4.obj_attributes, FATTR4_ATTR_WRITE))
     {
@@ -238,9 +231,9 @@ int nfs4_op_setattr(struct nfs_argop4 *op,
       if(FSAL_TEST_MASK(sattr.asked_attributes, FSAL_ATTR_MODE))
         {
           if(((sattr.mode & FSAL_MODE_SUID) &&
-              ((data->pexport->options & EXPORT_OPTION_NOSUID) == EXPORT_OPTION_NOSUID))
+              ((data->pexport->export_perms.options & EXPORT_OPTION_NOSUID) == EXPORT_OPTION_NOSUID))
              || ((sattr.mode & FSAL_MODE_SGID)
-                 && ((data->pexport->options & EXPORT_OPTION_NOSGID) ==
+                 && ((data->pexport->export_perms.options & EXPORT_OPTION_NOSGID) ==
                      EXPORT_OPTION_NOSGID)))
             {
               LogInfo(COMPONENT_NFS_V4,
