@@ -146,25 +146,23 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
   res_OPEN4.status = NFS4_OK;
   res_OPEN4.OPEN4res_u.resok4.rflags = 0 ;
 
+  /* Check export permissions if OPEN4_CREATE */
+  if((arg_OPEN4.openhow.opentype == OPEN4_CREATE) &&
+     ((data->export_perms.options & EXPORT_OPTION_MD_WRITE_ACCESS) == 0))
+    {
+      res_OPEN4.status = NFS4ERR_ROFS;
+
+      LogDebug(COMPONENT_NFS_V4,
+               "Status of OP_OPEN due to export permissions = %s",
+               nfsstat4_to_str(res_OPEN4.status));
+
+      return res_OPEN4.status;
+    }
+
   /* Do basic checks on a filehandle */
   res_OPEN4.status = nfs4_sanity_check_FH(data, 0LL);
   if(res_OPEN4.status != NFS4_OK)
     return res_OPEN4.status;
-
-  /* This can't be done on the pseudofs */
-  if(nfs4_Is_Fh_Pseudo(&(data->currentFH)))
-    {
-      res_OPEN4.status = NFS4ERR_ROFS;
-      LogDebug(COMPONENT_STATE,
-               "NFS4 OPEN returning NFS4ERR_ROFS");
-      return res_OPEN4.status;
-    }
-
-  if (nfs_export_check_security(data->reqp, data->pexport) == FALSE)
-    {
-      res_OPEN4.status = NFS4ERR_PERM;
-      return res_OPEN4.status;
-    }
 
   /*
    * If Filehandle points to a xattr object, manage it via the xattrs
@@ -545,9 +543,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                       goto out;
                     }
 
-                  data->current_entry = pentry_lookup;
-                  data->current_filetype = REGULAR_FILE;
-
                   /* regular exit */
                   goto out_success;
                 }
@@ -629,9 +624,6 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                                         ->state_lock);
                                   goto out;
                                 }
-
-                              data->current_entry = pentry_lookup;
-                              data->current_filetype = REGULAR_FILE;
 
                               /* Avoid segfault during test OPEN4
                                  (pstate would be NULL) */
@@ -1298,6 +1290,10 @@ nfs4_create_fh(compound_data_t *data, cache_entry_t *pentry, char **cause2)
         memcpy(data->currentFH.nfs_fh4_val, newfh4.nfs_fh4_val,
             newfh4.nfs_fh4_len);
 
+        /* Update stuff on compound data, do not have to call nfs4_SetCompoundExport
+         * because the new file is on the same export, so data->pexport and
+         * data->export_perms will not change.
+         */
         data->current_entry = pentry;
         data->current_filetype = REGULAR_FILE;
 
