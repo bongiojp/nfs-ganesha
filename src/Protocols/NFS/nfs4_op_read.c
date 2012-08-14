@@ -126,14 +126,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
     }
 #endif /* _PNFS_DS */
 
-  /* Manage access type MDONLY */
-  if(( data->pexport->access_type == ACCESSTYPE_MDONLY ) ||
-     ( data->pexport->access_type == ACCESSTYPE_MDONLY_RO ) )
-    {
-      res_READ4.status = NFS4ERR_DQUOT;
-      return res_READ4.status;
-    }
-
   /* vnode to manage is the current one */
   pentry = data->current_entry;
 
@@ -280,7 +272,7 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
                "NFS4_OP_READ: offset = %"PRIu64"  length = %zu",
                offset, size);
 
-  if((data->pexport->options & EXPORT_OPTION_MAXOFFSETREAD) ==
+  if((data->pexport->export_perms.options & EXPORT_OPTION_MAXOFFSETREAD) ==
      EXPORT_OPTION_MAXOFFSETREAD)
     if((fsal_off_t) (offset + size) > data->pexport->MaxOffsetRead)
       {
@@ -332,8 +324,6 @@ int nfs4_op_read(struct nfs_argop4 *op, compound_data_t * data, struct nfs_resop
         }
       return res_READ4.status;
     }
-  if(data->pexport->options & EXPORT_OPTION_USE_DATACACHE)
-    memset(bufferdata, 0, size);
 
   if((cache_inode_rdwr(pentry,
                       CACHE_INODE_READ,

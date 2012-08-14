@@ -234,65 +234,6 @@ int nfs_Write(nfs_arg_t *parg,
       goto out;
     }
 
-  /* For MDONLY export, reject write operation */
-  /* Request of type MDONLY_RO were rejected at the nfs_rpc_dispatcher level */
-  /* This is done by replying EDQUOT (this error is known for not disturbing the client's requests cache */
-  if( pexport->access_type != ACCESSTYPE_RW )
-    {
-      switch (preq->rq_vers)
-        {
-        case NFS_V2:
-          switch( pexport->access_type )
-            {
-                case ACCESSTYPE_MDONLY:
-                case ACCESSTYPE_MDONLY_RO:
-                  pres->res_attr2.status = NFSERR_DQUOT;
-                  break;
-
-                case ACCESSTYPE_RO:
-                  pres->res_attr2.status = NFSERR_ROFS;
-                  break ;
-
-                default:
-                  assert(0); // if we get here than the value is an invalid enum - corruption
-                  break ;
-             }
-           break ;
-
-        case NFS_V3:
-          switch( pexport->access_type )
-            {
-                case ACCESSTYPE_MDONLY:
-                case ACCESSTYPE_MDONLY_RO:
-                  pres->res_write3.status = NFS3ERR_DQUOT;
-                  break;
-
-                case ACCESSTYPE_RO:
-                  pres->res_write3.status = NFS3ERR_ROFS;
-                  break ;
-
-                default:
-                  assert(0); // if we get here than the value is an invalid enum - corruption
-                  break ;
-             }
-          break;
-        } /* switch (preq->rq_vers) */
-
-      nfs_SetFailedStatus(pcontext, pexport,
-                          preq->rq_vers,
-                          cache_status,
-                          &pres->res_attr2.status,
-                          &pres->res_write3.status,
-                          NULL, NULL,
-                          pentry,
-                          ppre_attr,
-                          &(pres->res_write3.WRITE3res_u.resfail.file_wcc),
-                          NULL, NULL, NULL);
-
-      rc = NFS_REQ_OK;
-      goto out;
-    }
-
 #ifdef _USE_QUOTA
     /* if quota support is active, then we should check is the FSAL allows inode creation or not */
     fsal_status = FSAL_check_quota( pexport->fullpath, 
@@ -376,7 +317,7 @@ int nfs_Write(nfs_arg_t *parg,
   /*
    * do not exceed maxium WRITE offset if set
    */
-  if((pexport->options & EXPORT_OPTION_MAXOFFSETWRITE) == EXPORT_OPTION_MAXOFFSETWRITE)
+  if((pexport->export_perms.options & EXPORT_OPTION_MAXOFFSETWRITE) == EXPORT_OPTION_MAXOFFSETWRITE)
     {
       LogFullDebug(COMPONENT_NFSPROTO,
                    "-----> Write offset=%llu count=%llu MaxOffSet=%llu",
@@ -421,7 +362,7 @@ int nfs_Write(nfs_arg_t *parg,
    * We should take care not to exceed FSINFO wtmax
    * field for the size 
    */
-  if(((pexport->options & EXPORT_OPTION_MAXWRITE) == EXPORT_OPTION_MAXWRITE) &&
+  if(((pexport->export_perms.options & EXPORT_OPTION_MAXWRITE) == EXPORT_OPTION_MAXWRITE) &&
      size > pexport->MaxWrite)
     {
       /*

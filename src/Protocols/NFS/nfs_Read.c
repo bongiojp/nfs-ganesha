@@ -248,36 +248,6 @@ int nfs_Read(nfs_arg_t *parg,
       goto out;
     }
 
-  /* For MDONLY export, reject write operation */
-  /* Request of type MDONLY_RO were rejected at the nfs_rpc_dispatcher level */
-  /* This is done by replying EDQUOT (this error is known for not disturbing the client's requests cache */
-  if(pexport->access_type == ACCESSTYPE_MDONLY
-     || pexport->access_type == ACCESSTYPE_MDONLY_RO)
-    {
-      switch (preq->rq_vers)
-        {
-        case NFS_V2:
-          pres->res_attr2.status = NFSERR_DQUOT;
-          break;
-
-        case NFS_V3:
-          pres->res_read3.status = NFS3ERR_DQUOT;
-          break;
-        }
-
-      nfs_SetFailedStatus(pcontext, pexport,
-                          preq->rq_vers,
-                          cache_status,
-                          &pres->res_read2.status,
-                          &pres->res_read3.status,
-                          pentry,
-                          &(pres->res_read3.READ3res_u.resfail.file_attributes),
-                          NULL, NULL, NULL, NULL, NULL, NULL);
-
-      rc = NFS_REQ_OK;
-      goto out;
-    }
-
   /* Extract the argument from the request */
   switch (preq->rq_vers)
     {
@@ -295,7 +265,7 @@ int nfs_Read(nfs_arg_t *parg,
   /* 
    * do not exceed maxium READ offset if set 
    */
-  if((pexport->options & EXPORT_OPTION_MAXOFFSETREAD) == EXPORT_OPTION_MAXOFFSETREAD)
+  if((pexport->export_perms.options & EXPORT_OPTION_MAXOFFSETREAD) == EXPORT_OPTION_MAXOFFSETREAD)
     {
       LogFullDebug(COMPONENT_NFSPROTO,
                    "-----> Read offset=%llu count=%llu MaxOffSet=%llu",
@@ -338,7 +308,7 @@ int nfs_Read(nfs_arg_t *parg,
    * We should not exceed the FSINFO rtmax field for
    * the size 
    */
-  if(((pexport->options & EXPORT_OPTION_MAXREAD) == EXPORT_OPTION_MAXREAD) &&
+  if(((pexport->export_perms.options & EXPORT_OPTION_MAXREAD) == EXPORT_OPTION_MAXREAD) &&
      size > pexport->MaxRead)
     {
       /*
