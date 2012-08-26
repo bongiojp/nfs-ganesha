@@ -1020,11 +1020,23 @@ svc_vc_reply(SVCXPRT *xprt, struct rpc_msg *msg)
             msg->rm_xid = cd->x_id;
 
 	rstat = FALSE;
-	if (xdr_replymsg(xdrs, msg) &&
-	    (!has_args || (xprt->xp_auth &&
-	     SVCAUTH_WRAP(xprt->xp_auth, xdrs, xdr_results, xdr_location)))) {
-		rstat = TRUE;
-	}
+	if (xdr_replymsg(xdrs, msg)) {
+          if (!has_args || (xprt->xp_auth &&
+                            SVCAUTH_WRAP(xprt->xp_auth, xdrs, xdr_results,
+                                         xdr_location))) {
+            rstat = TRUE;
+          }
+          else {
+            __warnx(TIRPC_DEBUG_FLAG_SVC_VC,
+                    "%s: failed, has_args:%d xprt->xp_auth:%d \n", __func__,
+                    has_args, xprt->xp_auth);
+          }
+        }
+        else {
+          __warnx(TIRPC_DEBUG_FLAG_SVC_VC,
+                  "%s: xdr_replymsg failed. \n", __func__);
+        }
+        
 	(void)xdrrec_endofrecord(xdrs, TRUE);
 	return (rstat);
 }

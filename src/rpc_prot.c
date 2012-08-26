@@ -172,6 +172,12 @@ xdr_replymsg(XDR *xdrs, struct rpc_msg *rmsg)
                             xdrs, (enum_t *)&(rmsg->rm_reply.rp_stat),
                             (caddr_t)(void *)&(rmsg->rm_reply.ru), reply_dscrm,
                             NULL_xdrproc_t));
+        if (rmsg->rm_direction != REPLY)
+          __warnx(TIRPC_DEBUG_FLAG_SVC_VC,
+                  "%s: failed. This is not a REPLY. \n", __func__);
+        else
+          __warnx(TIRPC_DEBUG_FLAG_SVC_VC,
+                  "%s: failed. Could not parse uint32 or enum. \n", __func__);
 	return (FALSE);
 }
 
