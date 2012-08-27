@@ -1483,21 +1483,30 @@ int get_tirpc_debug_bitmask(snmp_adm_type_union *param, void *opt)
   char out[10];
 
   if (!tirpc_control(TIRPC_GET_DEBUG_FLAGS, (void *)&mask))
-    LogCrit(COMPONENT_INIT, "Failed get debug mask for TI-RPC __warnx");
-  sprintf(out, "%d", mask);
-  strcpy(param->string, out);
+    LogCrit(COMPONENT_INIT, "Failed to get debug mask for TI-RPC __warnx");
+  if (snprintf(out, 10, "%d", mask)
+      && param != NULL
+      && param->string != NULL)
+    strcpy(param->string, out);
   return 0;
 }
 
 int set_tirpc_debug_bitmask(const snmp_adm_type_union *param, void *opt)
 {
-  set_tirpc_debug_mask(atoi(param->string));
+  int mask = 0;
+  if (param != NULL && param->string != NULL)
+    {
+      mask = atoi(param->string);
+      if (mask > 0 && mask <= 4026531839)
+        set_tirpc_debug_mask(mask);
+    }
   return 0;
 }
 
 void set_tirpc_debug_mask(int mask)
 {
-  if (!tirpc_control(TIRPC_SET_DEBUG_FLAGS, &mask))
+  if (mask > 0 && mask <= 4026531839 &&
+      !tirpc_control(TIRPC_SET_DEBUG_FLAGS, &mask))
     LogCrit(COMPONENT_INIT, "Failed setting debug mask for TI-RPC __warnx"
             " with mask %d", mask);
 }
