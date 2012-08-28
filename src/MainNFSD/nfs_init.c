@@ -1848,6 +1848,11 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
           "9P resources successfully initialized");
 #endif /* _USE_9P */
 
+#ifdef _USE_FSAL_UP
+  /* Initialize FSAL UP queue and event pool */
+  nfs_Init_FSAL_UP();
+#endif /* _USE_FSAL_UP */
+
   /* Create the root entries for each exported FS */
   if((rc = nfs_export_create_root_entry(nfs_param.pexportlist)) != TRUE)
     {
@@ -1857,13 +1862,6 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
 
   LogInfo(COMPONENT_INIT,
           "Cache Inode root entries successfully created");
-
-  /* Creation of FSAL_UP threads */
-  /* This thread depends on ALL parts of Ganesha being initialized. 
-   * So initialize Callback interface after everything else. */
-#ifdef _USE_FSAL_UP
-  nfs_Init_FSAL_UP(); /* initalizes an event pool */
-#endif /* _USE_FSAL_UP */
 
   /* Creates the pseudo fs */
   LogDebug(COMPONENT_INIT, "Now building pseudo fs");
