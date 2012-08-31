@@ -1102,6 +1102,11 @@ log_component_info __attribute__ ((__unused__)) LogComponents[COMPONENT_COUNT] =
     SYSLOG,
     "SYSLOG"
   },
+  { COMPONENT_NFS_MSK,           "COMPONENT_NFS_MSK", "NFS MSK",
+    NIV_EVENT,
+    SYSLOG,
+    "SYSLOG"
+  },
   { COMPONENT_FSAL_UP,             "COMPONENT_FSAL_UP", "FSAL_UP",
     NIV_EVENT,
     SYSLOG,
