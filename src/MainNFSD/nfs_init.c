@@ -124,6 +124,10 @@ pthread_t _9p_dispatcher_thrid;
 pthread_t _9p_rdma_dispatcher_thrid ;
 #endif
 
+#ifdef _USE_NFS_MSK
+pthread_t nfs_msk_dispatcher_thrid;
+#endif
+
 #ifdef _USE_UPCALL_SIMULATOR
 pthread_t upcall_simulator_thrid;
 #endif
@@ -1367,7 +1371,17 @@ static void nfs_Start_threads(void)
   LogEvent(COMPONENT_THREAD, "9P/RDMA dispatcher thread was started successfully");
 #endif
 
-
+#ifdef _USE_NFS_MSK
+  /* Starting the NFS/RDMA dispatcher thread */
+  if((rc = pthread_create(&nfs_msk_dispatcher_thrid, &attr_thr,
+                          nfs_msk_dispatcher_thread, NULL ) ) != 0 )
+    {
+      LogFatal(COMPONENT_THREAD,
+               "Could not create  NFS/RDMA dispatcher, error = %d (%s)",
+               errno, strerror(errno));
+    }
+  LogEvent(COMPONENT_THREAD, "NFS/RDMA dispatcher thread was started successfully");
+#endif
 
 #ifdef USE_DBUS
       /* DBUS event thread */
@@ -1856,6 +1870,17 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
   LogInfo(COMPONENT_INIT,
           "NFSv4 ACL cache successfully initialized");
 #endif                          /* _USE_NFS4_ACL */
+
+#ifdef _USE_NFS_MSK
+  LogDebug(COMPONENT_INIT, "Now building NFS msk resources");
+  if(Init_nfs_msk() != 0)
+    {
+      LogFatal(COMPONENT_INIT,
+              "Error while initializing NFS msk");
+    }
+  LogInfo(COMPONENT_INIT,
+          "NFS msk successfully initialized");
+#endif                          /* _USE_NFS_MSK */
 
 #ifdef _USE_9P
   LogDebug(COMPONENT_INIT, "Now building 9P resources");
