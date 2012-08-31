@@ -93,6 +93,14 @@ else
 _9P_RDMA_LDADD = 
 endif
 
+if USE_NFS_MSK
+NFS_MSK_LDADD = -lmooshika -lrdmacm -libverbs
+NFS_MSK_FILES = nfs_rpc_msk.c
+else
+NFS_MSK_LDADD = 
+MFS_MSK_FILES = 
+endif
+
 if USE_FSAL_FUSE
 noinst_LTLIBRARIES           = libMainServices.la
 lib_LTLIBRARIES              = libganeshaNFS.la
@@ -126,6 +134,7 @@ libMainServices_la_SOURCES = nfs_admin_thread.c                   \
                              nfs_tcb.c                  \
                              nfs_rpc_dispatcher_thread.c          \
                              $(DISPATCH_9P_FILES)                 \
+                             $(NFS_MSK_FILES)                 \
                              nfs_rpc_tcp_socket_manager_thread.c  \
                              nfs_init.c                           \
                              nfs_tools.c                          \
@@ -207,6 +216,7 @@ libganeshaNFS_la_LIBADD = $(libMainServices_la_LIBADD) \
                           $(FSAL_LDFLAGS)              \
                           $(EXT_LDADD)                 \
                           $(_9P_RDMA_LDADD)            \
+                          $(NFS_MSK_LDADD)            \
                           $(SEC_LIB_FLAGS)
 
 libganeshaNFS_la_DEPENDENCIES = fuse_binding.c $(libMainServices_la_SOURCES) $(libMainServices_la_LIBADD)
@@ -223,6 +233,7 @@ __FS_NAME__ganesha_nfsd_LDADD      =  ./libMainServices.la \
                                       $(TIRPC_STATIC_LIB)  \
 				      $(EXT_LDADD)         \
                                       $(_9P_RDMA_LDADD)    \
+                                      $(NFS_MSK_LDADD)    \
                                       $(SEC_LIB_FLAGS)     \
                                       @EFENCE@             \
 	                              @EXTRA_LIB@

@@ -79,36 +79,53 @@ void nfs_msk_callback_disconnect(msk_trans_t *trans) {
 
 void* nfs_msk_thread(void* arg) {
   msk_trans_t *trans = arg;
-  unsigned int worker_index;
+//  unsigned int worker_index;
+//  nfs_worker_data_t *pworker_data;
+//  request_data_t *nfsreq;
+  struct rpc_msg *pmsg = NULL;
+  SVCXPRT* xprt;
+// alloc pmsg? nfsreq? mydata?
+
 
   if( trans == NULL ) {
     LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: handle thread started but no child_trans" );
     return NULL;
   }
 
-  msk_xprt = svc_msk_create(trans, 10);
+  xprt = svc_msk_create(trans, 10);
 
-  while(trans->state == MSK_CONNECTED) {
-    if(SVC_RECV(xprt, pmsg)) {
-      printf("sah");
+  while(trans->state == MSK_CONNECTED) { /* use SVC_STAT(msk_xprt) */
+    if( SVC_RECV(xprt, pmsg) ) {
+      LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: SVC_RECV failed");
       continue;
     }
+    LogDebug( COMPONENT_NFS_MSK, "NFS/RDMA: Received call, xid %u",
+              pmsg->rm_xid );
+              
 
-    /* choose a worker depending on its queue length */
-    worker_index = nfs_core_select_worker_queue( WORKER_INDEX_ANY );
+#if 0
+    nfsreq->r_u.nfs->req.rq_prog = pmsg->rm_call.cb_prog;
+    nfsreq->r_u.nfs->req.rq_vers = pmsg->rm_call.cb_vers;
+    nfsreq->r_u.nfs->req.rq_proc = pmsg->rm_call.cb_proc;
+    nfsreq->r_u.nfs->req.rq_xid = pmsg->rm_xid;
 
-    /* Get a preq from the worker's pool */
-    P(workers_data[worker_index].request_pool_mutex);
+    pfuncdesc = nfs_rpc_get_funcdesc(nfsreq->r_u.nfs);
+    if( pfuncdesc == INVALID_FUNCDESC )
+    if( AuthenticateRequest(nfsreq->r_u.nfs, &no_dispatch) != AUTH_OK || no_dispatch )
+    if( ! nfs_rpc_get_args(nfsreq->r_u.nfs, pfuncdesc) )
+      printf("fail!\n");
 
-    preq = pool_alloc( request_pool, NULL );
+    preq->rq_xprt = xprt;
 
-    V(workers_data[worker_index].request_pool_mutex);
+    if( is_rpc_call_valid(preq->rq_xprt, preq) == TRUE )
+      nfs_rpc_execute(nfsreq, pworker_data)
 
-    preq->rtype = NFS_REQUEST; /*???? */
 
-    DispatchWorkNFS( preq, worker_index );
+    dispatch_rpc_subrequest(mydata, nfsreq);
+#endif
   }
 
+  return NULL;
 }
 
 void* nfs_msk_dispatcher_thread(void* nullarg) {
@@ -117,6 +134,7 @@ void* nfs_msk_dispatcher_thread(void* nullarg) {
   pthread_attr_t attr_thr;
   int rc = 0;
   msk_trans_attr_t trans_attr;
+  pthread_t thrid_handle_trans;
 
   memset(&trans_attr, 0, sizeof(trans_attr));
   trans_attr.server = 10;
@@ -147,18 +165,18 @@ void* nfs_msk_dispatcher_thread(void* nullarg) {
     LogEvent( COMPONENT_NFS_MSK, "Mooshika engine is started" );
 
   /* Bind Mooshika */
-  if( msk_bind_server(trans ) )
+  if( msk_bind_server(trans) )
     LogFatal( COMPONENT_NFS_MSK, "9P/RDMA dispatcher could not bind mooshika engine" );
   else
     LogEvent( COMPONENT_NFS_MSK, "Mooshika engine is bound" );
 
 
   while(1) {
-    if( ( child_trans = msk_accept_one(msk_socket) ) == NULL )
+    if( ( child_trans = msk_accept_one(trans) ) == NULL )
       LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: dispatcher failed to accept a new client" );
     else {
       LogDebug( COMPONENT_NFS_MSK, "Got a new connection, spawning a polling thread" );
-      if((rc = pthread_create(&dontcare_thrid, &attr_thr, nfs_msk_polling_thread, trans)))
+      if((rc = pthread_create(&thrid_handle_trans, &attr_thr, nfs_msk_thread, trans)))
         LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: dipatcher accepted a new client but could not spawn a related thread" );
       else
         LogEvent( COMPONENT_NFS_MSK, "NFS/RDMA: thread %u spawned to manage a new child_trans",

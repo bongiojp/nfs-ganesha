@@ -504,6 +504,13 @@ if test "$enable_9p_rdma" == "yes"; then
 fi
 
 
+# Enable 9P_RDMA support
+GA_ENABLE_AM_CONDITION([nfs-msk],[enable nfs-msk support], [USE_NFS_MSK])
+if test "$enable_nfs_msk" == "yes"; then
+        AC_DEFINE(_USE_NFS_MSK, 1, [enable NFS_MSK support])
+fi
+
+
 # IPv6
 GA_ENABLE_AM_CONDITION([ipv6],[enable IPv6 support (via IPv6)], [USE_TIRPC_IPV6])
 if test "$enable_ipv6" == "yes"; then
