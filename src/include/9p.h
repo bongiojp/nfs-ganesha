@@ -38,7 +38,7 @@
 #ifdef _USE_9P_RDMA
 #include <infiniband/arch.h>
 #include <rdma/rdma_cma.h>
-#include "trans_rdma.h"
+#include <mooshika.h>
 
 typedef struct _9p_datamr
 {

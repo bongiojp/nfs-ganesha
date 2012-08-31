@@ -63,7 +63,7 @@
 
 #include <infiniband/arch.h>
 #include <rdma/rdma_cma.h>
-#include "trans_rdma.h"
+#include <mooshika.h>
 
 void _9p_rdma_callback_send(msk_trans_t *trans, void *arg) {
 
@@ -114,15 +114,15 @@ void _9p_rdma_process_request( _9p_request_data_t * preq9p, nfs_worker_data_t * 
           memcpy( pdata->data, replydata, outdatalen ) ;
           pdata->size = outdatalen ;
          
-          msk_post_send( trans, pdata, 1, datamr->mr, _9p_rdma_callback_send, NULL ) ;
+          msk_post_send( trans, pdata, datamr->mr, _9p_rdma_callback_send, NULL ) ;
         }
 
       /* Mark the buffer ready for later recv */
-      msk_post_recv(trans, pdata, 1, datamr->mr, _9p_rdma_callback_recv, datamr);
+      msk_post_recv(trans, pdata, datamr->mr, _9p_rdma_callback_recv, datamr);
    } 
   else
    {
-      msk_post_recv(trans, pdata, 1, datamr->mr, _9p_rdma_callback_recv, datamr);
+      msk_post_recv(trans, pdata, datamr->mr, _9p_rdma_callback_recv, datamr);
 
       pthread_mutex_lock(datamr->lock);
       pthread_cond_signal(datamr->cond);

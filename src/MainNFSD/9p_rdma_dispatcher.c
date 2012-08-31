@@ -70,7 +70,7 @@
 
 #include <infiniband/arch.h>
 #include <rdma/rdma_cma.h>
-#include "trans_rdma.h"
+#include <mooshika.h>
 
 #ifndef _USE_TIRPC_IPV6
   #define P_FAMILY AF_INET
@@ -147,7 +147,6 @@ void * _9p_rdma_thread( void * Arg )
 
       if( ( rc = msk_post_recv( trans, 
                                 rdata[i], 
-                                1, 
                                 mr, 
                                 _9p_rdma_callback_recv, 
                                 &(datamr[i]) ) ) != 0 )
