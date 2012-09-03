@@ -167,7 +167,6 @@ libMainServices_la_LIBADD         =   ../Protocols/NFS/libnfsproto.la           
                                       $(NLM_LIB)                                        \
                                       $(RQUOTA_LIB)                                      \
                                       $(FSALPNFS_LIB)                                    \
-                                      $(SEC_LIB_FLAGS)                                  \
                                       $(SVC_LIB_FLAGS)                                  \
                                       $(NFSIDMAP_LIB_FLAGS)                             \
                                       $(NFS4_ACL_LIB_FLAGS)                             \
