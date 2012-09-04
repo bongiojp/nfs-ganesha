@@ -175,7 +175,10 @@ int compare_namemapper(hash_buffer_t * buff1, hash_buffer_t * buff2)
  */
 int display_idmapper_key(hash_buffer_t * pbuff, char *str)
 {
-  return sprintf(str, "%s", (char *)(pbuff->pdata));
+  if (pbuff->len == 0)
+    return sprintf(str, "%"PRIxPTR, (uintptr_t)(pbuff->pdata));
+  else
+    return sprintf(str, "%s", (char *)(pbuff->pdata));
 }                               /* display_idmapper */
 
 /**
@@ -453,7 +456,7 @@ int namemap_add(hash_table_t * ht, unsigned int key, char *val)
 
   /* Build the value */
   buffkey.pdata = (caddr_t) local_key;
-  buffkey.len = sizeof(unsigned int);
+  buffkey.len = 0;
 
   LogFullDebug(COMPONENT_IDMAPPER, "Adding the following uid->principal mapping: %lu->%s",
 	       (unsigned long int)buffkey.pdata, (char *)buffdata.pdata);
@@ -476,10 +479,10 @@ int uidgidmap_add(unsigned int key, unsigned int value)
 
   /* Build keys and data, no storage is used there, caddr_t pointers are just charged */
   buffkey.pdata = (caddr_t) local_key;
-  buffkey.len = sizeof(unsigned int);
+  buffkey.len = 0;
 
   buffdata.pdata = (caddr_t) local_val;
-  buffdata.len = sizeof(unsigned int);
+  buffdata.len = 0;
 
   rc = HashTable_Test_And_Set(ht_uidgid, &buffkey, &buffdata,
                               HASHTABLE_SET_HOW_SET_OVERWRITE);
@@ -667,7 +670,7 @@ int namemap_get(hash_table_t * ht, unsigned int key, char *pval)
     return ID_MAPPER_INVALID_ARGUMENT;
 
   buffkey.pdata = (caddr_t) local_key;
-  buffkey.len = sizeof(unsigned long);
+  buffkey.len = 0;
 
   if(HashTable_Get(ht, &buffkey, &buffval) == HASHTABLE_SUCCESS)
     {
@@ -694,7 +697,7 @@ int uidgidmap_get(unsigned int key, unsigned int *pval)
     return ID_MAPPER_INVALID_ARGUMENT;
 
   buffkey.pdata = (caddr_t) local_key;
-  buffkey.len = sizeof(unsigned long);
+  buffkey.len = 0;
 
   if(HashTable_Get(ht_uidgid, &buffkey, &buffval) == HASHTABLE_SUCCESS)
     {
@@ -783,7 +786,7 @@ int namemap_remove(hash_table_t * ht, unsigned int key)
     return ID_MAPPER_INVALID_ARGUMENT;
 
   buffkey.pdata = (void*) local_key;
-  buffkey.len = sizeof(unsigned long);
+  buffkey.len = 0;
 
   if(HashTable_Del(ht, &buffkey, NULL, &old_data) == HASHTABLE_SUCCESS)
     {
@@ -805,7 +808,7 @@ int uidgidmap_remove(unsigned int key)
   unsigned long local_key = (unsigned long)key;
 
   buffkey.pdata = (caddr_t) local_key;
-  buffkey.len = sizeof(unsigned long);
+  buffkey.len = 0;
 
   if(HashTable_Del(ht_uidgid, &buffkey, NULL, &old_data) == HASHTABLE_SUCCESS)
     {
