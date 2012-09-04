@@ -376,7 +376,7 @@ int nfs4_PseudoToFattr(pseudofs_entry_t * psfsp,
   unsigned int attrmasklist[FATTR4_MOUNTED_ON_FILEID];  /* List cannot be longer than FATTR4_MOUNTED_ON_FILEID */
   unsigned int attrvalslist[FATTR4_MOUNTED_ON_FILEID];  /* List cannot be longer than FATTR4_MOUNTED_ON_FILEID */
 #endif
-  char attrvalsBuffer[ATTRVALS_BUFFLEN];
+  char attrvalsBuffer[NFS4_ATTRVALS_BUFFLEN];
 
   char __attribute__ ((__unused__)) funcname[] = "nfs4_PseudoToFattr";
 

@@ -998,7 +998,7 @@ int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
   uint32_t attrvalslist[FATTR4_MOUNTED_ON_FILEID];      /* List cannot be longer than FATTR4_MOUNTED_ON_FILEID */
 #endif
   uint32_t attrmasklen = 0;
-  char attrvalsBuffer[ATTRVALS_BUFFLEN];
+  char attrvalsBuffer[NFS4_ATTRVALS_BUFFLEN];
 
   uint_t i = 0;
   uint_t j = 0;
@@ -1758,7 +1758,7 @@ int nfs4_FSALattr_To_Fattr(exportlist_t *pexport,
           j += 1;
 
           /* Be carefull not to get out of attrvalsBuffer */
-          if(LastOffset > ATTRVALS_BUFFLEN)
+          if(LastOffset > NFS4_ATTRVALS_BUFFLEN)
             return -1;
         }
 
