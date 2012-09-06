@@ -1948,7 +1948,7 @@ unblock:
 
   DISP_UNLOCK(xprt);
 
-  if (rc != PROCESS_LOST_CONN)
+  if (rc != PROCESS_LOST_CONN && xprt->xp_fd != -1)
       (void) svc_rqst_unblock_events(nfsreq->r_u.nfs->xprt,
                                      SVC_RQST_FLAG_NONE);
 

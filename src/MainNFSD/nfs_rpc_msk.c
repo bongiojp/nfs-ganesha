@@ -77,53 +77,51 @@ void nfs_msk_callback_disconnect(msk_trans_t *trans) {
 
 }
 
+process_status_t dispatch_rpc_request(SVCXPRT *xprt);
+
+struct clx {
+  pthread_mutex_t lock;
+  pthread_cond_t cond;
+  SVCXPRT *xprt;
+};
+
+void nfs_msk_callback(void* arg) {
+  struct clx *clx = arg;
+  pthread_mutex_lock(&clx->lock);
+  if(SVC_STAT(clx->xprt) == XPRT_IDLE)
+    dispatch_rpc_request(clx->xprt);
+  pthread_cond_signal(&clx->cond);
+  pthread_mutex_unlock(&clx->lock);
+}
+
 void* nfs_msk_thread(void* arg) {
   msk_trans_t *trans = arg;
-//  unsigned int worker_index;
-//  nfs_worker_data_t *pworker_data;
-//  request_data_t *nfsreq;
-  struct rpc_msg *pmsg = NULL;
   SVCXPRT* xprt;
-// alloc pmsg? nfsreq? mydata?
-
+  struct clx clx;
+// alloc onfsreq
 
   if( trans == NULL ) {
     LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: handle thread started but no child_trans" );
     return NULL;
   }
 
-  xprt = svc_msk_create(trans, 10);
+  pthread_cond_init(&clx.cond, NULL);
+  pthread_mutex_init(&clx.lock, NULL);
 
-  while(trans->state == MSK_CONNECTED) { /* use SVC_STAT(msk_xprt) */
-    if( SVC_RECV(xprt, pmsg) ) {
-      LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: SVC_RECV failed");
-      continue;
-    }
-    LogDebug( COMPONENT_NFS_MSK, "NFS/RDMA: Received call, xid %u",
-              pmsg->rm_xid );
-              
+  pthread_mutex_lock(&clx.lock);
 
-#if 0
-    nfsreq->r_u.nfs->req.rq_prog = pmsg->rm_call.cb_prog;
-    nfsreq->r_u.nfs->req.rq_vers = pmsg->rm_call.cb_vers;
-    nfsreq->r_u.nfs->req.rq_proc = pmsg->rm_call.cb_proc;
-    nfsreq->r_u.nfs->req.rq_xid = pmsg->rm_xid;
+  xprt = svc_msk_create(trans, 10, nfs_msk_callback, &clx);
+  clx.xprt = xprt;
 
-    pfuncdesc = nfs_rpc_get_funcdesc(nfsreq->r_u.nfs);
-    if( pfuncdesc == INVALID_FUNCDESC )
-    if( AuthenticateRequest(nfsreq->r_u.nfs, &no_dispatch) != AUTH_OK || no_dispatch )
-    if( ! nfs_rpc_get_args(nfsreq->r_u.nfs, pfuncdesc) )
-      printf("fail!\n");
+  /* It's still safe to set stuff here that will be used in dispatch_rpc_request because of the lock */
+  xprt->xp_u1 = alloc_gsh_xprt_private(XPRT_PRIVATE_FLAG_REF);
+  xprt->xp_fd = -1; /* fixme: put something here, but make it not work on fd operations... */
 
-    preq->rq_xprt = xprt;
-
-    if( is_rpc_call_valid(preq->rq_xprt, preq) == TRUE )
-      nfs_rpc_execute(nfsreq, pworker_data)
-
-
-    dispatch_rpc_subrequest(mydata, nfsreq);
-#endif
+  /*while(trans->state == MSK_CONNECTED) { *//* use SVC_STAT(msk_xprt) */
+  while(SVC_STAT(xprt) == XPRT_IDLE) {
+    pthread_cond_wait(&clx.cond, &clx.lock);
   }
+  pthread_mutex_unlock(&clx.lock);
 
   return NULL;
 }
@@ -176,7 +174,7 @@ void* nfs_msk_dispatcher_thread(void* nullarg) {
       LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: dispatcher failed to accept a new client" );
     else {
       LogDebug( COMPONENT_NFS_MSK, "Got a new connection, spawning a polling thread" );
-      if((rc = pthread_create(&thrid_handle_trans, &attr_thr, nfs_msk_thread, trans)))
+      if((rc = pthread_create(&thrid_handle_trans, &attr_thr, nfs_msk_thread, child_trans)))
         LogMajor( COMPONENT_NFS_MSK, "NFS/RDMA: dipatcher accepted a new client but could not spawn a related thread" );
       else
         LogEvent( COMPONENT_NFS_MSK, "NFS/RDMA: thread %u spawned to manage a new child_trans",
