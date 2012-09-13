@@ -725,7 +725,7 @@ static int BuildExportEntry(config_item_t        block,
                             const char         * label)
 {
   exportlist_t        * p_entry = NULL;
-  exportlist_t        * p_found_entry;
+  exportlist_t        * p_found_entry = NULL;
   char                  perms[1024];
   int                   i, rc;
   char                * var_name;
@@ -751,9 +751,7 @@ static int BuildExportEntry(config_item_t        block,
 
       /* the mandatory options */
       mandatory_options = FLAG_EXPORT_ID |
-                          FLAG_EXPORT_PATH |
-                          FLAG_EXPORT_ACCESS_LIST |
-                          FLAG_EXPORT_PSEUDO;
+                          FLAG_EXPORT_PATH;
 
       p_entry->use_commit = TRUE;
       p_entry->use_ganesha_write_buffer = FALSE;
@@ -884,9 +882,9 @@ static int BuildExportEntry(config_item_t        block,
 
       if(!STRCMP(var_name, CONF_EXPORT_ID))
         {
-
-          long int export_id;
-          char *end_ptr;
+          exportlist_t * p_fe;
+          long int       export_id;
+          char         * end_ptr;
 
           /* check if it has not already been set */
           if((set_options & FLAG_EXPORT_ID) == FLAG_EXPORT_ID)
@@ -933,11 +931,11 @@ static int BuildExportEntry(config_item_t        block,
               continue;
             }
 
-          p_found_entry = nfs_Get_export_by_id(pexportlist,
-                                               export_id);
+          p_fe = nfs_Get_export_by_id(pexportlist, export_id);
+
           if(label == CONF_LABEL_EXPORT)
             {
-              if(p_found_entry != NULL)
+              if(p_fe != NULL)
                 {
                   LogCrit(COMPONENT_CONFIG,
                           "NFS READ %s: Duplicate Export_id: \"%ld\"",
@@ -949,7 +947,7 @@ static int BuildExportEntry(config_item_t        block,
             }
           else if(p_entry == NULL)
             {
-              if(p_found_entry == NULL)
+              if(p_fe == NULL)
                 {
                   LogCrit(COMPONENT_CONFIG,
                           "NFS READ %s: EXPORT for Export_id: \"%ld\" not found",
@@ -957,12 +955,13 @@ static int BuildExportEntry(config_item_t        block,
                   err_flag = TRUE;
                   continue;
                 }
-              p_entry = p_found_entry;
+              p_entry = p_fe;
             }
         }
       else if(!STRCMP(var_name, CONF_EXPORT_PATH))
         {
-          int pathlen;
+          exportlist_t * p_fe;
+          int            pathlen;
 
           /* check if it has not already been set */
           if((set_options & FLAG_EXPORT_PATH) == FLAG_EXPORT_PATH)
@@ -1017,11 +1016,14 @@ static int BuildExportEntry(config_item_t        block,
               continue;
             }
 
-          p_found_entry = nfs_Get_export_by_path(pexportlist,
-                                                 ppath);
+          p_fe = nfs_Get_export_by_path(pexportlist, ppath);
           if(label == CONF_LABEL_EXPORT)
             {
-              if(p_found_entry != NULL)
+              /* Pseudo, Tag, and Export_Id must be unique, Path may be
+               * duplicated if at least Tag or Pseudo is specified (and
+               * unique).
+               */
+              if(p_fe != NULL && p_found_entry != NULL)
                 {
                   LogCrit(COMPONENT_CONFIG,
                           "NFS READ %s: Duplicate Path: \"%s\"",
@@ -1030,12 +1032,16 @@ static int BuildExportEntry(config_item_t        block,
                   continue;
                 }
 
+              /* Remember the entry we found so we can verify Tag and/or Pseudo
+               * is set by the time the EXPORT stanza is complete.
+               */
+              p_found_entry = p_fe;
               strcpy(p_entry->fullpath, ppath);
               strcpy(p_entry->dirname, ppath);
             }
           else if(p_entry == NULL)
             {
-              if(p_found_entry == NULL)
+              if(p_fe == NULL)
                 {
                   LogCrit(COMPONENT_CONFIG,
                           "NFS READ %s: EXPORT for Path: \"%s\" not found",
@@ -1043,7 +1049,7 @@ static int BuildExportEntry(config_item_t        block,
                   err_flag = TRUE;
                   continue;
                 }
-              p_entry = p_found_entry;
+              p_entry = p_fe;
             }
 
         }
@@ -1198,6 +1204,8 @@ static int BuildExportEntry(config_item_t        block,
         }
       else if(!STRCMP(var_name, CONF_EXPORT_PSEUDO))
         {
+          exportlist_t * p_fe;
+
           if(label == CONF_LABEL_EXPORT_CLIENT)
             {
               LogCrit(COMPONENT_CONFIG,
@@ -1225,9 +1233,8 @@ static int BuildExportEntry(config_item_t        block,
               continue;
             }
 
-          p_found_entry = nfs_Get_export_by_pseudo(pexportlist,
-                                                   var_value);
-          if(p_found_entry != NULL)
+          p_fe = nfs_Get_export_by_pseudo(pexportlist, var_value);
+          if(p_fe != NULL)
             {
               LogCrit(COMPONENT_CONFIG,
                       "NFS READ %s: Duplicate Pseudo: \"%s\"",
@@ -2266,6 +2273,8 @@ static int BuildExportEntry(config_item_t        block,
         }
       else if(!STRCMP(var_name, CONF_EXPORT_FS_TAG))
         {
+          exportlist_t * p_fe;
+
           if(label == CONF_LABEL_EXPORT_CLIENT)
             {
               LogCrit(COMPONENT_CONFIG,
@@ -2284,9 +2293,9 @@ static int BuildExportEntry(config_item_t        block,
 
           set_options |= FLAG_EXPORT_FS_TAG;
 
-          p_found_entry = nfs_Get_export_by_tag(pexportlist,
-                                                var_value);
-          if(p_found_entry != NULL)
+          p_fe = nfs_Get_export_by_tag(pexportlist, var_value);
+
+          if(p_fe != NULL)
             {
               LogCrit(COMPONENT_CONFIG,
                       "NFS READ %s: Duplicate Tag: \"%s\"",
@@ -2294,7 +2303,6 @@ static int BuildExportEntry(config_item_t        block,
               err_flag = TRUE;
               continue;
             }
-
 
           strncpy(p_entry->FS_tag, var_value, MAXPATHLEN);
         }
@@ -2631,12 +2639,6 @@ static int BuildExportEntry(config_item_t        block,
                 CONF_EXPORT_READ_ACCESS, CONF_EXPORT_READWRITE_ACCESS,
                 CONF_EXPORT_MD_ACCESS,   CONF_EXPORT_MD_RO_ACCESS);
 
-      if((set_options & FLAG_EXPORT_PSEUDO) !=
-         (FLAG_EXPORT_PSEUDO & mandatory_options))
-        LogCrit(COMPONENT_CONFIG,
-                "NFS READ %s: Missing mandatory parameter %s",
-                label, CONF_EXPORT_PSEUDO);
-
       err_flag = TRUE;
     }
 
@@ -2652,14 +2654,50 @@ static int BuildExportEntry(config_item_t        block,
     }
   else if(label == CONF_LABEL_EXPORT)
     {
+      if(((p_perms->options & EXPORT_OPTION_NFSV4) != 0) &&
+         ((set_options & FLAG_EXPORT_PSEUDO) == 0))
+        {
+          /* If we export for NFS v4, Pseudo is required */
+          LogCrit(COMPONENT_CONFIG,
+                  "NFS READ %s: Missing mandatory parameter %s",
+                  label, CONF_EXPORT_PSEUDO);
+
+          err_flag = TRUE;
+        }
+
+      if((p_found_entry != NULL) &&
+         ((set_options & FLAG_EXPORT_PSEUDO) == 0) &&
+         ((set_options & FLAG_EXPORT_FS_TAG) == 0))
+        {
+          /* Duplicate export must specify at least one of tag and pseudo */
+          LogCrit(COMPONENT_CONFIG,
+                  "NFS READ %s: Duplicate %s must have at least %s or %s",
+                  label, label, CONF_EXPORT_PSEUDO, CONF_EXPORT_FS_TAG);
+
+          err_flag = TRUE;
+        }
+
       /* Here we can make sure certain options are turned on for specific FSALs */
-      if(!fsal_specific_checks(p_entry))
+      if(!err_flag && !fsal_specific_checks(p_entry))
         {
           LogCrit(COMPONENT_CONFIG,
                    "NFS READ %s: Found conflicts in export entry, ignoring entry.",
                    label);
           RemoveExportEntry(p_entry);
           return -1;
+        }
+    }
+
+  if(label == CONF_LABEL_EXPORT_CLIENT)
+    {
+      if(((p_entry->export_perms.options & EXPORT_OPTION_NFSV4) == 0) &&
+         ((p_perms->options & EXPORT_OPTION_NFSV4) != 0))
+        {
+          LogCrit(COMPONENT_CONFIG,
+                  "NFS READ %s: Export %d (%s) doesn't allow NFS v4 (pseudo path won't be set up)",
+                  label, p_entry->id, p_entry->fullpath);
+
+          err_flag = TRUE;
         }
     }
 
