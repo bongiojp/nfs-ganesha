@@ -740,9 +740,8 @@ static void nfs_rpc_execute(request_data_t    * preq,
   SVCXPRT                    * xprt = preqnfs->xprt;
   nfs_stat_type_t              stat_type;
   int                          port;
-  int                          rc;
+  int rc = 0;
   int                          do_dupreq_cache;
-  dupreq_status_t              dpq_status;
   export_perms_t               export_perms;
   int                          protocol_options = 0;
   struct user_cred             user_credentials;
@@ -808,19 +807,18 @@ static void nfs_rpc_execute(request_data_t    * preq,
 
   do_dupreq_cache = pworker_data->pfuncdesc->dispatch_behaviour & CAN_BE_DUP;
   LogFullDebug(COMPONENT_DISPATCH, "do_dupreq_cache = %d", do_dupreq_cache);
-  dpq_status = nfs_dupreq_add_not_finished(req, &res_nfs);
-
-  switch(dpq_status)
+  if(do_dupreq_cache) 
     {
-      /* a new request, continue processing it */
-    case DUPREQ_SUCCESS:
-      LogFullDebug(COMPONENT_DISPATCH, "Current request is not duplicate.");
-      break;
-      /* Found the reuqest in the dupreq cache. It's an old request so resend
-       * old reply. */
-    case DUPREQ_ALREADY_EXISTS:
-      if(do_dupreq_cache)
+      dupreq_status_t dpq_status = nfs_dupreq_add_not_finished(req, &res_nfs);
+      switch(dpq_status)
         {
+          /* a new request, continue processing it */
+        case DUPREQ_SUCCESS:
+          LogFullDebug(COMPONENT_DISPATCH, "Current request is not duplicate.");
+          break;
+          /* Found the request in the dupreq cache. It's an old request so resend
+           * old reply. */
+        case DUPREQ_ALREADY_EXISTS:
           /* Request was known, use the previous reply */
           LogFullDebug(COMPONENT_DISPATCH,
                        "NFS DISPATCHER: DupReq Cache Hit: using previous "
@@ -853,68 +851,57 @@ static void nfs_rpc_execute(request_data_t    * preq,
                        "After svc_sendreply on socket %d (dup req)",
                        xprt->xp_fd);
           return;
-        }
-      else
-        {
+
+          /* Another thread owns the request */
+        case DUPREQ_BEING_PROCESSED:
+          LogFullDebug(COMPONENT_DISPATCH,
+                       "Dupreq xid=%u was asked for process since another thread "
+                       "manage it, reject for avoiding threads starvation...",
+                       req->rq_xid);
+          /* Free the arguments */
+          svc_dplx_lock_x(xprt, &pworker_data->sigmask);
+          if((preqnfs->req.rq_vers == 2) ||
+             (preqnfs->req.rq_vers == 3) ||
+             (preqnfs->req.rq_vers == 4)) 
+            if(!SVC_FREEARGS(xprt, pworker_data->pfuncdesc->xdr_decode_func,
+                             (caddr_t) parg_nfs))
+              {
+                LogCrit(COMPONENT_DISPATCH,
+                        "NFS DISPATCHER: FAILURE: Bad SVC_FREEARGS for %s",
+                        pworker_data->pfuncdesc->funcname);
+              }
+          svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
+          /* Ignore the request, send no error */
+          return;
+
+          /* something is very wrong with the duplicate request cache */
+        case DUPREQ_NOT_FOUND:
           LogCrit(COMPONENT_DISPATCH,
-                  "Error: Duplicate request rejected because it was found "
-                  "in the cache but is not allowed to be cached.");
+                  "Did not find the request in the duplicate request cache and "
+                  "couldn't add the request.");
+          svc_dplx_lock_x(xprt, &pworker_data->sigmask);
+          svcerr_systemerr2(xprt, req);
+          svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
+          return;
+
+          /* oom */
+        case DUPREQ_INSERT_MALLOC_ERROR:
+          LogCrit(COMPONENT_DISPATCH,
+                  "Cannot process request, not enough memory available!");
+          svc_dplx_lock_x(xprt, &pworker_data->sigmask);
+          svcerr_systemerr2(xprt, req);
+          svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
+          return;
+
+        default:
+          LogCrit(COMPONENT_DISPATCH,
+                  "Unknown duplicate request cache status. This should never be "
+                  "reached!");
           svc_dplx_lock_x(xprt, &pworker_data->sigmask);
           svcerr_systemerr2(xprt, req);
           svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
           return;
         }
-      break;
-
-      /* Another thread owns the request */
-    case DUPREQ_BEING_PROCESSED:
-      LogFullDebug(COMPONENT_DISPATCH,
-                   "Dupreq xid=%u was asked for process since another thread "
-                   "manage it, reject for avoiding threads starvation...",
-                   req->rq_xid);
-      /* Free the arguments */
-      svc_dplx_lock_x(xprt, &pworker_data->sigmask);
-      if((preqnfs->req.rq_vers == 2) ||
-         (preqnfs->req.rq_vers == 3) ||
-         (preqnfs->req.rq_vers == 4)) 
-        if(!SVC_FREEARGS(xprt, pworker_data->pfuncdesc->xdr_decode_func,
-                         (caddr_t) parg_nfs))
-          {
-            LogCrit(COMPONENT_DISPATCH,
-                    "NFS DISPATCHER: FAILURE: Bad SVC_FREEARGS for %s",
-                    pworker_data->pfuncdesc->funcname);
-          }
-      svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
-      /* Ignore the request, send no error */
-      return;
-
-      /* something is very wrong with the duplicate request cache */
-    case DUPREQ_NOT_FOUND:
-      LogCrit(COMPONENT_DISPATCH,
-              "Did not find the request in the duplicate request cache and "
-              "couldn't add the request.");
-      svc_dplx_lock_x(xprt, &pworker_data->sigmask);
-      svcerr_systemerr2(xprt, req);
-      svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
-      return;
-
-      /* oom */
-    case DUPREQ_INSERT_MALLOC_ERROR:
-      LogCrit(COMPONENT_DISPATCH,
-              "Cannot process request, not enough memory available!");
-      svc_dplx_lock_x(xprt, &pworker_data->sigmask);
-      svcerr_systemerr2(xprt, req);
-      svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
-      return;
-
-    default:
-      LogCrit(COMPONENT_DISPATCH,
-              "Unknown duplicate request cache status. This should never be "
-              "reached!");
-      svc_dplx_lock_x(xprt, &pworker_data->sigmask);
-      svcerr_systemerr2(xprt, req);
-      svc_dplx_unlock_x(xprt, &pworker_data->sigmask);
-      return;
     }
 
   /* Get the export entry */
@@ -962,6 +949,13 @@ static void nfs_rpc_execute(request_data_t    * preq,
                     }
 
                   /* Bad argument */
+                  if (do_dupreq_cache &&
+                      nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+                    {
+                      LogCrit(COMPONENT_DISPATCH,
+                              "Attempt to delete duplicate request failed on "
+                              "line %d", __LINE__);
+                    }
                   auth_rc = AUTH_FAILED;
                   goto auth_failure;
                 }
@@ -1005,6 +999,13 @@ static void nfs_rpc_execute(request_data_t    * preq,
                   /* Bad argument */
                   auth_rc = AUTH_FAILED;
                   goto auth_failure;
+                }
+              else
+                {
+                  LogFullDebug(COMPONENT_DISPATCH,
+                               "Found export entry for dirname=%s as exportid=%d",
+                                pexport->dirname, pexport->id);
+                  break;
                 }
 
               LogFullDebug(COMPONENT_DISPATCH,
@@ -1104,11 +1105,18 @@ static void nfs_rpc_execute(request_data_t    * preq,
                     reason = "has invalid export";
 
                   sprint_fhandle_nlm(dumpfh, pfh3);
-
+                  LogMajor(COMPONENT_DISPATCH,
+                           "NLM4 Request from host %s, proc=%d, FH=%s",
+                           reason,
+                           (int)req->rq_proc, dumpfh);
+                }
+              /* Bad argument */
+              if(do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+                {
                   LogCrit(COMPONENT_DISPATCH,
-                          "NLM4 Request from client %s %s, proc=%d, FH=%s",
-                          pworker_data->hostaddr_str, reason,
-                          (int)req->rq_proc, dumpfh);
+                          "NLM4 Request from client %s, proc=%d",
+                          pworker_data->hostaddr_str,
+                          (int)req->rq_proc);
                 }
 
               /* Bad argument */
@@ -1150,8 +1158,15 @@ static void nfs_rpc_execute(request_data_t    * preq,
                   pexport->id, pexport->fullpath,
                   (int)req->rq_vers, (int)req->rq_proc);
 
+          if(do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+            {
+              LogCrit(COMPONENT_DISPATCH,
+                      "Attempt to delete duplicate request failed on "
+                      "line %d", __LINE__);
+            }
           auth_rc = AUTH_TOOWEAK;
           goto auth_failure;
+
         }
 
       /* Check protocol version */
@@ -1216,6 +1231,12 @@ static void nfs_rpc_execute(request_data_t    * preq,
                   port, pexport->id, pexport->fullpath,
                   pworker_data->hostaddr_str);
 
+          if(do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+            {
+              LogCrit(COMPONENT_DISPATCH,
+                      "Attempt to delete duplicate request failed on line %d",
+                      __LINE__);
+            }
           auth_rc = AUTH_TOOWEAK;
           goto auth_failure;
         }
@@ -1235,6 +1256,12 @@ static void nfs_rpc_execute(request_data_t    * preq,
                   "could not get uid and gid, rejecting client %s",
                   pworker_data->hostaddr_str);
 
+          if(do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+            {
+              LogCrit(COMPONENT_DISPATCH,
+                      "Attempt to delete duplicate request failed on line %d",
+                      __LINE__);
+            }
           auth_rc = AUTH_TOOWEAK;
           goto auth_failure;
         }
@@ -1306,11 +1333,12 @@ static void nfs_rpc_execute(request_data_t    * preq,
             break;
           }
       else
-        {
-          LogDebug(COMPONENT_DISPATCH,
-                   "Dropping IO request on an MD Only export");
-          rc = NFS_REQ_DROP;
-        }
+        if(do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+          {
+            LogDebug(COMPONENT_DISPATCH,
+                     "Dropping IO request on an MD Only export");
+            rc = NFS_REQ_DROP;
+          }
     }
   else if((pworker_data->pfuncdesc->dispatch_behaviour & MAKES_WRITE) != 0 &&
           (export_perms.options & (EXPORT_OPTION_WRITE_ACCESS |
@@ -1379,10 +1407,18 @@ static void nfs_rpc_execute(request_data_t    * preq,
               LogInfo(COMPONENT_DISPATCH,
                       "authentication failed, rejecting client %s",
                       pworker_data->hostaddr_str);
-
               /* this thread is done, reset the timer start to avoid long processing */
               memset(timer_start, 0, sizeof(struct timeval));
 
+              /* XXX */
+              pworker_data->current_xid = 0;    /* No more xid managed */
+
+              if(do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+                {
+                  LogCrit(COMPONENT_DISPATCH,
+                         "Attempt to delete duplicate request failed on line %d",
+                         __LINE__);
+                }
               auth_rc = AUTH_TOOWEAK;
               goto auth_failure;
             }
@@ -1535,7 +1571,7 @@ static void nfs_rpc_execute(request_data_t    * preq,
                   (int)req->rq_vers, (int)req->rq_proc, req->rq_xid);
           svcerr_systemerr2(xprt, req);
 
-          if (nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+          if (do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
             {
               LogCrit(COMPONENT_DISPATCH,
                       "Attempt to delete duplicate request failed on line %d",
@@ -1555,7 +1591,7 @@ static void nfs_rpc_execute(request_data_t    * preq,
       LogFullDebug(COMPONENT_DUPREQ, "YES?: %d", do_dupreq_cache);
       if(do_dupreq_cache)
         {
-          dpq_status = nfs_dupreq_finish(req, &res_nfs, lru_dupreq);
+          nfs_dupreq_finish(req, &res_nfs, lru_dupreq);
         }
     } /* rc == NFS_REQ_DROP */
 
@@ -1578,12 +1614,6 @@ static void nfs_rpc_execute(request_data_t    * preq,
    * mark the dupreq cached info eligible for being reuse by other requests */
   if(!do_dupreq_cache)
     {
-      if (nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
-        {
-          LogCrit(COMPONENT_DISPATCH,
-                  "Attempt to delete duplicate request failed on line %d",
-                  __LINE__);
-        }
       /* Free only the non dropped requests */
       if(rc == NFS_REQ_OK) {
           pworker_data->pfuncdesc->free_function(&res_nfs);
