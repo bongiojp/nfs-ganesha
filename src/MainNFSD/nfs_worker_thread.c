@@ -616,7 +616,7 @@ nfs_rpc_execute(request_data_t    * preq,
           break;
           /* Found the request in the dupreq cache. It's an old request so resend
            * old reply. */
-        case DUPREQ_EXISTS:
+    case DUPREQ_EXISTS:
           /* Request was known, use the previous reply */
           LogFullDebug(COMPONENT_DISPATCH,
                        "NFS DISPATCHER: DupReq Cache Hit: using previous "
@@ -1327,7 +1327,7 @@ auth_failure:
 
   clean_credentials(&pworker_data->user_credentials);
 
-  if(nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
+  if(do_dupreq_cache && nfs_dupreq_delete(req) != DUPREQ_SUCCESS)
     LogCrit(COMPONENT_DISPATCH,
             "Attempt to delete duplicate request after auth failure");
 
