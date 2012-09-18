@@ -103,7 +103,6 @@ cache_inode_lookup_impl(cache_entry_t *parent,
      cache_inode_dir_entry_t *broken_dirent = NULL;
 
      memset(&dirent_key, 0, sizeof(dirent_key));
-     memset(&new_entry_fsdata, 0, sizeof(new_entry_fsdata));
      memset(&object_handle, 0, sizeof(object_handle));
      memset(&object_attributes, 0, sizeof(object_attributes));
 
@@ -190,7 +189,6 @@ cache_inode_lookup_impl(cache_entry_t *parent,
           LogDebug(COMPONENT_CACHE_INODE, "Cache Miss detected");
      }
 
-     memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
      object_attributes.asked_attributes = cache_inode_params.attrmask;
      fsal_status =
           FSAL_lookup(&parent->handle,
