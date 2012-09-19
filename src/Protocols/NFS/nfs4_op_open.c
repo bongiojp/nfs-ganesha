@@ -1215,6 +1215,7 @@ static nfsstat4 nfs4_do_open(struct nfs_argop4  * op,
                                &state_status) != STATE_SUCCESS)
               {
                 if(cache_inode_close(pentry_newfile,
+                                     data->pcontext,
                                      0, &cache_status) != CACHE_INODE_SUCCESS)
                   {
                     /* Log bad close and continue. */
@@ -1237,6 +1238,7 @@ static nfsstat4 nfs4_do_open(struct nfs_argop4  * op,
                                        &state_status) != STATE_SUCCESS)
                   {
                     if(cache_inode_close(pentry_newfile,
+                                         data->pcontext,
                                          0, &cache_status) != CACHE_INODE_SUCCESS)
                       {
                         /* Log bad close and continue. */
