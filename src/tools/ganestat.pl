@@ -91,6 +91,7 @@ my @fsal_fn_names = (
   "link_access", "create_access" 
  );
 
+sub max ($$) { $_[$_[0] < $_[1]] }
 
 #### options ####
 
@@ -535,7 +536,7 @@ while (my $ligne=<STATS>)
         elsif ( $vers == 3 )
         {
           printf( "%20s | %10d | %10d | %10d | %10d | %10d | %10d | %10d \n", $nfs3_fn_names[$fn_index],
-                   $nb_tot, $nb_ok, $nb_dropp, $tot_latency, $avg_latency, $min_latency, $max_latency );
+                   $nb_tot, $nb_ok, $nb_dropp, $tot_latency, $tot_latency/max($nb_tot, 1), $min_latency, $max_latency );
         }
         elsif ( $vers == 4 )
         {
