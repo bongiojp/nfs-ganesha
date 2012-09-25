@@ -60,7 +60,7 @@ nfs_release_nlm_state()
 
         /* walk the client list and call state_nlm_notify */
         for(i = 0; i < ht->parameter.index_size; i++) {
-                pthread_rwlock_wrlock(&ht->partitions[i].lock);
+                PTHREAD_RWLOCK_WRLOCK(&ht->partitions[i].lock);
                 head_rbt = &ht->partitions[i].rbt;
                 /* go through all entries in the red-black-tree*/
                 RBT_LOOP(head_rbt, pn) {
@@ -76,7 +76,7 @@ nfs_release_nlm_state()
                         dec_nsm_client_ref(nsm_cp);
                         RBT_INCREMENT(pn);
                 }
-                pthread_rwlock_unlock(&ht->partitions[i].lock);
+                PTHREAD_RWLOCK_UNLOCK(&ht->partitions[i].lock);
         }
         return;
 }
@@ -125,7 +125,7 @@ nfs_release_v4_client(char *ip)
         /* go through the confirmed clients looking for a match */
         for(i = 0; i < ht->parameter.index_size; i++) {
 
-                pthread_rwlock_wrlock(&ht->partitions[i].lock);
+                PTHREAD_RWLOCK_WRLOCK(&ht->partitions[i].lock);
                 head_rbt = &ht->partitions[i].rbt;
 
                 /* go through all entries in the red-black-tree*/
@@ -143,7 +143,7 @@ nfs_release_v4_client(char *ip)
 
                                 V(cp->cid_mutex);
 
-                                pthread_rwlock_unlock(&ht->partitions[i].lock);
+                                PTHREAD_RWLOCK_UNLOCK(&ht->partitions[i].lock);
 
                                 P(recp->cr_mutex);
 
@@ -161,7 +161,7 @@ nfs_release_v4_client(char *ip)
                         RBT_INCREMENT(pn);
                 }
 
-                pthread_rwlock_unlock(&ht->partitions[i].lock);
+                PTHREAD_RWLOCK_UNLOCK(&ht->partitions[i].lock);
         }
 }
 
