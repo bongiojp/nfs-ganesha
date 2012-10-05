@@ -59,6 +59,7 @@ CONFFILE=/etc/ganesha/gpfs.ganesha.nfsd.conf
 #Some common useful log components:
 #export COMPONENT_INIT=NIV_INFO
 #export COMPONENT_CACHE_INODE=NIV_FULL_DEBUG
+#export COMPONENT_CACHE_INODE_GC=NIV_FULL_DEBUG
 #export COMPONENT_DISPATCH=NIV_FULL_DEBUG
 #export COMPONENT_DISPATCH=NIV_DEBUG
 #export COMPONENT_FSAL_UP=NIV_FULL_DEBUG
@@ -66,7 +67,15 @@ CONFFILE=/etc/ganesha/gpfs.ganesha.nfsd.conf
 #export COMPONENT_NFSPROTO=NIV_FULL_DEBUG
 #export COMPONENT_NFS_V4=NIV_FULL_DEBUG
 #export COMPONENT_NFS_READDIR=NIV_FULL_DEBUG
-#export COMPONENT_MEMLEAKS=NIV_FULL_DEBUG
+#export COMPONENT_MEMLEAKS=NIV_FULL_DEBU
+
+#To enable tirpc messages:
+#(note, this still requires enabling logging in the
+#tirpc debug bitmask through the snmp interface
+#export COMPONENT_RPC=NIV_FULL_DEBUG
+
+#export LOG_MESSAGE_DEBUGINFO=NIV_CRIT
+#export LOG_MESSAGE_VERBOSITY=NIV_EVENT
 
 #For Lock/State debugging:
 #export COMPONENT_NLM=NIV_FULL_DEBUG
