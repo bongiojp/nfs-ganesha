@@ -110,7 +110,7 @@ void* nfs_msk_thread(void* arg) {
 
   pthread_mutex_lock(&clx.lock);
 
-  xprt = svc_msk_create(trans, 10, nfs_msk_callback, &clx);
+  xprt = svc_msk_create(trans, 30, nfs_msk_callback, &clx);
   clx.xprt = xprt;
 
   /* It's still safe to set stuff here that will be used in dispatch_rpc_request because of the lock */
@@ -136,8 +136,9 @@ void* nfs_msk_dispatcher_thread(void* nullarg) {
 
   memset(&trans_attr, 0, sizeof(trans_attr));
   trans_attr.server = 10;
-  trans_attr.rq_depth = 12;
-  trans_attr.sq_depth = 10;
+  trans_attr.rq_depth = 32;
+  trans_attr.sq_depth = 32;
+  trans_attr.max_send_sge = 2;
   trans_attr.addr.sa_in.sin_family = AF_INET;
   trans_attr.addr.sa_in.sin_port = htons(nfs_param.nfs_msk_param.nfs_msk_port);
   trans_attr.addr.sa_in.sin_addr.s_addr = nfs_param.core_param.bind_addr.sin_addr.s_addr; /* change to sa6 + .sin6_addr   = in6 */
