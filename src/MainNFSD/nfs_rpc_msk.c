@@ -1,7 +1,7 @@
 /*
  * vim:expandtab:shiftwidth=8:tabstop=8:
  *
- * Copyright CEA/DAM/DIF  (2008)
+ * Copyright CEA/DAM/DIF  (2012)
  * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
  *                Dominique MARTINET dominique.martinet.ocre@cea.fr
  *
@@ -139,7 +139,7 @@ void* nfs_msk_dispatcher_thread(void* nullarg) {
   trans_attr.rq_depth = 12;
   trans_attr.sq_depth = 10;
   trans_attr.addr.sa_in.sin_family = AF_INET;
-  trans_attr.addr.sa_in.sin_port = htons(20049); /* FIXME: set it in conf? */
+  trans_attr.addr.sa_in.sin_port = htons(nfs_param.nfs_msk_param.nfs_msk_port);
   trans_attr.addr.sa_in.sin_addr.s_addr = nfs_param.core_param.bind_addr.sin_addr.s_addr; /* change to sa6 + .sin6_addr   = in6 */
   trans_attr.disconnect_callback = nfs_msk_callback_disconnect;
 
@@ -186,7 +186,7 @@ void* nfs_msk_dispatcher_thread(void* nullarg) {
 } /* nfs_msk_dispatched_thread */
 
 
-int Init_nfs_msk()
+int Init_nfs_msk( nfs_msk_parameter_t *pparam )
 {
   return 0;
 }

@@ -65,6 +65,10 @@
 #include "9p.h"
 #endif
 
+#ifdef _USE_NFS_MSK
+#include "nfs_msk.h"
+#endif
+
 #ifdef _ERROR_INJECTION
 #include "err_inject.h"
 #endif
@@ -306,6 +310,9 @@ typedef struct nfs_param__
   nfs_ip_stats_parameter_t ip_stats_param;
 #ifdef _USE_9P
   _9p_parameter_t _9p_param ;
+#endif
+#ifdef _USE_NFS_MSK
+  nfs_msk_parameter_t nfs_msk_param;
 #endif
 #ifdef _USE_FSAL_UP
   nfs_fsal_up_parameter_t fsal_up_param;
@@ -695,7 +702,6 @@ void _9p_rdma_process_request( _9p_request_data_t * preq9p, nfs_worker_data_t * 
 #endif
 
 #ifdef _USE_NFS_MSK
-int Init_nfs_msk();
 void *nfs_msk_dispatcher_thread(void *UnusedArg);
 #endif
 

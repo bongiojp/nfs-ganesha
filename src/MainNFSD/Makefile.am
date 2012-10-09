@@ -95,7 +95,7 @@ endif
 
 if USE_NFS_MSK
 NFS_MSK_LDADD = -lmooshika -lrdmacm -libverbs
-NFS_MSK_FILES = nfs_rpc_msk.c
+NFS_MSK_FILES = nfs_rpc_msk.c nfs_msk_read_conf.c
 else
 NFS_MSK_LDADD = 
 MFS_MSK_FILES = 

@@ -304,6 +304,9 @@ void nfs_set_param_default()
 #ifdef _USE_9P_RDMA
   nfs_param._9p_param._9p_rdma_port = _9P_RDMA_PORT ;
 #endif
+#ifdef _USE_MSK
+  nfs_param.msk_param.nfs_msk_port = NFS_MSK_PORT;
+#endif
 #ifdef _USE_RQUOTA
   nfs_param.core_param.program[P_RQUOTA] = RQUOTAPROG;
   nfs_param.core_param.port[P_RQUOTA] = RQUOTA_PORT;
@@ -987,6 +990,22 @@ int nfs_set_param_from_conf(nfs_start_info_t * p_start_info)
           {
 	     LogCrit( COMPONENT_INIT,
 	   	      "Error while parsing 9P configuration" ) ;
+             return -1 ;
+          }
+    }
+#endif
+
+#ifdef _USE_NFS_MSK
+  if( ( rc = nfs_msk_read_conf( config_struct,
+                            &nfs_param.nfs_msk_param ) ) < 0 )
+    {
+        if( rc == -2 )
+          LogDebug(COMPONENT_INIT,
+                   "No NFS_MSK configuration found, using default");
+        else
+          {
+	     LogCrit( COMPONENT_INIT,
+	   	      "Error while parsing NFS_MSK configuration" ) ;
              return -1 ;
           }
     }
@@ -1873,7 +1892,7 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
 
 #ifdef _USE_NFS_MSK
   LogDebug(COMPONENT_INIT, "Now building NFS msk resources");
-  if(Init_nfs_msk() != 0)
+  if(Init_nfs_msk( &nfs_param.nfs_msk_param ) != 0)
     {
       LogFatal(COMPONENT_INIT,
               "Error while initializing NFS msk");
