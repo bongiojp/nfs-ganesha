@@ -64,7 +64,6 @@ noinst_HEADERS = abstract_atomic.h               \
                  fridgethr.h                     \
                  rpc/svc_auth.h                  \
                  timers.h
->>>>>>> 704dbc7... Convert latency stats to msec and use clock_gettime
 
 if USE_NLM
 noinst_HEADERS += nlm4.h nlm_util.h nlm_list.h

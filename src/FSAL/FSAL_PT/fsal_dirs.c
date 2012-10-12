@@ -171,6 +171,7 @@ PTFSAL_opendir(fsal_handle_t      * p_dir_handle,    /* IN */
 
 fsal_status_t
 PTFSAL_readdir(fsal_dir_t       * dir_desc,      /* IN */
+               fsal_op_context_t * p_context,       /* IN */
                fsal_cookie_t      startposition, /* IN */
                fsal_attrib_mask_t get_attr_mask, /* IN */
                fsal_mdsize_t      buffersize,    /* IN */

@@ -232,6 +232,7 @@ fsal_status_t PTFSAL_opendir(fsal_handle_t      * p_dir_handle,     /* IN */
                              p_dir_attributes /* [ IN/OUT ] */ );
 
 fsal_status_t PTFSAL_readdir(fsal_dir_t        * p_dir_descriptor,/* IN */
+                             fsal_op_context_t * p_context,       /* IN */
                              fsal_cookie_t       start_position,  /* IN */
                              fsal_attrib_mask_t  get_attr_mask,   /* IN */
                              fsal_mdsize_t       buffersize,      /* IN */
@@ -260,6 +261,7 @@ PTFSAL_open(fsal_handle_t      * p_filehandle,       /* IN */
 
 fsal_status_t 
 PTFSAL_read(fsal_file_t    * p_file_descriptor,  /* IN */
+            fsal_op_context_t * p_context,  /* IN */
             fsal_seek_t    * p_seek_descriptor,  /* [IN] */
             fsal_size_t      buffer_size,        /* IN */
             caddr_t          buffer,             /* OUT */
@@ -273,8 +275,8 @@ fsal_status_t PTFSAL_write(fsal_file_t * p_file_descriptor, /* IN */
                            caddr_t       buffer,          /* IN */
                            fsal_size_t * p_write_amount   /* OUT */ );
 
-fsal_status_t PTFSAL_close(fsal_file_t * p_file_descriptor /* IN */ );
-
+fsal_status_t PTFSAL_close(fsal_file_t * p_file_descriptor, /* IN */
+                           fsal_op_context_t * p_context  /* IN */ );
 fsal_status_t 
 PTFSAL_dynamic_fsinfo(fsal_handle_t        * p_filehandle, /* IN */
                       fsal_op_context_t    * p_context,    /* IN */

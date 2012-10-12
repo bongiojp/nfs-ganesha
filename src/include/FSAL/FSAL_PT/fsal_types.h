@@ -163,6 +163,8 @@ typedef struct
   unsigned int fsid[2];
   int ganesha_export_id; /* This is Export_Id */
   uint64_t pt_export_id; /* This is PT side FS export ID */ 
+
+  exportlist_t        * fe_export;
 } ptfsal_export_context_t;
 
 #define FSAL_EXPORT_CONTEXT_SPECIFIC( _pexport_context ) \
@@ -173,6 +175,8 @@ typedef struct
   /* Must be the first entry in this structure */
   ptfsal_export_context_t *export_context;     
   struct user_credentials credential;
+  msectimer_t latency;
+  unsigned int count;
 } ptfsal_op_context_t;
 
 #define FSAL_OP_CONTEXT_TO_UID( pcontext ) ( pcontext->credential.user )

@@ -1457,8 +1457,6 @@ static void nfs_rpc_execute(request_data_t    * preq,
   /* process time */
   stat_type = (rc == NFS_REQ_OK) ? GANESHA_STAT_SUCCESS : GANESHA_STAT_DROP;
 
-  rpc_out++;
-
   timer_diff = timer_end - timer_start;
 
 #ifdef _USE_QUEUE_TIMER
