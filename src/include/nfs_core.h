@@ -63,6 +63,7 @@
 
 #include "cache_inode.h"
 #include "fsal_up.h"
+#include "timers.h"
 
 #ifdef _USE_9P
 #include "9p.h"
@@ -220,6 +221,7 @@ typedef struct nfs_core_param__
   unsigned int dispatch_max_reqs_xprt;
   unsigned int stats_update_delay;
   unsigned int long_processing_threshold;
+  unsigned int long_processing_threshold_msec;
   unsigned int dump_stats_per_client;
   char stats_file_path[MAXPATHLEN];
   char stats_per_client_directory[MAXPATHLEN];
@@ -517,7 +519,9 @@ struct nfs_worker_data__
   fsal_op_context_t thread_fsal_context;
   /* Description of current or most recent function processed and start time (or 0) */
   const nfs_function_desc_t *funcdesc;
-  struct timeval timer_start;
+#ifdef _USE_STAT_EXPORTER
+  msectimer_t timer_start;
+#endif
 };
 
 /* flush thread data */
@@ -547,7 +551,6 @@ typedef struct ganesha_stats__ {
     hash_stat_t             drc_udp;
     hash_stat_t             drc_tcp;
     fsal_statistics_t       global_fsal;
-    unsigned int avg_latency;
     unsigned long long     total_fsal_calls;
 } ganesha_stats_t;
 
@@ -610,8 +613,10 @@ int stats_snmp(void);
 void *rpc_dispatcher_thread(void *UnusedArg);
 void *admin_thread(void *UnusedArg);
 void *stats_thread(void *UnusedArg);
+#ifdef _USE_STAT_EXPORTER
 void *long_processing_thread(void *UnusedArg);
 void *stat_exporter_thread(void *UnusedArg);
+#endif
 void *file_content_gc_thread(void *UnusedArg);
 void *nfs_file_content_flush_thread(void *flush_data_arg);
 void *reaper_thread(void *UnusedArg);
@@ -642,8 +647,6 @@ void nfs_Init_admin_data(void);
 int nfs_Init_worker_data(nfs_worker_data_t * pdata);
 int nfs_Init_request_data(nfs_request_data_t * pdata);
 void nfs_rpc_dispatch_threads(pthread_attr_t *attr_thr);
-void constructor_nfs_request_data_t(void *ptr, void *parameters);
-void constructor_request_data_t(void *ptr, void *parameters);
 
 /* Config parsing routines */
 int get_stat_exporter_conf(config_file_t in_config, external_tools_parameter_t * out_parameter);
