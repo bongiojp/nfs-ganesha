@@ -54,25 +54,6 @@
 
 extern hash_table_t *ht_ip_stats[NB_MAX_WORKER_THREAD];
 
-void set_min_latency(nfs_request_stat_item_t *cur_stat, unsigned int val)
-{
-  if(val > 0)
-    {
-      if(val < cur_stat->min_latency)
-        {
-          cur_stat->min_latency = val;
-        }
-    }
-}
-
-void set_max_latency(nfs_request_stat_item_t *cur_stat, unsigned int val)
-{
-  if(val > cur_stat->max_latency)
-    {
-      cur_stat->max_latency = val;
-    }
-}
-
 /*
  * This function collects statistics from all Ganesha system modules so that they can then
  * be pushed into various users (e.g.: a statistics file, a network mgmt serviece, ...)
@@ -93,16 +74,7 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
     global_worker_stat->nb_total_req = 0;
     global_worker_stat->nb_udp_req = 0;
     global_worker_stat->nb_tcp_req = 0;
-    global_worker_stat->stat_req.nb_mnt1_req = 0;
-    global_worker_stat->stat_req.nb_mnt3_req = 0;
-    global_worker_stat->stat_req.nb_nfs2_req = 0;
-    global_worker_stat->stat_req.nb_nfs3_req = 0;
-    global_worker_stat->stat_req.nb_nfs4_req = 0;
-    global_worker_stat->stat_req.nb_nlm4_req = 0;
-    global_worker_stat->stat_req.nb_nfs40_op = 0;
-    global_worker_stat->stat_req.nb_nfs41_op = 0;
-    global_worker_stat->stat_req.nb_rquota1_req = 0;
-    global_worker_stat->stat_req.nb_rquota2_req = 0;
+    memset(&global_worker_stat->stat_req, 0, sizeof(global_worker_stat->stat_req));
 
     for (i = 0; i < nfs_param.core_param.nb_worker; i++) {
         global_worker_stat->nb_total_req += workers_data[i].stats.nb_total_req;
@@ -133,14 +105,6 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
             workers_data[i].stats.stat_req.nb_nlm4_req;
 
         for (j = 0; j < MNT_V1_NB_COMMAND; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_req_mnt1[j].total =
-                    workers_data[i].stats.stat_req.stat_req_mnt1[j].total;
-                global_worker_stat->stat_req.stat_req_mnt1[j].success =
-                    workers_data[i].stats.stat_req.stat_req_mnt1[j].success;
-                global_worker_stat->stat_req.stat_req_mnt1[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_mnt1[j].dropped;
-            } else {
                 global_worker_stat->stat_req.stat_req_mnt1[j].total +=
                     workers_data[i].stats.stat_req.stat_req_mnt1[j].total;
                 global_worker_stat->stat_req.stat_req_mnt1[j].success +=
@@ -148,17 +112,8 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
                 global_worker_stat->stat_req.stat_req_mnt1[j].dropped +=
                     workers_data[i].stats.stat_req.stat_req_mnt1[j].dropped;
             }
-        }
 
         for (j = 0; j < MNT_V3_NB_COMMAND; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_req_mnt3[j].total =
-                    workers_data[i].stats.stat_req.stat_req_mnt3[j].total;
-                global_worker_stat->stat_req.stat_req_mnt3[j].success =
-                    workers_data[i].stats.stat_req.stat_req_mnt3[j].success;
-                global_worker_stat->stat_req.stat_req_mnt3[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_mnt3[j].dropped;
-            } else {
                 global_worker_stat->stat_req.stat_req_mnt3[j].total +=
                     workers_data[i].stats.stat_req.stat_req_mnt3[j].total;
                 global_worker_stat->stat_req.stat_req_mnt3[j].success +=
@@ -166,17 +121,8 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
                 global_worker_stat->stat_req.stat_req_mnt3[j].dropped +=
                     workers_data[i].stats.stat_req.stat_req_mnt3[j].dropped;
             }
-        }
 
         for (j = 0; j < NFS_V2_NB_COMMAND; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_req_nfs2[j].total =
-                    workers_data[i].stats.stat_req.stat_req_nfs2[j].total;
-                global_worker_stat->stat_req.stat_req_nfs2[j].success =
-                    workers_data[i].stats.stat_req.stat_req_nfs2[j].success;
-                global_worker_stat->stat_req.stat_req_nfs2[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_nfs2[j].dropped;
-            } else {
                 global_worker_stat->stat_req.stat_req_nfs2[j].total +=
                     workers_data[i].stats.stat_req.stat_req_nfs2[j].total;
                 global_worker_stat->stat_req.stat_req_nfs2[j].success +=
@@ -184,23 +130,31 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
                 global_worker_stat->stat_req.stat_req_nfs2[j].dropped +=
                     workers_data[i].stats.stat_req.stat_req_nfs2[j].dropped;
             }
-        }
 
         for (j = 0; j < NFS_V3_NB_COMMAND; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_req_nfs3[j].total =
-                    workers_data[i].stats.stat_req.stat_req_nfs3[j].total;
-                global_worker_stat->stat_req.stat_req_nfs3[j].success =
-                    workers_data[i].stats.stat_req.stat_req_nfs3[j].success;
-                global_worker_stat->stat_req.stat_req_nfs3[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_nfs3[j].dropped;
-                global_worker_stat->stat_req.stat_req_nfs3[j].tot_latency =
-                    workers_data[i].stats.stat_req.stat_req_nfs3[j].tot_latency;
-                global_worker_stat->stat_req.stat_req_nfs3[j].min_latency =
-                    workers_data[i].stats.stat_req.stat_req_nfs3[j].min_latency;
-                global_worker_stat->stat_req.stat_req_nfs3[j].max_latency =
-                    workers_data[i].stats.stat_req.stat_req_nfs3[j].max_latency;
-            } else {
+
+          if(workers_data[i].stats.stat_req.stat_req_nfs3[j].total != 0)
+            {
+              /* There are requests from this worker, so check min/max */
+              if(global_worker_stat->stat_req.stat_req_nfs3[j].total == 0)
+                {
+                  /* No requests recorded yet, so min/max starts here */
+                  global_worker_stat->stat_req.stat_req_nfs3[j].min_latency =
+                      workers_data[i].stats.stat_req.stat_req_nfs3[j].min_latency;
+                  global_worker_stat->stat_req.stat_req_nfs3[j].max_latency =
+                      workers_data[i].stats.stat_req.stat_req_nfs3[j].max_latency;
+                }
+              else
+                {
+                  /* Check if new min/max are lower/higher */
+                set_min_latency(&(global_worker_stat->stat_req.stat_req_nfs3[j].min_latency),
+                                workers_data[i].stats.stat_req.stat_req_nfs3[j].min_latency);
+                set_max_latency(&(global_worker_stat->stat_req.stat_req_nfs3[j].max_latency),
+                                workers_data[i].stats.stat_req.stat_req_nfs3[j].max_latency);
+                }
+            }
+
+                /* Accumulate all the other stats */
                 global_worker_stat->stat_req.stat_req_nfs3[j].total +=
                     workers_data[i].stats.stat_req.stat_req_nfs3[j].total;
                 global_worker_stat->stat_req.stat_req_nfs3[j].success +=
@@ -209,22 +163,9 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
                     workers_data[i].stats.stat_req.stat_req_nfs3[j].dropped;
                 global_worker_stat->stat_req.stat_req_nfs3[j].tot_latency +=
                     workers_data[i].stats.stat_req.stat_req_nfs3[j].tot_latency;
-                set_min_latency(&(global_worker_stat->stat_req.stat_req_nfs3[j]),
-                                workers_data[i].stats.stat_req.stat_req_nfs3[j].min_latency);
-                set_max_latency(&(global_worker_stat->stat_req.stat_req_nfs3[j]),
-                                workers_data[i].stats.stat_req.stat_req_nfs3[j].max_latency);
             }
-        }
 
         for (j = 0; j < NFS_V4_NB_COMMAND; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_req_nfs4[j].total =
-                    workers_data[i].stats.stat_req.stat_req_nfs4[j].total;
-                global_worker_stat->stat_req.stat_req_nfs4[j].success =
-                    workers_data[i].stats.stat_req.stat_req_nfs4[j].success;
-                global_worker_stat->stat_req.stat_req_nfs4[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_nfs4[j].dropped;
-            } else {
                 global_worker_stat->stat_req.stat_req_nfs4[j].total +=
                     workers_data[i].stats.stat_req.stat_req_nfs4[j].total;
                 global_worker_stat->stat_req.stat_req_nfs4[j].success +=
@@ -232,78 +173,35 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
                 global_worker_stat->stat_req.stat_req_nfs4[j].dropped +=
                     workers_data[i].stats.stat_req.stat_req_nfs4[j].dropped;
             }
-        }
 
         for (j = 0; j < NFS_V40_NB_OPERATION; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_op_nfs40[j].total =
-                    workers_data[i].stats.stat_req.stat_op_nfs40[j].total;
-                global_worker_stat->stat_req.stat_op_nfs40[j].success =
-                    workers_data[i].stats.stat_req.stat_op_nfs40[j].success;
-                global_worker_stat->stat_req.stat_op_nfs40[j].failed =
-                    workers_data[i].stats.stat_req.stat_op_nfs40[j].failed;
-            } else {
                 global_worker_stat->stat_req.stat_op_nfs40[j].total +=
                     workers_data[i].stats.stat_req.stat_op_nfs40[j].total;
                 global_worker_stat->stat_req.stat_op_nfs40[j].success +=
                     workers_data[i].stats.stat_req.stat_op_nfs40[j].success;
                 global_worker_stat->stat_req.stat_op_nfs40[j].failed +=
                     workers_data[i].stats.stat_req.stat_op_nfs40[j].failed;
-            }
         }
 
         for (j = 0; j < NFS_V41_NB_OPERATION; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_op_nfs41[j].total =
-                    workers_data[i].stats.stat_req.stat_op_nfs41[j].total;
-                global_worker_stat->stat_req.stat_op_nfs41[j].success =
-                    workers_data[i].stats.stat_req.stat_op_nfs41[j].success;
-                global_worker_stat->stat_req.stat_op_nfs41[j].failed =
-                    workers_data[i].stats.stat_req.stat_op_nfs41[j].failed;
-            } else {
                 global_worker_stat->stat_req.stat_op_nfs41[j].total +=
                     workers_data[i].stats.stat_req.stat_op_nfs41[j].total;
                 global_worker_stat->stat_req.stat_op_nfs41[j].success +=
                     workers_data[i].stats.stat_req.stat_op_nfs41[j].success;
                 global_worker_stat->stat_req.stat_op_nfs41[j].failed +=
                     workers_data[i].stats.stat_req.stat_op_nfs41[j].failed;
-            }
         }
 
         for (j = 0; j < NLM_V4_NB_OPERATION; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_req_nlm4[j].total =
-                    workers_data[i].stats.stat_req.stat_req_nlm4[j].total;
-                global_worker_stat->stat_req.stat_req_nlm4[j].success =
-                    workers_data[i].stats.stat_req.stat_req_nlm4[j].success;
-                global_worker_stat->stat_req.stat_req_nlm4[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_nlm4[j].dropped;
-            } else {
                 global_worker_stat->stat_req.stat_req_nlm4[j].total +=
                     workers_data[i].stats.stat_req.stat_req_nlm4[j].total;
                 global_worker_stat->stat_req.stat_req_nlm4[j].success +=
                     workers_data[i].stats.stat_req.stat_req_nlm4[j].success;
                 global_worker_stat->stat_req.stat_req_nlm4[j].dropped +=
                     workers_data[i].stats.stat_req.stat_req_nlm4[j].dropped;
-            }
         }
 
         for (j = 0; j < RQUOTA_NB_COMMAND; j++) {
-            if (i == 0) {
-                global_worker_stat->stat_req.stat_req_rquota1[j].total =
-                    workers_data[i].stats.stat_req.stat_req_rquota1[j].total;
-                global_worker_stat->stat_req.stat_req_rquota1[j].success =
-                    workers_data[i].stats.stat_req.stat_req_rquota1[j].success;
-                global_worker_stat->stat_req.stat_req_rquota1[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_rquota1[j].dropped;
-
-                global_worker_stat->stat_req.stat_req_rquota2[j].total =
-                    workers_data[i].stats.stat_req.stat_req_rquota2[j].total;
-                global_worker_stat->stat_req.stat_req_rquota2[j].success =
-                    workers_data[i].stats.stat_req.stat_req_rquota2[j].success;
-                global_worker_stat->stat_req.stat_req_rquota2[j].dropped =
-                    workers_data[i].stats.stat_req.stat_req_rquota2[j].dropped;
-            } else {
                 global_worker_stat->stat_req.stat_req_rquota1[j].total +=
                     workers_data[i].stats.stat_req.stat_req_rquota1[j].total;
                 global_worker_stat->stat_req.stat_req_rquota1[j].success +=
@@ -317,18 +215,8 @@ void stats_collect (ganesha_stats_t                 *ganesha_stats)
                     workers_data[i].stats.stat_req.stat_req_rquota2[j].success;
                 global_worker_stat->stat_req.stat_req_rquota2[j].dropped +=
                     workers_data[i].stats.stat_req.stat_req_rquota2[j].dropped;
-            }
         }
     }                       /* for( i = 0 ; i < nfs_param.core_param.nb_worker ; i++ ) */
-
-    for (j = 0; j < NFS_V3_NB_COMMAND; j++) {
-        if (global_worker_stat->stat_req.stat_req_nfs3[j].total > 0) {
-            ganesha_stats->avg_latency = (global_worker_stat->stat_req.stat_req_nfs3[j].tot_latency /
-                                         global_worker_stat->stat_req.stat_req_nfs3[j].total);
-        } else {
-            ganesha_stats->avg_latency = 0;
-        }
-    }
 
     /* Printing the cache inode hash stat */
     nfs_dupreq_get_stats(&ganesha_stats->drc_udp, &ganesha_stats->drc_tcp);
@@ -536,12 +424,11 @@ void *stats_thread(void *UnusedArg)
               global_worker_stat->stat_req.nb_nfs3_req);
       for (j = 0; j < NFS_V3_NB_COMMAND; j++)
 	{
-          fprintf(stats_file, "|%u,%u,%u,%u,%u,%u,%u",
+          fprintf(stats_file, "|%u,%u,%u,%"PRIu64",%"PRIu64",%"PRIu64"",
                   global_worker_stat->stat_req.stat_req_nfs3[j].total,
                   global_worker_stat->stat_req.stat_req_nfs3[j].success,
                   global_worker_stat->stat_req.stat_req_nfs3[j].dropped,
                   global_worker_stat->stat_req.stat_req_nfs3[j].tot_latency,
-                  ganesha_stats.avg_latency,
                   global_worker_stat->stat_req.stat_req_nfs3[j].min_latency,
                   global_worker_stat->stat_req.stat_req_nfs3[j].max_latency);
         }
