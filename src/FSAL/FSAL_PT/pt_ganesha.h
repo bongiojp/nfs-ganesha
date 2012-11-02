@@ -42,6 +42,8 @@
 #define FSI_MAX_HANDLE_CACHE_ENTRY 2500
 #define IO_BUFFER_SIZE             262144 //256k
 #define PTFSAL_USE_READSIZE_THRESHOLD     524288 // 512K.
+#define PTFSAL_POLLING_THREAD_FREQUENCY_SEC 1    // how often polling thread
+                                                 // is called
 #define PTFSAL_POLLING_HANDLE_TIMEOUT_SEC 300  // Time interval between 
                                                // polling for handle to 
                                                // close in the

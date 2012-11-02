@@ -323,6 +323,8 @@ struct file_handle_t {
   int                    m_ftrunc_rsp_rcvd;
   uint64_t               m_eio_counter;       // number of EIOs encountered
   int                    m_sticky_rc;         // 'sticky' rc
+  uint64_t               m_outstanding_io_count; // number of unfinished IOs
+                                                 // on this handle
 };
 
 // ----------------------------------------------------------------------------
