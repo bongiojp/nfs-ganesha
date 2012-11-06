@@ -48,9 +48,6 @@
                                                // polling for handle to 
                                                // close in the
                                                // background
-#define PTFSAL_OLDEST_HANDLE_TIMEOUT_SEC  5    // Timeout for opened handle 
-                                               // to be considered old in
-                                               // close_on_open path
 extern int             debug_flag;
 extern struct          fsi_handle_cache_t  g_fsi_name_handle_cache;
 extern pthread_mutex_t g_fsi_name_handle_mutex;
@@ -207,8 +204,6 @@ mode_t fsal_type2unix(int fsal_type);
 void ptfsal_set_fsi_handle_data(fsal_op_context_t * p_context, 
                                 ccl_context_t     * context);
 void *ptfsal_closeHandle_listener_thread(void *args);
-
-int ptfsal_find_oldest_handle(void);
 
 int ptfsal_implicit_close_for_nfs(int handle_index_to_close, int close_style);
 

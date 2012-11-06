@@ -79,7 +79,7 @@ void *ptfsal_closeHandle_listener_thread(void *args)
               shuffle handle around and there is only one place to
               actually close the handle (which is here) in the code */
       ccl_up_mutex_lock(&g_close_handle_mutex);
-      close_rc = ptfsal_find_oldest_handle();
+      close_rc = ccl_find_oldest_handle();
       if (close_rc != -1) {
         close_rc = ptfsal_implicit_close_for_nfs(close_rc,
                                                  CCL_CLOSE_STYLE_NORMAL);
@@ -124,11 +124,7 @@ void ptfsal_close_timedout_handle_bkg(void)
                 current_time, g_fsi_handles.m_handle[index].m_nfs_state,
                 g_fsi_handles.m_handle[index].m_hndl_in_use);
       ccl_up_mutex_lock(&g_close_handle_mutex);
-      if ((g_fsi_handles.m_handle[index].m_outstanding_io_count <= 0) &&
-          (g_fsi_handles.m_handle[index].m_nfs_state == NFS_CLOSE) &&
-          (g_fsi_handles.m_handle[index].m_hndl_in_use) &&
-          ((current_time - g_fsi_handles.m_handle[index].m_last_io_time)
-           >= PTFSAL_POLLING_HANDLE_TIMEOUT_SEC)) {
+      if (ccl_can_close_handle(index)) {
         /* We've found timed out handle and we are sending an explicit
          * close to close it out.
          *
@@ -178,49 +174,6 @@ void *ptfsal_polling_closeHandler_thread(void *args)
       ++g_poll_iterations;
     }
   }
-}
-
-int ptfsal_find_oldest_handle(void)
-{
-  int fsihandle = -1;
-  int index;
-  time_t oldest_time = time(NULL);
-  time_t current_time = oldest_time;
-
-  ccl_up_mutex_lock(&g_handle_mutex);
-
-  for (index = FSI_CIFS_RESERVED_STREAMS;
-       index < g_fsi_handles.m_count;
-       index++) {
-    if ((g_fsi_handles.m_handle[index].m_outstanding_io_count <= 0) &&
-	(g_fsi_handles.m_handle[index].m_last_io_time < oldest_time) &&
-        (g_fsi_handles.m_handle[index].m_hndl_in_use) &&
-        (g_fsi_handles.m_handle[index].m_nfs_state == NFS_CLOSE) &&
-        (current_time - g_fsi_handles.m_handle[index].m_last_io_time)
-         >= PTFSAL_OLDEST_HANDLE_TIMEOUT_SEC) {
-        oldest_time = g_fsi_handles.m_handle[index].m_last_io_time;
-        fsihandle = index;
-    }
-  }
-
-  /* Just in case we did not find an handle.  Dump the handle table out
-     and let us examine why. */
-  if (fsihandle == -1) {
-    for (index = FSI_CIFS_RESERVED_STREAMS;
-         index < g_fsi_handles.m_count;
-         index++) {
-      FSI_TRACE(FSI_NOTICE, "Last IO time[%ld] handle index [%d]"
-                "oldest_time[%ld] handle state[%d] m_hndl_in_use[%d]",
-                g_fsi_handles.m_handle[index].m_last_io_time, index,
-                oldest_time, g_fsi_handles.m_handle[index].m_nfs_state,
-                g_fsi_handles.m_handle[index].m_hndl_in_use);
-    }
-  }
-
-  ccl_up_mutex_unlock(&g_handle_mutex);
-  FSI_TRACE(FSI_NOTICE, "fsi file handle = %d", fsihandle);
-
-  return fsihandle;
 }
 
 int ptfsal_implicit_close_for_nfs(int handle_index_to_close, int close_style)
