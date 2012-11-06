@@ -167,7 +167,8 @@ void *ptfsal_polling_closeHandler_thread(void *args)
     ptfsal_close_timedout_handle_bkg();
     sleep (PTFSAL_POLLING_THREAD_FREQUENCY_SEC);
 
-    if (g_poll_iterations % PTFSAL_POLLING_HANDLE_TIMEOUT_SEC == 0) {
+    if ((g_poll_iterations * PTFSAL_POLLING_THREAD_FREQUENCY_SEC)
+        % PTFSAL_POLLING_HANDLE_TIMEOUT_SEC == 0) {
       g_poll_for_timeouts = true;
       g_poll_iterations   = 1;
     } else {
