@@ -908,19 +908,6 @@ static void nfs_rpc_execute(request_data_t    * preq,
                        "Dupreq xid=%u was asked for process since another thread "
                        "manage it, reject for avoiding threads starvation...",
                        req->rq_xid);
-          /* Free the arguments */
-          DISP_LOCK(xprt, &pworker_data->sigmask);
-          if((preqnfs->req.rq_vers == 2) ||
-             (preqnfs->req.rq_vers == 3) ||
-             (preqnfs->req.rq_vers == 4)) 
-            if(!SVC_FREEARGS(xprt, pworker_data->funcdesc->xdr_decode_func,
-                             (caddr_t) parg_nfs))
-              {
-                LogCrit(COMPONENT_DISPATCH,
-                        "NFS DISPATCHER: FAILURE: Bad SVC_FREEARGS for %s",
-                        pworker_data->funcdesc->funcname);
-              }
-          DISP_UNLOCK(xprt, &pworker_data->sigmask);
           /* Ignore the request, send no error */
           return;
 
@@ -1576,8 +1563,6 @@ static void nfs_rpc_execute(request_data_t    * preq,
           goto exe_exit;
         }
 
-      /* XXX we must hold xprt lock across SVC_FREEARGS */
-
       LogFullDebug(COMPONENT_DISPATCH,
                    "After svc_sendreply on socket %d",
                    xprt->xp_fd);
@@ -1589,19 +1574,6 @@ static void nfs_rpc_execute(request_data_t    * preq,
           nfs_dupreq_finish(req, &res_nfs, lru_dupreq);
         }
     } /* rc == NFS_REQ_DROP */
-
-  /* Free the allocated resources once the work is done */
-  /* Free the arguments */  
-  if(!SVC_FREEARGS(xprt,
-                   pworker_data->funcdesc->xdr_decode_func,
-                   (caddr_t) parg_nfs))
-    {
-      LogCrit(COMPONENT_DISPATCH,
-              "NFS DISPATCHER: FAILURE: Bad SVC_FREEARGS for %s",
-              pworker_data->funcdesc->funcname);
-    }
-
-  /* XXX we must hold xprt lock across SVC_FREEARGS */
   DISP_UNLOCK(xprt, &pworker_data->sigmask);
     
   /* Free the reply.
@@ -1806,6 +1778,7 @@ void *worker_thread(void *IndexArg)
   char thr_name[32];
   gsh_xprt_private_t *xu = NULL;
   uint32_t refcnt;
+  bool locked = FALSE;
 
   snprintf(thr_name, sizeof(thr_name), "Worker Thread #%lu", worker_index);
   SetNameFunction(thr_name);
@@ -1958,12 +1931,36 @@ void *worker_thread(void *IndexArg)
       /* Free the req by releasing the entry */
       LogFullDebug(COMPONENT_DISPATCH,
                    "Invalidating processed entry");
+
 #ifdef _USE_9P
+      /* Free the allocated resources once the work is done */
+      /* Free the arguments */  
+      DISP_LOCK(nfsreq->r_u.nfs->xprt, &pmydata->sigmask);
+      if(!SVC_FREEARGS(nfsreq->r_u.nfs->xprt, pmydata->funcdesc->xdr_decode_func,
+                       (caddr_t) &nfsreq->r_u.nfs->arg_nfs))
+        {
+          LogCrit(COMPONENT_DISPATCH,
+                  "NFS DISPATCHER: FAILURE: Bad SVC_FREEARGS for %s",
+                  pmydata->funcdesc->funcname);
+        }
+      DISP_UNLOCK(nfsreq->r_u.nfs->xprt, &pmydata->sigmask);
       if( nfsreq->rtype != _9P_REQUEST && nfsreq->r_u.nfs ) /** @todo : check if this does not produce memleak as 9P is used */
         pool_free(request_data_pool, nfsreq->r_u.nfs);
 #else
       switch(nfsreq->rtype) {
        case NFS_REQUEST:
+           /* Free the allocated resources once the work is done */
+           /* Free the arguments */  
+           DISP_LOCK(nfsreq->r_u.nfs->xprt, &pmydata->sigmask);
+           if(!SVC_FREEARGS(nfsreq->r_u.nfs->xprt, pmydata->funcdesc->xdr_decode_func,
+                            (caddr_t) &nfsreq->r_u.nfs->arg_nfs))
+             {
+               LogCrit(COMPONENT_DISPATCH,
+                       "NFS DISPATCHER: FAILURE: Bad SVC_FREEARGS for %s",
+                       pmydata->funcdesc->funcname);
+             }
+           DISP_UNLOCK(nfsreq->r_u.nfs->xprt, &pmydata->sigmask);
+
            pool_free(request_data_pool, nfsreq->r_u.nfs);
            break;
       default:
