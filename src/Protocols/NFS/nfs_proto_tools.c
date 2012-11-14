@@ -2046,7 +2046,7 @@ void nfs4_stringid_split(char *buff, char *uidname, char *domainname)
     if(*c == '@')
       break;
 
-  strncpy(uidname, buff, i);
+  memcpy(uidname, buff, i);
   uidname[i] = '\0';
   strcpy(domainname, c);
 
@@ -2098,7 +2098,7 @@ int utf8dup(utf8string * newstr, utf8string * oldstr)
   if(newstr->utf8string_val == NULL)
     return -1;
 
-  strncpy(newstr->utf8string_val, oldstr->utf8string_val, oldstr->utf8string_len);
+  memcpy(newstr->utf8string_val, oldstr->utf8string_val, oldstr->utf8string_len);
 
   return 0;
 }                               /* uft82str */
@@ -2133,7 +2133,7 @@ int utf82str(char *str, int size, utf8string * utf8str)
   else
     copy = utf8str->utf8string_len;
 
-  strncpy(str, utf8str->utf8string_val, copy);
+  memcpy(str, utf8str->utf8string_val, copy);
   str[copy] = '\0';
 
   if(copy < utf8str->utf8string_len)
@@ -2156,19 +2156,14 @@ int utf82str(char *str, int size, utf8string * utf8str)
  */
 int str2utf8(char *str, utf8string * utf8str)
 {
-  uint_t len;
-  char buff[MAXNAMLEN+1];
-
   /* The uft8 will probably be sent over XDR, for this reason, its size MUST be a multiple of 32 bits = 4 bytes */
-  strcpy(buff, str);
-  len = strlen(buff);
 
   /* BUGAZOMEU: TO BE DONE: use STUFF ALLOCATOR here */
   if(utf8str->utf8string_val == NULL)
     return -1;
 
-  utf8str->utf8string_len = len;
-  memcpy(utf8str->utf8string_val, buff, utf8str->utf8string_len);
+  utf8str->utf8string_len = strlen(str);
+  memcpy(utf8str->utf8string_val, str, utf8str->utf8string_len);
   return 0;
 }                               /* str2utf8 */
 
