@@ -119,12 +119,11 @@ fsal_status_t LUSTREFSAL_setattrs(fsal_handle_t * p_filehandle,   /* IN */
                                   fsal_attrib_list_t * p_object_attributes      /* [ IN/OUT ] */
     )
 {
-
   int rc, errsv;
   unsigned int i;
   fsal_status_t status;
   fsal_attrib_list_t attrs;
-
+  int no_trunc = 0;
   fsal_path_t fsalpath;
   struct stat buffstat;
 
@@ -143,9 +142,9 @@ fsal_status_t LUSTREFSAL_setattrs(fsal_handle_t * p_filehandle,   /* IN */
 
   if(!global_fs_info.cansettime)
     {
-
       if(attrs.asked_attributes
-         & (FSAL_ATTR_ATIME | FSAL_ATTR_CREATION | FSAL_ATTR_CTIME | FSAL_ATTR_MTIME))
+         & (FSAL_ATTR_ATIME | FSAL_ATTR_CREATION | FSAL_ATTR_CTIME | FSAL_ATTR_MTIME |
+            FSAL_ATTR_ATIME_SERVER | FSAL_ATTR_MTIME_SERVER))
         {
           /* handled as an unsettable attribute. */
           Return(ERR_FSAL_INVAL, 0, INDEX_FSAL_setattrs);
@@ -177,28 +176,135 @@ fsal_status_t LUSTREFSAL_setattrs(fsal_handle_t * p_filehandle,   /* IN */
         Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_setattrs);
     }
 
+  /**************
+   *  TRUNCATE  *
+   **************/
+
+  if(FSAL_TEST_MASK(p_attrib_set->asked_attributes, FSAL_ATTR_SIZE))
+    {
+#ifdef _SHOOK
+      /* If the file is not online:
+       * - if truncate(0) => call tuncate(0), then "shook restore_trunc"
+       * - if truncate(>0) => call "shook restore", then truncate
+       */
+      shook_state state;
+      rc = shook_get_status(fsalpath.path, &state, FALSE);
+      if (rc)
+      {
+          LogEvent(COMPONENT_FSAL, "Error retrieving shook status of %s: %s",
+                   fsalpath.path, strerror(-rc));
+          if (rc)
+              Return(posix2fsal_error(-rc), -rc, INDEX_FSAL_truncate);
+      }
+      else if (state != SS_ONLINE)
+      {
+          if (p_attrib_set->filesize == 0)
+          {
+              LogInfo(COMPONENT_FSAL, "File is offline: calling shook restore_trunc");
+
+              /* first truncate the file, them call the shook_svr to clear
+               * the 'released' flag */
+
+              TakeTokenFSCall();
+              rc = truncate(fsalpath.path, 0);
+              errsv = errno;
+              ReleaseTokenFSCall();
+
+              if (rc == 0)
+              {
+                  /* use a short timeout of 2s */
+                  rc = shook_server_call(SA_RESTORE_TRUNC,
+                                         ((lustrefsal_op_context_t *)p_context)->export_context->fsname,
+                                         &((lustrefsal_handle_t *)p_filehandle)->data.fid, 2);
+                  if (rc)
+                      Return(posix2fsal_error(-rc), -rc, INDEX_FSAL_truncate);
+                  else {
+                      /* check that file is online, else operation is still
+                       * in progress: return err jukebox */
+                      rc = shook_get_status(fsalpath.path, &state, FALSE);
+                      if (rc)
+                      {
+                          LogEvent(COMPONENT_FSAL, "Error retrieving shook status of %s: %s",
+                                   fsalpath.path, strerror(-rc));
+                          if (rc)
+                              Return(posix2fsal_error(-rc), -rc, INDEX_FSAL_truncate);
+                      }
+                      else if (state != SS_ONLINE)
+                          Return(ERR_FSAL_DELAY, -rc, INDEX_FSAL_truncate);
+                      /* OK */
+                  }
+                  /* file is already truncated, no need to truncate again */
+                  no_trunc = 1;
+              }
+              else
+              {
+                    if(errsv == ENOENT)
+                      Return(ERR_FSAL_STALE, errsv, INDEX_FSAL_truncate);
+                    else
+                      Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_truncate);
+              }
+          }
+          else /* p_attrib_set->filesize > 0 */
+          {
+              /* trigger restore. Give it a chance to retrieve the file in less than a second.
+               * Else, it returns ETIME that is converted in ERR_DELAY */
+              rc = shook_server_call(SA_RESTORE,
+                                     ((lustrefsal_op_context_t *)p_context)->export_context->fsname,
+                                     &((lustrefsal_handle_t *)p_filehandle)->data.fid, 1);
+              if (rc)
+                  Return(posix2fsal_error(-rc), -rc, INDEX_FSAL_truncate);
+              else {
+                  /* check that file is online, else operation is still
+                   * in progress: return err jukebox */
+                  rc = shook_get_status(fsalpath.path, &state, FALSE);
+                  if (rc)
+                  {
+                      LogEvent(COMPONENT_FSAL, "Error retrieving shook status of %s: %s",
+                               fsalpath.path, strerror(-rc));
+                      if (rc)
+                          Return(posix2fsal_error(-rc), -rc, INDEX_FSAL_truncate);
+                  }
+                  else if (state != SS_ONLINE)
+                      Return(ERR_FSAL_DELAY, -rc, INDEX_FSAL_truncate);
+                  /* OK */
+              }
+
+              /* if rc = 0, file can be opened */
+          }
+      }
+      /* else file is on line */
+#endif
+
+      /* Executes the POSIX truncate operation */
+
+      if (!no_trunc)
+      {
+        TakeTokenFSCall();
+        rc = truncate(fsalpath.path, p_attrib_set->filesize);
+        errsv = errno;
+        ReleaseTokenFSCall();
+      }
+
+      /* convert return code */
+      if(rc)
+        {
+          if(errsv == ENOENT)
+            Return(ERR_FSAL_STALE, errsv, INDEX_FSAL_truncate);
+          else
+            Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_truncate);
+        }
+    }
+ 
   /***********
    *  CHMOD  *
    ***********/
   if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MODE))
     {
-
       /* The POSIX chmod call don't affect the symlink object, but
        * the entry it points to. So we must ignore it.
        */
       if(!S_ISLNK(buffstat.st_mode))
         {
-
-          /* For modifying mode, user must be root or the owner */
-          if((p_context->credential.user != 0)
-             && (p_context->credential.user != buffstat.st_uid))
-            {
-              LogFullDebug(COMPONENT_FSAL,
-                                "Permission denied for CHMOD opeartion: current owner=%d, credential=%d",
-                                buffstat.st_uid, p_context->credential.user);
-              Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-            }
-
           TakeTokenFSCall();
           rc = chmod(fsalpath.path, fsal2unix_mode(attrs.mode));
           errsv = errno;
@@ -208,59 +314,12 @@ fsal_status_t LUSTREFSAL_setattrs(fsal_handle_t * p_filehandle,   /* IN */
             {
               Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_setattrs);
             }
-
         }
-
     }
 
   /***********
    *  CHOWN  *
    ***********/
-  /* Only root can change uid and A normal user must be in the group he wants to set */
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_OWNER))
-    {
-
-      /* For modifying owner, user must be root or current owner==wanted==client */
-      if((p_context->credential.user != 0) &&
-         ((p_context->credential.user != buffstat.st_uid) ||
-          (p_context->credential.user != attrs.owner)))
-        {
-          LogFullDebug(COMPONENT_FSAL,
-                            "Permission denied for CHOWN opeartion: current owner=%d, credential=%d, new owner=%d",
-                            buffstat.st_uid, p_context->credential.user, attrs.owner);
-          Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-        }
-    }
-
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_GROUP))
-    {
-
-      /* For modifying group, user must be root or current owner */
-      if((p_context->credential.user != 0)
-         && (p_context->credential.user != buffstat.st_uid))
-        Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-
-      int in_grp = 0;
-      /* set in_grp */
-      if(p_context->credential.group == attrs.group)
-        in_grp = 1;
-      else
-        for(i = 0; i < p_context->credential.nbgroups; i++)
-          {
-            if((in_grp = (attrs.group == p_context->credential.alt_groups[i])))
-              break;
-          }
-
-      /* it must also be in target group */
-      if(p_context->credential.user != 0 && !in_grp)
-        {
-          LogFullDebug(COMPONENT_FSAL,
-                            "Permission denied for CHOWN operation: current group=%d, credential=%d, new group=%d",
-                            buffstat.st_gid, p_context->credential.group, attrs.group);
-
-          Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-        }
-    }
 
   if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_OWNER | FSAL_ATTR_GROUP))
     {
@@ -285,41 +344,78 @@ fsal_status_t LUSTREFSAL_setattrs(fsal_handle_t * p_filehandle,   /* IN */
    *  UTIME  *
    ***********/
 
-  /* user must be the owner or have read access to modify 'atime' */
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME)
-     && (p_context->credential.user != 0)
-     && (p_context->credential.user != buffstat.st_uid)
-     && ((status = fsal_internal_testAccess(p_context, FSAL_R_OK, &buffstat, NULL)).major
-         != ERR_FSAL_NO_ERROR))
-    ReturnStatus(status, INDEX_FSAL_setattrs);
-
-  /* user must be the owner or have write access to modify 'mtime' */
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME)
-     && (p_context->credential.user != 0)
-     && (p_context->credential.user != buffstat.st_uid)
-     && ((status = fsal_internal_testAccess(p_context, FSAL_W_OK, &buffstat, NULL)).major
-         != ERR_FSAL_NO_ERROR))
-    ReturnStatus(status, INDEX_FSAL_setattrs);
-
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME | FSAL_ATTR_MTIME))
+  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME | FSAL_ATTR_MTIME |
+                                            FSAL_ATTR_ATIME_SERVER |
+                                            FSAL_ATTR_MTIME_SERVER))
     {
+      struct timeval  timebuf[2];
+      struct timeval *ptimebuf = &timebuf;
 
-      struct utimbuf timebuf;
+      if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME_SERVER) &&
+         FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME_SERVER))
+        {
+          /* If both times are set to server time, we can shortcut and
+           * use the utimes interface to set both times to current time.
+           */
+          ptimebuf = NULL;
+        }
+      else
+        {
+          /* Atime */
+          if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME_SERVER))
+            {
+              /* Since only one time is set to server time, we must
+               * get time of day to set it.
+               */
+              gettimeofday(&timebuf[0], NULL);
+            }
+          else if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME))
+            {
+              timebuf[0].tv_sec  = attrs.atime.seconds;
+              timebuf[0].tv_usec = attrs.atime.nseconds / 1000;
+            }
+          else
+            {
+              /* If we are not setting atime, must set from fetched attr. */
+              timebuf[0].tv_sec  = buffstat.st_atime;
+#ifdef __USE_MISC
+              timebuf[0].tv_usec = buffstat.st_atim.tv_nsec / 1000;
+#else
+              timebuf[0].tv_usec = 0;
+#endif
+            }
 
-      timebuf.actime =
-          (FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME) ? (time_t) attrs.
-           atime.seconds : buffstat.st_atime);
-      timebuf.modtime =
-          (FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME) ? (time_t) attrs.
-           mtime.seconds : buffstat.st_mtime);
+          /* Mtime */
+          if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME_SERVER))
+            {
+              /* Since only one time is set to server time, we must
+               * get time of day to set it.
+               */
+              gettimeofday(&timebuf[1], NULL);
+            }
+          else if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME))
+            {
+              timebuf[1].tv_sec  = attrs.mtime.seconds;
+              timebuf[1].tv_usec = attrs.mtime.nseconds / 1000;
+            }
+          else
+            {
+              /* If we are not setting mtime, must set from fetched attr. */
+              timebuf[1].tv_sec  = buffstat.st_mtime;
+#ifdef __USE_MISC
+              timebuf[1].tv_usec = buffstat.st_mtim.tv_nsec / 1000;
+#else
+              timebuf[1].tv_usec = 0;
+#endif
+            }
+        }
 
       TakeTokenFSCall();
-      rc = utime(fsalpath.path, &timebuf);
+      rc = utimes(fsalpath.path, ptimebuf);
       errsv = errno;
       ReleaseTokenFSCall();
       if(rc)
         Return(posix2fsal_error(errno), errno, INDEX_FSAL_setattrs);
-
     }
 
   /* Optionaly fills output attributes. */

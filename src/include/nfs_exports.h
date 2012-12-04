@@ -384,7 +384,6 @@ typedef struct compoud_data
   fsal_op_context_t *pcontext; /*< Credentials related to this
                                    fileset (to handle different uid
                                    mapping) */
-  struct user_cred user_credentials; /*< Extracted credentials for this request */
   exportlist_t *pexport; /*< Export entry related to the currentFH */
   exportlist_t *saved_pexport; /*< Export entry related to the savedFH */
   export_perms_t export_perms; /*< Permissions for export for currentFH */
@@ -461,5 +460,9 @@ void RemoveExportEntry(exportlist_t * p_entry);
 void set_mounted_on_fileid(cache_entry_t      * entry,
                            fsal_attrib_list_t * attr,
                            exportlist_t       * exp);
+
+void squash_setattr(export_perms_t     * pexport_perms,
+                    struct user_cred   * user_credentials,
+                    fsal_attrib_list_t * attr);
 
 #endif                          /* _NFS_EXPORTS_H */

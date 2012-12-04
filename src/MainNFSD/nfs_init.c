@@ -1990,7 +1990,6 @@ void nfs_start(nfs_start_info_t * p_start_info)
   printf("---> fsal_export_context_t:%lu\n", sizeof(lustrefsal_export_context_t));
   printf("---> fsal_cookie_t:%lu\n", sizeof(lustrefsal_cookie_t));
   printf("---> fs_specific_initinfo_t:%lu\n", sizeof(lustrefs_specific_initinfo_t));
-  printf("---> fsal_cred_t:%lu\n", sizeof(lustrefsal_cred_t));
 #endif
 #if 0
   /* Will remain as long as all FSAL are not yet in new format */
@@ -2026,16 +2025,31 @@ void nfs_start(nfs_start_info_t * p_start_info)
   /* Set the Core dump size if set */
   if(nfs_param.core_param.core_dump_size != -1)
     {
-      LogDebug(COMPONENT_INIT, "core size rlimit set to %ld",
-               nfs_param.core_param.core_dump_size);
+      LogInfo(COMPONENT_INIT, "core size rlimit set to %ld",
+              nfs_param.core_param.core_dump_size);
       ulimit_data.rlim_cur = nfs_param.core_param.core_dump_size;
       ulimit_data.rlim_max = nfs_param.core_param.core_dump_size;
 
       if(setrlimit(RLIMIT_CORE, &ulimit_data) != 0)
         {
-          LogError(COMPONENT_INIT, ERR_SYS, ERR_SETRLIMIT, errno);
-          LogCrit(COMPONENT_INIT, "Impossible to set RLIMIT_CORE to %ld",
-                  nfs_param.core_param.core_dump_size);
+          LogCrit(COMPONENT_INIT,
+                  "Impossible to set RLIMIT_CORE to %ld, error %s(%d)",
+                  nfs_param.core_param.core_dump_size,
+                  strerror(errno), errno);
+        }
+    }
+  else
+    {
+      if(getrlimit(RLIMIT_CORE, &ulimit_data) != 0)
+        {
+          LogCrit(COMPONENT_INIT,
+                  "Impossible to read RLIMIT_CORE, error %s(%d)",
+                  strerror(errno), errno);
+        }
+      else
+        {
+          LogInfo(COMPONENT_INIT, "core size rlimit is %ld",
+                  ulimit_data.rlim_cur);
         }
     }
 

@@ -73,7 +73,6 @@ fsal_status_t POSIXFSAL_getattrs(fsal_handle_t * filehandle,     /* IN */
     }
 
   Return(ERR_FSAL_NO_ERROR, 0, INDEX_FSAL_getattrs);
-
 }
 
 /**
@@ -131,9 +130,9 @@ fsal_status_t POSIXFSAL_setattrs(fsal_handle_t * filehandle,     /* IN */
 
   if(!global_fs_info.cansettime)
     {
-
       if(attrs.asked_attributes
-         & (FSAL_ATTR_ATIME | FSAL_ATTR_CREATION | FSAL_ATTR_CTIME | FSAL_ATTR_MTIME))
+         & (FSAL_ATTR_ATIME | FSAL_ATTR_CREATION | FSAL_ATTR_CTIME | FSAL_ATTR_MTIME |
+            FSAL_ATTR_ATIME_SERVER | FSAL_ATTR_MTIME_SERVER))
         {
           /* handled as an unsettable attribute. */
           Return(ERR_FSAL_INVAL, 0, INDEX_FSAL_setattrs);
@@ -152,22 +151,37 @@ fsal_status_t POSIXFSAL_setattrs(fsal_handle_t * filehandle,     /* IN */
   if(FSAL_IS_ERROR(status))
     Return(status.major, status.minor, INDEX_FSAL_setattrs);
 
+  /**************
+   *  TRUNCATE  *
+   **************/
+
+  if(FSAL_TEST_MASK(p_attrib_set->asked_attributes, FSAL_ATTR_SIZE))
+    {
+      TakeTokenFSCall();
+      rc = truncate(fsalpath.path, p_attrib_set->filesize);
+      errsv = errno;
+      ReleaseTokenFSCall();
+
+      if(rc)
+        {
+          close(fd);
+          if(errsv == ENOENT)
+            Return(ERR_FSAL_STALE, errsv, INDEX_FSAL_truncate);
+          else
+            Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_truncate);
+        }
+    }
+ 
   /***********
    *  CHMOD  *
    ***********/
   if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MODE))
     {
-
       /* The POSIX chmod call don't affect the symlink object, but
        * the entry it points to. So we must ignore it.
        */
       if(!S_ISLNK(buffstat.st_mode))
         {
-
-          if((p_context->credential.user != 0)
-             && (p_context->credential.user != buffstat.st_uid))
-            Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-
           TakeTokenFSCall();
           rc = chmod(fsalpath.path, fsal2unix_mode(attrs.mode));
           errsv = errno;
@@ -175,41 +189,12 @@ fsal_status_t POSIXFSAL_setattrs(fsal_handle_t * filehandle,     /* IN */
 
           if(rc)
             Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_setattrs);
-
         }
-
     }
 
   /***********
    *  CHOWN  *
    ***********/
-  /* Only root can change uid and A normal user must be in the group he wants to set */
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_OWNER))
-    {
-      if((p_context->credential.user != 0) &&
-         ((p_context->credential.user != buffstat.st_uid) ||
-          (p_context->credential.user != attrs.owner)))
-        Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-    }
-
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_GROUP))
-    {
-
-      if(p_context->credential.user != 0 && p_context->credential.user != buffstat.st_uid)
-        Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-      int in_grp = 0;
-      /* set in_grp */
-      if(p_context->credential.group == attrs.group)
-        in_grp = 1;
-      else
-        for(i = 0; i < p_context->credential.nbgroups; i++)
-          {
-            if((in_grp = (attrs.group == p_context->credential.alt_groups[i])))
-              break;
-          }
-      if(p_context->credential.user != 0 && !in_grp)
-        Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-    }
 
   if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_OWNER | FSAL_ATTR_GROUP))
     {
@@ -227,60 +212,79 @@ fsal_status_t POSIXFSAL_setattrs(fsal_handle_t * filehandle,     /* IN */
   /***********
    *  UTIME  *
    ***********/
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME | FSAL_ATTR_MTIME))
+
+  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME | FSAL_ATTR_MTIME |
+                                            FSAL_ATTR_ATIME_SERVER |
+                                            FSAL_ATTR_MTIME_SERVER))
     {
+      struct timeval  timebuf[2];
+      struct timeval *ptimebuf = &timebuf;
 
-      struct utimbuf timebuf;
+      if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME_SERVER) &&
+         FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME_SERVER))
+        {
+          /* If both times are set to server time, we can shortcut and
+           * use the utimes interface to set both times to current time.
+           */
+          ptimebuf = NULL;
+        }
+      else
+        {
+          /* Atime */
+          if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME_SERVER))
+            {
+              /* Since only one time is set to server time, we must
+               * get time of day to set it.
+               */
+              gettimeofday(&timebuf[0], NULL);
+            }
+          else if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME))
+            {
+              timebuf[0].tv_sec  = attrs.atime.seconds;
+              timebuf[0].tv_usec = attrs.atime.nseconds / 1000;
+            }
+          else
+            {
+              /* If we are not setting atime, must set from fetched attr. */
+              timebuf[0].tv_sec  = buffstat.st_atime;
+#ifdef __USE_MISC
+              timebuf[0].tv_usec = buffstat.st_atim.tv_nsec / 1000;
+#else
+              timebuf[0].tv_usec = 0;
+#endif
+            }
 
-      /* user must be the owner or have read access to modify 'atime' */
-      if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME)
-         && (p_context->credential.user != 0)
-         && (p_context->credential.user != buffstat.st_uid)
-         &&
-         ((status =
-           fsal_internal_testAccess(p_context, FSAL_R_OK, &buffstat,
-                                    NULL)).major != ERR_FSAL_NO_ERROR))
-        Return(status.major, status.minor, INDEX_FSAL_setattrs);
-
-      /* user must be the owner or have write access to modify 'mtime' */
-      if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME)
-         && (p_context->credential.user != 0)
-         && (p_context->credential.user != buffstat.st_uid)
-         &&
-         ((status =
-           fsal_internal_testAccess(p_context, FSAL_W_OK, &buffstat,
-                                    NULL)).major != ERR_FSAL_NO_ERROR))
-        Return(status.major, status.minor, INDEX_FSAL_setattrs);
-
-      timebuf.actime =
-          (FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME) ? (time_t) attrs.atime.
-           seconds : buffstat.st_atime);
-      timebuf.modtime =
-          (FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME) ? (time_t) attrs.mtime.
-           seconds : buffstat.st_mtime);
+          /* Mtime */
+          if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME_SERVER))
+            {
+              /* Since only one time is set to server time, we must
+               * get time of day to set it.
+               */
+              gettimeofday(&timebuf[1], NULL);
+            }
+          else if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME))
+            {
+              timebuf[1].tv_sec  = attrs.mtime.seconds;
+              timebuf[1].tv_usec = attrs.mtime.nseconds / 1000;
+            }
+          else
+            {
+              /* If we are not setting mtime, must set from fetched attr. */
+              timebuf[1].tv_sec  = buffstat.st_mtime;
+#ifdef __USE_MISC
+              timebuf[1].tv_usec = buffstat.st_mtim.tv_nsec / 1000;
+#else
+              timebuf[1].tv_usec = 0;
+#endif
+            }
+        }
 
       TakeTokenFSCall();
-      rc = utime(fsalpath.path, &timebuf);
+      rc = utimes(fsalpath.path, ptimebuf);
       errsv = errno;
       ReleaseTokenFSCall();
       if(rc)
         Return(posix2fsal_error(errno), errno, INDEX_FSAL_setattrs);
-
-    }
-
-  /* Optionaly fills output attributes. */
-
-  if(p_object_attributes)
-    {
-      status = POSIXFSAL_getattrs(p_filehandle, p_context, p_object_attributes);
-
-      /* on error, we set a special bit in the mask. */
-      if(FSAL_IS_ERROR(status))
-        {
-          FSAL_CLEAR_MASK(p_object_attributes->asked_attributes);
-          FSAL_SET_MASK(p_object_attributes->asked_attributes, FSAL_ATTR_RDATTR_ERR);
-        }
-
     }
 
   Return(ERR_FSAL_NO_ERROR, 0, INDEX_FSAL_setattrs);

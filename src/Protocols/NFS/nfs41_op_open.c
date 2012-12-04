@@ -409,9 +409,17 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
                   if(AttrProvided == TRUE)      /* Set the attribute if provided */
                     {
+                      /* If owner or owner_group are set, and the credential was
+                       * squashed, then we must squash the set owner and owner_group.
+                       */
+                      squash_setattr(&data->export_perms,
+                                     &data->pworker->user_credentials,
+                                     &sattr);
+
                       if(cache_inode_setattr(pentry_lookup,
                                              &sattr,
                                              data->pcontext,
+                                             (arg_OPEN4.share_access & OPEN4_SHARE_ACCESS_WRITE) != 0,
                                              &cache_status) != CACHE_INODE_SUCCESS)
                         {
                           res_OPEN4.status = nfs4_Errno(cache_status);
@@ -715,9 +723,17 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
           if(AttrProvided == TRUE)      /* Set the attribute if provided */
             {
+              /* If owner or owner_group are set, and the credential was
+               * squashed, then we must squash the set owner and owner_group.
+               */
+              squash_setattr(&data->export_perms,
+                             &data->pworker->user_credentials,
+                             &sattr);
+
               if((cache_status = cache_inode_setattr(pentry_newfile,
                                                      &sattr,
                                                      data->pcontext,
+                                                     (arg_OPEN4.share_access & OPEN4_SHARE_ACCESS_WRITE) != 0,
                                                      &cache_status)) !=
                  CACHE_INODE_SUCCESS)
                 {

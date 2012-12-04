@@ -229,8 +229,6 @@ struct fsal_handle_desc {
 #define FSAL_MAX_NAME_LEN   NAME_MAX
 #define FSAL_MAX_PATH_LEN   PATH_MAX
 
-#define FSAL_NGROUPS_MAX  32
-
 /** object name.  */
 
 #define USER_CRED_ANONYMOUS     0x0001
@@ -258,7 +256,7 @@ struct user_credentials {
   uid_t user;
   gid_t group;
   int nbgroups;
-  gid_t alt_groups[FSAL_NGROUPS_MAX];
+  gid_t * alt_groups;
   sockaddr_t caller_addr;
 };
 
@@ -591,6 +589,11 @@ typedef fsal_u64_t fsal_attrib_mask_t;
 /* Change attribute */
 #define FSAL_ATTR_CHANGE    ((fsal_attrib_mask_t) 0x0000000000100000LL )
 
+/* Set atime to server time */
+#define FSAL_ATTR_ATIME_SERVER  ((fsal_attrib_mask_t) 0x0000000000200000LL )
+
+/* Set mtime to server time */
+#define FSAL_ATTR_MTIME_SERVER  ((fsal_attrib_mask_t) 0x0000000000400000LL )
 
 /* "classic" attributes sets : */
 

@@ -208,7 +208,6 @@ fsal_status_t XFSFSAL_setattrs(fsal_handle_t * p_filehandle, /* IN */
                                fsal_attrib_list_t * p_object_attributes /* [ IN/OUT ] */
     )
 {
-
   int rc, errsv;
   unsigned int i;
   fsal_status_t status;
@@ -239,9 +238,9 @@ fsal_status_t XFSFSAL_setattrs(fsal_handle_t * p_filehandle, /* IN */
 
   if(!global_fs_info.cansettime)
     {
-
       if(attrs.asked_attributes
-         & (FSAL_ATTR_ATIME | FSAL_ATTR_CREATION | FSAL_ATTR_CTIME | FSAL_ATTR_MTIME))
+         & (FSAL_ATTR_ATIME | FSAL_ATTR_CREATION | FSAL_ATTR_CTIME | FSAL_ATTR_MTIME |
+            FSAL_ATTR_ATIME_SERVER | FSAL_ATTR_MTIME_SERVER))
         {
           /* handled as an unsettable attribute. */
           Return(ERR_FSAL_INVAL, 0, INDEX_FSAL_setattrs);
@@ -276,31 +275,37 @@ fsal_status_t XFSFSAL_setattrs(fsal_handle_t * p_filehandle, /* IN */
         Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_setattrs);
     }
 
+  /**************
+   *  TRUNCATE  *
+   **************/
+
+  if(FSAL_TEST_MASK(p_attrib_set->asked_attributes, FSAL_ATTR_SIZE))
+    {
+      TakeTokenFSCall();
+      rc = ftruncate(fd, p_attrib_set->filesize);
+      errsv = errno;
+      ReleaseTokenFSCall();
+
+      if(rc)
+        {
+          close(fd);
+          if(errsv == ENOENT)
+            Return(ERR_FSAL_STALE, errsv, INDEX_FSAL_truncate);
+          else
+            Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_truncate);
+        }
+    }
+ 
   /***********
    *  CHMOD  *
    ***********/
   if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MODE))
     {
-
       /* The POSIX chmod call don't affect the symlink object, but
        * the entry it points to. So we must ignore it.
        */
       if(!S_ISLNK(buffstat.st_mode))
         {
-
-          /* For modifying mode, user must be root or the owner */
-          if((userid != 0)
-             && (userid != buffstat.st_uid))
-            {
-
-              LogFullDebug(COMPONENT_FSAL, 
-                                "Permission denied for CHMOD opeartion: current owner=%d, credential=%d",
-                                buffstat.st_uid, userid);
-
-              close(fd);
-              Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-            }
-
           TakeTokenFSCall();
           rc = fchmod(fd, fsal2unix_mode(attrs.mode));
           errsv = errno;
@@ -312,71 +317,15 @@ fsal_status_t XFSFSAL_setattrs(fsal_handle_t * p_filehandle, /* IN */
               close(fd);
               Return(posix2fsal_error(errsv), errsv, INDEX_FSAL_setattrs);
             }
-
         }
-
     }
 
   /***********
    *  CHOWN  *
    ***********/
-  /* Only root can change uid and A normal user must be in the group he wants to set */
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_OWNER))
-    {
-
-      /* For modifying owner, user must be root or current owner==wanted==client */
-      if((userid != 0) &&
-         ((userid != buffstat.st_uid) ||
-          (userid != attrs.owner)))
-        {
-
-          LogFullDebug(COMPONENT_FSAL,
-                            "Permission denied for CHOWN opeartion: current owner=%d, credential=%d, new owner=%d",
-                            buffstat.st_uid, userid, attrs.owner);
-
-          close(fd);
-          Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-        }
-    }
-
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_GROUP))
-    {
-
-      /* For modifying group, user must be root or current owner */
-      if((userid != 0)
-         && (userid != buffstat.st_uid))
-        {
-          close(fd);
-          Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-        }
-
-      int in_grp = 0;
-      /* set in_grp */
-      if(groupid == attrs.group)
-        in_grp = 1;
-      else
-        for(i = 0; i < ((xfsfsal_op_context_t *)p_context)->credential.nbgroups; i++)
-          {
-            if((in_grp = (attrs.group == ((xfsfsal_op_context_t *)p_context)->credential.alt_groups[i])))
-              break;
-          }
-
-      /* it must also be in target group */
-      if(userid != 0 && !in_grp)
-        {
-
-          LogFullDebug(COMPONENT_FSAL,
-                            "Permission denied for CHOWN operation: current group=%d, credential=%d, new group=%d",
-                            buffstat.st_gid, groupid, attrs.group);
-
-          close(fd);
-          Return(ERR_FSAL_PERM, 0, INDEX_FSAL_setattrs);
-        }
-    }
 
   if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_OWNER | FSAL_ATTR_GROUP))
     {
-
       LogFullDebug(COMPONENT_FSAL, "Performing chown(inode=%"PRIu64", %d,%d)",
                         buffstat.st_ino, FSAL_TEST_MASK(attrs.asked_attributes,
                                                       FSAL_ATTR_OWNER) ? (int)attrs.owner
@@ -402,48 +351,51 @@ fsal_status_t XFSFSAL_setattrs(fsal_handle_t * p_filehandle, /* IN */
    *  UTIME  *
    ***********/
 
-  /* user must be the owner or have read access to modify 'atime' */
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME)
-     && (userid != 0)
-     && (userid != buffstat.st_uid)
-     && ((status = fsal_check_access(p_context, FSAL_R_OK, &buffstat, NULL)).major
-         != ERR_FSAL_NO_ERROR))
+  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME | FSAL_ATTR_MTIME |
+                                            FSAL_ATTR_ATIME_SERVER |
+                                            FSAL_ATTR_MTIME_SERVER))
     {
-      close(fd);
-      ReturnStatus(status, INDEX_FSAL_setattrs);
-    }
-  /* user must be the owner or have write access to modify 'mtime' */
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME)
-     && (userid != 0)
-     && (userid != buffstat.st_uid)
-     && ((status = fsal_check_access(p_context, FSAL_W_OK, &buffstat, NULL)).major
-         != ERR_FSAL_NO_ERROR))
-    {
-      close(fd);
-      ReturnStatus(status, INDEX_FSAL_setattrs);
-    }
-
-  if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME | FSAL_ATTR_MTIME))
-    {
-
-      struct timeval timebuf[2];
+      struct timespec timebuf[2];
 
       /* Atime */
-      timebuf[0].tv_sec =
-          (FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME) ? (time_t) attrs.
-           atime.seconds : buffstat.st_atime);
-      timebuf[0].tv_usec = 0;
+      if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME_SERVER))
+        {
+          timebuf[0].tv_sec  = 0;
+          timebuf[0].tv_nsec = UTIME_NOW;
+        }
+      else if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_ATIME))
+        {
+          timebuf[0].tv_sec  = attrs.atime.seconds;
+          timebuf[0].tv_nsec = attrs.atime.nseconds;
+        }
+      else
+        {
+          timebuf[0].tv_sec  = 0;
+          timebuf[0].tv_nsec = UTIME_OMIT;
+        }
 
       /* Mtime */
-      timebuf[1].tv_sec =
-          (FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME) ? (time_t) attrs.
-           mtime.seconds : buffstat.st_mtime);
-      timebuf[1].tv_usec = 0;
+      if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME_SERVER))
+        {
+          timebuf[1].tv_sec  = 0;
+          timebuf[1].tv_nsec = UTIME_NOW;
+        }
+      else if(FSAL_TEST_MASK(attrs.asked_attributes, FSAL_ATTR_MTIME))
+        {
+          timebuf[1].tv_sec  = attrs.mtime.seconds;
+          timebuf[1].tv_nsec = attrs.mtime.nseconds;
+        }
+      else
+        {
+          timebuf[1].tv_sec  = 0;
+          timebuf[1].tv_nsec = UTIME_OMIT;
+        }
 
       TakeTokenFSCall();
-      rc = futimes(fd, timebuf);
+      rc = futimens(fd, timebuf);
       errsv = errno;
       ReleaseTokenFSCall();
+
       if(rc)
         {
           close(fd);
@@ -464,7 +416,6 @@ fsal_status_t XFSFSAL_setattrs(fsal_handle_t * p_filehandle, /* IN */
           FSAL_CLEAR_MASK(p_object_attributes->asked_attributes);
           FSAL_SET_MASK(p_object_attributes->asked_attributes, FSAL_ATTR_RDATTR_ERR);
         }
-
     }
 
   close(fd);

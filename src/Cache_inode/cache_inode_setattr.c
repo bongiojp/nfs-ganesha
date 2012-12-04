@@ -76,9 +76,11 @@ cache_inode_status_t
 cache_inode_setattr(cache_entry_t *entry,
                     fsal_attrib_list_t *attr,
                     fsal_op_context_t *context,
+                    int is_open_write,
                     cache_inode_status_t *status)
 {
      fsal_status_t fsal_status = {0, 0};
+     int           got_content_lock = FALSE;
 #ifdef _USE_NFS4_ACL
      fsal_acl_t *saved_acl = NULL;
      fsal_acl_status_t acl_status = 0;
@@ -99,22 +101,27 @@ cache_inode_setattr(cache_entry_t *entry,
                    "Attempt to truncate non-regular file: type=%d",
                    entry->type);
           *status = CACHE_INODE_BAD_TYPE;
+          goto out;
      }
 
-     PTHREAD_RWLOCK_WRLOCK(&entry->attr_lock);
+     /* Get wrlock on attr_lock and verify attrs */
+     *status = cache_inode_lock_trust_attrs(entry, context, TRUE);
+     if(*status != CACHE_INODE_SUCCESS)
+       return *status;
+
+     /* Do permission checks */
+     if(cache_inode_check_setattr_perms(entry,
+                                        attr,
+                                        context,
+                                        is_open_write,
+                                        status) != CACHE_INODE_SUCCESS)
+       {
+         goto unlock;
+       }
+
      if (attr->asked_attributes & FSAL_ATTR_SIZE) {
-          fsal_status = FSAL_truncate(&entry->handle,
-                                      context, attr->filesize,
-                                      NULL, NULL);
-          if (FSAL_IS_ERROR(fsal_status)) {
-               *status = cache_inode_error_convert(fsal_status);
-               if (fsal_status.major == ERR_FSAL_STALE) {
-                    LogEvent(COMPONENT_CACHE_INODE,
-                       "FSAL returned STALE from truncate");
-                    cache_inode_kill_entry(entry);
-               }
-               goto unlock;
-          }
+          PTHREAD_RWLOCK_WRLOCK(&entry->content_lock);
+          got_content_lock = TRUE;
      }
 
 #ifdef _USE_NFS4_ACL
@@ -141,8 +148,8 @@ cache_inode_setattr(cache_entry_t *entry,
          }
 #endif /* _USE_NFS4_ACL */
      }
-     cache_inode_fixup_md(entry);
 
+     cache_inode_fixup_md(entry);
      /* Copy the complete set of new attributes out. */
 
      *attr = entry->attributes;
@@ -151,6 +158,9 @@ cache_inode_setattr(cache_entry_t *entry,
      *status = CACHE_INODE_SUCCESS;
 
 unlock:
+     if(got_content_lock) {
+          PTHREAD_RWLOCK_UNLOCK(&entry->content_lock);
+     }
      PTHREAD_RWLOCK_UNLOCK(&entry->attr_lock);
 
 out:

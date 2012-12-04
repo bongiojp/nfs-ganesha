@@ -45,6 +45,7 @@
 #include "fsal_convert.h"
 #include <libgen.h>             /* used for 'dirname' */
 #include "abstract_mem.h"
+#include "FSAL/access_check.h"
 
 #include <pthread.h>
 #include <string.h>
@@ -423,6 +424,8 @@ fsal_status_t fsal_internal_init_global(fsal_init_info_t * fsal_info,
                "FSAL INIT: Supported attributes mask = 0x%llX.",
                global_fs_info.supported_attrs);
 
+  fsal_save_ganesha_credentials();
+
   ReturnCode(ERR_FSAL_NO_ERROR, 0);
 }
 
@@ -540,6 +543,10 @@ fsal_status_t fsal_internal_get_handle(fsal_op_context_t * p_context,   /* IN */
   harg.dfd = AT_FDCWD;
   harg.flag = 0;
 
+#ifdef _VALGRIND_MEMCHECK
+  memset(harg.handle->f_handle, 0, harg.handle->handle_size);
+#endif
+
   LogFullDebug(COMPONENT_FSAL,
                "Lookup handle for %s",
                p_fsalpath->path);
@@ -588,6 +595,10 @@ fsal_status_t fsal_internal_get_handle_at(int dfd,      /* IN */
   harg.name = p_fsalname->name;
   harg.dfd = dfd;
   harg.flag = 0;
+
+#ifdef _VALGRIND_MEMCHECK
+  memset(harg.handle->f_handle, 0, harg.handle->handle_size);
+#endif
 
   LogFullDebug(COMPONENT_FSAL,
                "Lookup handle at for %s",
@@ -642,6 +653,10 @@ fsal_status_t fsal_internal_get_handle_at(int dfd,      /* IN */
   harg.len = p_fsalname->len;
   harg.name = p_fsalname->name;
 
+#ifdef _VALGRIND_MEMCHECK
+  memset(harg.out_fh, 0, harg.out_fh->handle_size);
+#endif
+
   LogFullDebug(COMPONENT_FSAL,
                "Lookup handle for %s",
                p_fsalname->name);
@@ -689,6 +704,10 @@ fsal_status_t fsal_internal_fd2handle(int fd, fsal_handle_t * handle)
   harg.name = NULL;
   harg.dfd = fd;
   harg.flag = 0;
+
+#ifdef _VALGRIND_MEMCHECK
+  memset(harg.handle->f_handle, 0, harg.handle->handle_size);
+#endif
 
   LogFullDebug(COMPONENT_FSAL,
                "Lookup handle by fd for %d",
@@ -769,6 +788,10 @@ fsal_status_t fsal_internal_stat_name(fsal_op_context_t * p_context,
   struct stat_name_arg statarg;
 
   dirfd = ((gpfsfsal_op_context_t *)p_context)->export_context->mount_root_fd;
+
+#ifdef _VALGRIND_MEMCHECK
+  memset(buf, 0, sizeof(*buf));
+#endif
 
   if(!p_stat_name->name)
     ReturnCode(ERR_FSAL_FAULT, 0);
@@ -875,6 +898,10 @@ fsal_status_t fsal_internal_create(fsal_op_context_t * p_context,
   crarg.new_fh->handle_version = OPENHANDLE_VERSION;
   crarg.buf = buf;
 
+#ifdef _VALGRIND_MEMCHECK
+  memset(crarg.new_fh->f_handle, 0, crarg.new_fh->handle_size);
+#endif
+
   rc = gpfs_ganesha(OPENHANDLE_CREATE_BY_NAME, &crarg);
 
   if(rc < 0)
@@ -955,6 +982,10 @@ fsal_status_t fsal_readlink_by_handle(fsal_op_context_t * p_context,
   struct readlink_fh_arg readlinkarg;
   gpfsfsal_handle_t *p_gpfs_fh = (gpfsfsal_handle_t *)p_handle;
 
+#ifdef _VALGRIND_MEMCHECK
+  memset(__buf, 0, maxlen);
+#endif
+
   dirfd = ((gpfsfsal_op_context_t *)p_context)->export_context->mount_root_fd;
 
   readlinkarg.mountdirfd = dirfd;
@@ -989,9 +1020,10 @@ fsal_status_t fsal_internal_testAccess(fsal_op_context_t * p_context,   /* IN */
 
 #ifdef _USE_NFS4_ACL
   /* If ACL exists and given access type is ace4 mask, use ACL to check access. */
-  LogDebug(COMPONENT_FSAL, "pattr=%p, pacl=%p, is_ace4_mask=%d",
+  LogDebug(COMPONENT_FSAL, "pattr=%p, pacl=%p, is_ace4_mask=%d, access_type=%x",
            p_object_attributes, p_object_attributes ? p_object_attributes->acl : 0,
-           IS_FSAL_ACE4_MASK_VALID(access_type));
+           IS_FSAL_ACE4_MASK_VALID(access_type),
+           access_type);
 
   if(p_object_attributes && p_object_attributes->acl &&
      IS_FSAL_ACE4_MASK_VALID(access_type))
@@ -1085,6 +1117,10 @@ fsal_status_t fsal_get_xstat_by_handle(fsal_op_context_t * p_context,
 
   dirfd = ((gpfsfsal_op_context_t *)p_context)->export_context->mount_root_fd;
 
+#ifdef _VALGRIND_MEMCHECK
+  memset(p_buffxstat, 0, sizeof(*p_buffxstat));
+#endif
+
 #ifdef _USE_NFS4_ACL
   /* Initialize acl header so that GPFS knows what we want. */
   pacl_gpfs = (gpfs_acl_t *) p_buffxstat->buffacl;
@@ -1149,7 +1185,6 @@ fsal_status_t fsal_set_xstat_by_handle(fsal_op_context_t * p_context,
   int rc, errsv;
   int dirfd = 0;
   struct xstat_arg xstatarg;
-  int fsuid, fsgid;
 
   if(!p_handle || !p_context || !p_context->export_context || !p_buffxstat)
       ReturnCode(ERR_FSAL_FAULT, 0);
@@ -1163,12 +1198,12 @@ fsal_status_t fsal_set_xstat_by_handle(fsal_op_context_t * p_context,
   xstatarg.attr_changed = attr_changed;
   xstatarg.buf = &p_buffxstat->buffstat;
 
-  fsuid = setfsuid(p_context->credential.user);
-  fsgid = setfsgid(p_context->credential.group);
+  /* We explicitly do NOT do setfsuid/setfsgid here because truncate, even to
+   * enlarge a file, doesn't actually allocate blocks. GPFS implements sparse
+   * files, so blocks of all 0 will not actually be allocated.
+   */
   rc = gpfs_ganesha(OPENHANDLE_SET_XSTAT, &xstatarg);
   errsv = errno;
-  setfsuid(fsuid);
-  setfsgid(fsgid);
 
   LogDebug(COMPONENT_FSAL, "gpfs_ganesha: SET_XSTAT returned, rc = %d", rc);
 
