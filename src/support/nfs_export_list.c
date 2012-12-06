@@ -696,52 +696,55 @@ int nfs_build_fsal_context(struct svc_req *req,
 }                               /* nfs_build_fsal_context */
 
 /**
+ * @param[in] cred1 First RPC cred
+ * @param[in] cred2 Second RPC cred
  *
- * nfs_compare_rpc_cred: Compares two RPC creds
- *
- * @param pcred1 [IN] first RPC cred
- * @param pcred2 [IN] second RPC cred
- * 
- * @return TRUE if same, FALSE otherwise
- *
+ * @return true if same, false otherwise
  */
-int nfs_compare_clientcred(nfs_client_cred_t * pcred1,
-                           nfs_client_cred_t *pcred2)
+bool nfs_compare_clientcred(nfs_client_cred_t *cred1,
+			    nfs_client_cred_t *cred2)
 {
-  if(pcred1 == NULL)
-    return FALSE;
-  if(pcred2 == NULL)
-    return FALSE;
+  if(cred1 == NULL)
+    return false;
+  if(cred2 == NULL)
+    return false;
 
-  if(pcred1->flavor != pcred2->flavor)
-    return FALSE;
+  if(cred1->flavor != cred2->flavor)
+    return false;
 
-  if(pcred1->length != pcred2->length)
-    return FALSE;
+  if(cred1->length != cred2->length)
+    return false;
 
-  switch (pcred1->flavor)
+  switch (cred1->flavor)
     {
     case AUTH_UNIX:
-      if(pcred1->auth_union.auth_unix.aup_uid !=
-         pcred2->auth_union.auth_unix.aup_uid)
-        return FALSE;
-      if(pcred1->auth_union.auth_unix.aup_gid !=
-         pcred2->auth_union.auth_unix.aup_gid)
-        return FALSE;
-      if(pcred1->auth_union.auth_unix.aup_time !=
-         pcred2->auth_union.auth_unix.aup_time)
-        return FALSE;
+      if(cred1->auth_union.auth_unix.aup_uid !=
+         cred2->auth_union.auth_unix.aup_uid)
+        return false;
+      if(cred1->auth_union.auth_unix.aup_gid !=
+         cred2->auth_union.auth_unix.aup_gid)
+        return false;
+
+      /**
+       * @todo ACE: I have removed the comparison of the aup_time
+       * values.  The RFC is unclear as to their function, and this
+       * fixes a situation where the Linux client was sending
+       * SETCLIENTID once on connection and later on state-bearing
+       * operations that differed only in timestamp.  Someone familiar
+       * with ONC RPC and AUTH_UNIX in particular should review this
+       * change.
+       */
       break;
 
     default:
-      if(memcmp(&pcred1->auth_union, &pcred2->auth_union, pcred1->length))
-        return FALSE;
+      if(memcmp(&cred1->auth_union, &cred2->auth_union, cred1->length))
+        return false;
       break;
     }
 
-  /* If this point is reach, structures are the same */
-  return TRUE;
-}                               /* nfs_compare_clientcred */
+  /* If this point is reached, structures are the same */
+  return true;
+}
 
 int nfs_rpc_req2client_cred(struct svc_req *reqp, nfs_client_cred_t * pcred)
 {
