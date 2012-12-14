@@ -1945,6 +1945,8 @@ void *worker_thread(void *IndexArg)
       switch(nfsreq->rtype) {
        case NFS_REQUEST:
            pthread_mutex_lock(&nfsreq->r_u.nfs->xprt->xp_lock);
+           LogEvent(COMPONENT_DISPATCH, "Worker Thread req_cnt:%u dispatch_max_reqs_xprt:%u",
+                    xu->req_cnt, nfs_param.core_param.dispatch_max_reqs_xprt);
            --(xu->req_cnt);
            gsh_xprt_unref(
                nfsreq->r_u.nfs->xprt, XPRT_PRIVATE_FLAG_LOCKED);

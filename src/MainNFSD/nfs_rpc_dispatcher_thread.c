@@ -886,19 +886,21 @@ nfs_rpc_cond_stall_xprt(SVCXPRT *xprt)
     /* check per-xprt quota */
     if (likely(nreqs < nfs_param.core_param.dispatch_max_reqs_xprt)) {
         pthread_mutex_unlock(&xprt->xp_lock);
+        LogEvent(COMPONENT_DISPATCH, "Returning FALSE ..xprt %p has %u reqs, marking stalleddispatch_max_reqs_xprt:%u",
+                  xprt, nreqs, nfs_param.core_param.dispatch_max_reqs_xprt);
         return (FALSE);
     }
 
     /* XXX can't happen */
     if (unlikely(xu->flags & XPRT_PRIVATE_FLAG_STALLED)) {
         pthread_mutex_unlock(&xprt->xp_lock);
-        LogDebug(COMPONENT_DISPATCH, "xprt %p already stalled (oops)",
+        LogEvent(COMPONENT_DISPATCH, "xprt %p already stalled (oops)",
                  xprt);
         return (TRUE);
     }
 
-    LogDebug(COMPONENT_DISPATCH, "xprt %p has %u reqs, marking stalled",
-             xprt, nreqs);
+    LogEvent(COMPONENT_DISPATCH, "xprt %p has %u reqs, marking stalleddispatch_max_reqs_xprt:%u",
+             xprt, nreqs, nfs_param.core_param.dispatch_max_reqs_xprt);
 
     /* ok, need to stall */
     pthread_mutex_lock(&nfs_req_st.stallq.mtx);

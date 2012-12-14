@@ -193,6 +193,12 @@ gsh_xprt_ref(SVCXPRT *xprt, uint32_t flags)
     else
         req_cnt = xu->req_cnt;
 
+    LogEvent(COMPONENT_DISPATCH,
+             "xprt %p refcnt=%u req_cnt=%u",
+              xprt, refcnt, req_cnt);
+    if (xu->req_cnt > 750)
+        assert(0);
+
     if (! (flags & XPRT_PRIVATE_FLAG_LOCKED))
         pthread_mutex_unlock(&xprt->xp_lock);
 
