@@ -890,8 +890,8 @@ nfs_rpc_cond_stall_xprt(SVCXPRT *xprt)
     nreqs = xu->req_cnt;
 
     LogDebug(COMPONENT_DISPATCH,
-            "xprt %p refcnt %d has %d %d reqs active (max %d)",
-            xprt, xprt->xp_refcnt, nreqs, xu->req_cnt,
+            "xprt %p refcnt %d has %d reqs active (max %d)",
+            xprt, xprt->xp_refcnt, nreqs,
             nfs_param.core_param.dispatch_max_reqs_xprt);
 
     /* check per-xprt quota */
