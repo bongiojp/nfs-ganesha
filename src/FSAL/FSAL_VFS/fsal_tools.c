@@ -67,7 +67,7 @@ char *VFSFSAL_GetFSName()
  */
 
 int VFSFSAL_handlecmp(fsal_handle_t * handle_1, fsal_handle_t * handle_2,
-                   fsal_status_t * status)
+		      fsal_status_t * status)
 {
   vfsfsal_handle_t * handle1 = (vfsfsal_handle_t *)handle_1;
   vfsfsal_handle_t * handle2 = (vfsfsal_handle_t *)handle_2;
@@ -82,9 +82,6 @@ int VFSFSAL_handlecmp(fsal_handle_t * handle_1, fsal_handle_t * handle_2,
 
   if(handle1->data.vfs_handle.handle_bytes != handle2->data.vfs_handle.handle_bytes)
     return -2;
-
-  if(memcmp(&handle1->data.vfs_handle, &handle2->data.vfs_handle, sizeof( vfs_file_handle_t) ) )
-    return -3;
 
   return 0;
 }
@@ -103,8 +100,8 @@ int VFSFSAL_handlecmp(fsal_handle_t * handle_1, fsal_handle_t * handle_2,
  * \return The hash value
  */
 unsigned int VFSFSAL_Handle_to_HashIndex(fsal_handle_t *handle,
-                                      unsigned int cookie,
-                                      unsigned int alphabet_len, unsigned int index_size)
+					 unsigned int cookie,
+					 unsigned int alphabet_len, unsigned int index_size)
 {
   vfsfsal_handle_t * p_handle = (vfsfsal_handle_t *)handle;
   unsigned int cpt = 0;
