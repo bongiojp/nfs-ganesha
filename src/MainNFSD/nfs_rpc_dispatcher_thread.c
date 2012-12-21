@@ -501,6 +501,7 @@ void nfs_Init_svc()
     svc_init_params svc_params;
     int ix, code __attribute__((unused)) = 0;
     int one = 1;
+    uint32_t dflags;
 
     LogDebug(COMPONENT_DISPATCH, "NFS INIT: Core options = %d",
             nfs_param.core_param.core_options);
@@ -535,6 +536,10 @@ void nfs_Init_svc()
   if (!tirpc_control(TIRPC_SET_FREE, (std_free_t) gsh_free))
       LogCrit(COMPONENT_INIT, "Failed redirecting TI-RPC __free");
 #endif /* TIRPC_SET_ALLOCATORS */
+
+  /* trace output */
+  dflags = TIRPC_DEBUG_FLAG_REFCNT;
+  tirpc_control(TIRPC_SET_DEBUG_FLAGS, &dflags);
 
     for (ix = 0; ix < N_EVENT_CHAN; ++ix) {
         rpc_evchan[ix].chan_id = 0;
