@@ -6,7 +6,6 @@ AC_INIT( [nfs-ganesha], [1.4.0], [philippe.deniel@cea.fr,thomas.leibovici@cea.fr
 
 AC_SUBST(RELEASE)
 
-
 AC_DEFINE( [NFS_GANESHA], 1, [Ganesha])
 
 dnl AC_CONFIG_AUX_DIR([build-aux])
@@ -703,7 +702,7 @@ case $FSAL in
 		FSAL_LIB="\$(top_builddir)/FSAL/FSAL_PT/libfsalpt.la"
 		FS_NAME="pt"
 		AC_SUBST(RELEASE, [1])
-		AC_SUBST(DIST_VER, [_21])
+		AC_SUBST(DIST_VER, [_22])
 		;;
         ZFS)
                 AC_DEFINE([_USE_ZFS], 1, [GANESHA exports ZFS Filesystem])
