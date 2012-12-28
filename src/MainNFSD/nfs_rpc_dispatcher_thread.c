@@ -114,7 +114,7 @@ static u_int nfs_rpc_rdvs(SVCXPRT *xprt, SVCXPRT *newxprt, const u_int flags,
 static bool_t nfs_rpc_getreq_ng(SVCXPRT *xprt /*, int chan_id */);
 static void nfs_rpc_free_xprt(SVCXPRT *xprt);
 
-const char *xprt_stat_s[3] =
+const char *xprt_stat_s[4] =
 {
     "XPRT_DIED",
     "XPRT_MOREREQS",
