@@ -1910,12 +1910,12 @@ void *worker_thread(void *IndexArg)
                pthread_mutex_unlock(&nfsreq->r_u.nfs->xprt->xp_lock);
                goto finalize_req;
            }
-           refcnt = xu->refcnt;
+           refcnt = nfsreq->r_u.nfs->xprt->xp_refcnt;
            reqcnt = xu->req_cnt;
            pthread_mutex_unlock(&nfsreq->r_u.nfs->xprt->xp_lock);
            /* execute */
            LogDebug(COMPONENT_DISPATCH,
-                    "NFS protocol request, nfsreq=%p xid=%u xprt=%p refcnt=%u "
+                    "NFS protocol request, nfsreq=%p xid=%u xprt=%p refcnt=%d "
                     "req_cnt=%d",
                     nfsreq,
                     nfsreq->r_u.nfs->msg.rm_xid,
@@ -1944,13 +1944,10 @@ void *worker_thread(void *IndexArg)
       /* XXX needed?  at NIV_DEBUG? */
       LogDebug(COMPONENT_DISPATCH, "Signaling completion of request");
 
-      /* Drop req_cnt and xprt refcnt, if appropriate */
       switch(nfsreq->rtype) {
        case NFS_REQUEST:
-           pthread_mutex_lock(&nfsreq->r_u.nfs->xprt->xp_lock);
-           --(xu->req_cnt);
-           gsh_xprt_unref(
-               nfsreq->r_u.nfs->xprt, XPRT_PRIVATE_FLAG_LOCKED);
+           /* adjust req_cnt and return xprt ref */
+           gsh_xprt_unref(nfsreq->r_u.nfs->xprt, XPRT_PRIVATE_FLAG_DECREQ);
            break;
        case NFS_CALL:
            break;

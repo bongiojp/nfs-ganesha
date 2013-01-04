@@ -432,7 +432,7 @@ int get_req_uid_gid(struct svc_req *ptr_req,
 void init_credentials(struct user_cred *user_credentials);
 void clean_credentials(struct user_cred *user_credentials);
 
-int nfs_compare_clientcred(nfs_client_cred_t * pcred1, nfs_client_cred_t * pcred2);
+bool nfs_compare_clientcred(nfs_client_cred_t * pcred1, nfs_client_cred_t * pcred2);
 int nfs_rpc_req2client_cred(struct svc_req *reqp, nfs_client_cred_t * pcred);
 
 int export_client_match_any(sockaddr_t                * hostaddr,
@@ -458,4 +458,4 @@ void LogClientListEntry(log_components_t            component,
 void FreeClientList(exportlist_client_t * clients);
 void RemoveExportEntry(exportlist_t * p_entry);
 
-#endif                          /* _NFS_EXPORTS_H */
+#endif /* _NFS_EXPORTS_H */
