@@ -977,6 +977,8 @@ cache_inode_refresh_attrs(cache_entry_t *entry,
      }
 #endif /* _USE_NFS4_ACL */
 
+     LogFullDebug(COMPONENT_CACHE_INODE, "Refreshing attributes");
+
      memset(&entry->attributes, 0, sizeof(fsal_attrib_list_t));
      entry->attributes.asked_attributes = cache_inode_params.attrmask;
 
