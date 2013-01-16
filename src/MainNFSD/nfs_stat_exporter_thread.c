@@ -61,7 +61,6 @@
 #include "nfs_stat.h"
 #include "nfs_tools.h"
 #include "nfs_exports.h"
-#include "nodelist.h"
 #include "fsal.h"
 #include "ganesha_rpc.h"
 #include "abstract_mem.h"
@@ -104,82 +103,6 @@ int stat_export_check_access(sockaddr_t                * hostaddr,
 
 }                               /* stat_export_check_access */
 
-static int parseAccessParam_for_statexporter(char *var_name, char *var_value,
-                                             exportlist_client_t *clients)
-{
-  int rc = 0;
-  char *expended_node_list;
-
-  /* temp array of clients */
-  char *client_list[EXPORT_MAX_CLIENTS];
-  int idx;
-  int count;
-
-  /* expends host[n-m] notations */
-  count =
-    nodelist_common_condensed2extended_nodelist(var_value, &expended_node_list);
-
-  if(count <= 0)
-    {
-      LogCrit(COMPONENT_CONFIG,
-              "STAT_EXPORT_ACCESS: ERROR: Invalid format for client list in EXPORT::%s definition",
-              var_name);
-
-      return -1;
-    }
-  else if(count > EXPORT_MAX_CLIENTS)
-    {
-      LogCrit(COMPONENT_CONFIG,
-              "STAT_EXPORT_ACCESS: ERROR: Client list too long (%d>%d)",
-              count, EXPORT_MAX_CLIENTS);
-      return -1;
-    }
-
-  /* allocate clients strings  */
-  for(idx = 0; idx < count; idx++)
-    {
-      client_list[idx] = gsh_malloc(MNTNAMLEN+1);
-      client_list[idx][0] = '\0';
-    }
-
-  /*
-   * Search for coma-separated list of hosts, networks and netgroups
-   */
-  rc = nfs_ParseConfLine(client_list, count,
-                         expended_node_list, find_comma, find_endLine);
-
-  /* free the buffer the nodelist module has allocated */
-  free(expended_node_list);
-
-  if(rc < 0)
-    {
-      LogCrit(COMPONENT_CONFIG,
-              "STAT_EXPORT_ACCESS: ERROR: Client list too long (>%d)", count);
-
-      goto out;
-    }
-
-  rc = nfs_AddClientsToClientList(clients, rc,
-                                  (char **)client_list,
-                                  EXPORT_OPTION_READ_ACCESS | EXPORT_OPTION_WRITE_ACCESS,
-                                  var_name);
-  if(rc != 0)
-    {
-      LogCrit(COMPONENT_CONFIG,
-              "STAT_EXPORT_ACCESS: ERROR: Invalid client found in \"%s\"",
-              var_value);
-    }
-
- out:
-
-  /* free client strings */
-  for(idx = 0; idx < count; idx++)
-    gsh_free(client_list[idx]);
-
-  return rc;
-}
-
-
 int get_stat_exporter_conf(config_file_t in_config, external_tools_parameter_t * out_parameter)
 {
   int err;
@@ -189,7 +112,14 @@ int get_stat_exporter_conf(config_file_t in_config, external_tools_parameter_t *
   config_item_t block;
   config_item_t item;
 
-  strncpy(out_parameter->stat_export.export_stat_port, DEFAULT_PORT, MAXPORTLEN);
+  if(strmaxcpy(out_parameter->stat_export.export_stat_port,
+               DEFAULT_PORT,
+               sizeof(out_parameter->stat_export.export_stat_port)) == -1)
+    {
+      LogFatal(COMPONENT_CONFIG,
+               "Default export stat port %s too long",
+               DEFAULT_PORT);
+    }
 
    /* Get the config BLOCK */
  if((block = config_FindItemByName(in_config, CONF_STAT_EXPORTER_LABEL)) == NULL)
@@ -229,12 +159,22 @@ int get_stat_exporter_conf(config_file_t in_config, external_tools_parameter_t *
 
       if(!STRCMP(key_name, "Access"))
         {
-	  parseAccessParam_for_statexporter(key_name, key_value,
-					    &(out_parameter->stat_export.allowed_clients));
+	  parseAccessParam(key_name,
+	                   key_value,
+	                   &(out_parameter->stat_export.allowed_clients),
+	                   EXPORT_OPTION_READ_ACCESS | EXPORT_OPTION_WRITE_ACCESS,
+	                   CONF_STAT_EXPORTER_LABEL);
         }
       else if(!STRCMP(key_name, "Port"))
         {
-          strncpy(out_parameter->stat_export.export_stat_port, key_value, MAXPORTLEN);
+          if(strmaxcpy(out_parameter->stat_export.export_stat_port,
+                       key_value,
+                       sizeof(out_parameter->stat_export.export_stat_port)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s %s=\"%s\" too long",
+                      CONF_STAT_EXPORTER_LABEL, key_name, key_value);
+            }
         }
       else
         {
@@ -579,7 +519,14 @@ int process_stat_request(int new_fd)
       }
       else if(strcmp(key, "path") == 0)
         {
-          strcpy(stat_client_req.share_path, value);
+          if(strmaxcpy(stat_client_req.share_path,
+                       value,
+                       sizeof(stat_client_req.share_path)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key, value);
+            }
       }
     }
 

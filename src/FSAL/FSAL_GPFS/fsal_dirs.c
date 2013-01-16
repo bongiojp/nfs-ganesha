@@ -163,7 +163,6 @@ fsal_status_t GPFSFSAL_readdir(fsal_dir_t * dir_desc,       /* IN */
 {
   fsal_status_t st;
   fsal_count_t max_dir_entries;
-  fsal_name_t entry_name;
   char buff[BUF_SIZE];
   struct linux_dirent *dp = NULL;
   int bpos = 0;
@@ -172,8 +171,6 @@ fsal_status_t GPFSFSAL_readdir(fsal_dir_t * dir_desc,       /* IN */
   gpfsfsal_cookie_t *p_end_position = (gpfsfsal_cookie_t *)end_position;
 
   int rc = 0;
-
-  memset(&entry_name, 0, sizeof(fsal_name_t));
 
   /*****************/
   /* sanity checks */
@@ -252,19 +249,17 @@ fsal_status_t GPFSFSAL_readdir(fsal_dir_t * dir_desc,       /* IN */
           /* build the full path of the file into "fsalpath */
           if(FSAL_IS_ERROR
              (st =
-              FSAL_str2name(dp->d_name, FSAL_MAX_NAME_LEN,
+              FSAL_str2name(dp->d_name, 0,
                             &(p_pdirent[*p_nb_entries].name))))
             ReturnStatus(st, INDEX_FSAL_readdir);
 
           // TODO: there is a race here, because between handle fetch
           // and open at things might change.  we need to figure out if there
           // is another way to open without the pcontext
-
-          strncpy(entry_name.name, dp->d_name, sizeof(entry_name.name));
-          entry_name.len = strlen(entry_name.name);
-
-          st = fsal_internal_get_handle_at(p_dir_descriptor->fd, &entry_name,
-                                          &(p_pdirent[*p_nb_entries].handle), &dir_desc->context);
+          st = fsal_internal_get_handle_at(p_dir_descriptor->fd,
+                                           &(p_pdirent[*p_nb_entries].name),
+                                           &(p_pdirent[*p_nb_entries].handle),
+                                           &dir_desc->context);
           if(FSAL_IS_ERROR(st))
             ReturnStatus(st, INDEX_FSAL_readdir);
 

@@ -12,6 +12,7 @@
 #define _COMMON_UTILS_H
 
 #include <sys/types.h>          /* for caddr_t */
+#include <string.h>
 
 /**
  * This function converts a string to an integer.
@@ -42,8 +43,6 @@ int s_read_octal(char *str);
  *         Else, 0.
  */
 int s_read_int64(char *str, unsigned long long *out64);
-
-int s_read_size(char *str, size_t * p_size);
 
 /**
  * string to boolean convertion.
@@ -88,22 +87,38 @@ int sscanmem(caddr_t target, int tgt_size, const char *str_source);
 
 /* String parsing functions */
 
-int find_space(char c);
-int find_comma(char c);
-int find_colon(char c);
-int find_endLine(char c);
-int find_slash(char c);
-
-#ifndef HAVE_STRLCAT
-extern size_t strlcat(char *dst, const char *src, size_t siz);
-#endif
-
-#ifndef HAVE_STRLCPY
-extern size_t strlcpy(char *dst, const char *src, size_t siz);
-#endif
-
 /* My habit with mutex */
 #define P( _mutex_ ) pthread_mutex_lock( &_mutex_ )
 #define V( _mutex_ ) pthread_mutex_unlock( &_mutex_ )
+
+/* Copy a string into a buffer and don't overflow the buffer,
+ * and make sure the buffer is null terminated.
+ * Returns 0 if the buffer would not overflow
+ * Returns -1 if the buffer would overflow and does not copy the string.
+ */
+static inline int strmaxcpy(char * dest, char * src, size_t dest_size)
+{
+  int len = strlen(src);
+  if(len >= dest_size)
+    return -1;
+  memcpy(dest, src, len + 1);
+  return 0;
+}
+
+/* Append a string to buffer and don't overflow the buffer,
+ * and make sure the buffer is null terminated.
+ * Returns 0 if the buffer would not overflow
+ * Returns -1 if the buffer would overflow and does not copy the string.
+ */
+static inline int strmaxcat(char * dest, char * src, size_t dest_size)
+{
+  int destlen = strlen(dest);
+  int remain  = dest_size - destlen;
+  int srclen  = strlen(src);
+  if(remain <= srclen)
+    return -1;
+  memcpy(dest + destlen, src, srclen + 1);
+  return 0;
+}
 
 #endif

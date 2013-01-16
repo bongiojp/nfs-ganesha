@@ -56,7 +56,9 @@
 #include "nfs_dupreq.h"
 #include "config_parsing.h"
 #include "common_utils.h"
+#ifdef _USE_NODELIST
 #include "nodelist.h"
+#endif
 #include <stdlib.h>
 #include <fnmatch.h>
 #include <sys/socket.h>
@@ -162,17 +164,24 @@ struct glist_head exportlist;
  *
  * @param Argv               [OUT] result array
  * @param nbArgv             [IN]  allocated number of entries in the Argv
+ * @param size               [IN]  maximum buffer size of tokens
  * @param line               [IN]  input line
- * @param separator_function [IN]  function used to identify a separator
- * @param endLine_func       [IN]  function used to identify an end of line
+ * @param separator          [IN]  character used to identify a separator
  *
  * @return the number of object found
+ *
+ * NOTE: line is modified, returned tokens are returned as pointers to
+ *       the null terminated string within the original copy of line.
+ *
+ *       size includes the null terminator, if size is 0, caller doesn't
+ *       care about size (can't be larger than input string anyway).
  *
  */
 int nfs_ParseConfLine(char *Argv[],
                       int nbArgv,
+                      size_t size,
                       char *line,
-                      int (*separator_function) (char), int (*endLine_func) (char))
+                      char separator)
 {
   int output_value = 0;
   int endLine = FALSE;
@@ -183,9 +192,6 @@ int nfs_ParseConfLine(char *Argv[],
   /* iteration and checking for array bounds */
   for(; output_value < nbArgv;)
     {
-      if(Argv[output_value] == NULL)
-        return -1;
-
       if(*p1 == '\0')
         return output_value;
 
@@ -194,15 +200,26 @@ int nfs_ParseConfLine(char *Argv[],
 
       /* p1 pointe sur un debut de token, je cherche la fin */
       /* La fin est un blanc, une fin de chaine ou un CR    */
-      for(p2 = p1; !separator_function(*p2) && !endLine_func(*p2); p2++) ;
+      for(p2 = p1; (*p2 != separator) && (*p2 != '\0'); p2++) ;
 
-      /* Possible arret a cet endroit */
-      if(endLine_func(*p2))
+      /* Test for end of line */
+      if(*p2 == '\0')
         endLine = TRUE;
 
-      /* je valide la lecture du token */
+      /* terminate the token */
       *p2 = '\0';
-      strncpy(Argv[output_value++], p1, MNTNAMLEN);
+
+      /* if the token is too large for buffer, return failure */
+      if((size != 0) && ((p2 - p1) >= size))
+        return -3;
+
+      /* Put token pointer into list.
+       * NOTE: we do NOT copy the string, the token points to the bytes in then
+       *       input string that have just been null terminated.
+       */
+      Argv[output_value] = p1;
+
+      output_value++;
 
       /* Je me prepare pour la suite */
       if(!endLine)
@@ -219,6 +236,7 @@ int nfs_ParseConfLine(char *Argv[],
   if(output_value >= nbArgv)
     return -1;
 
+  /* no end of line detected */
   return -2;
 
 }                               /* nfs_ParseConfLine */
@@ -362,7 +380,8 @@ void LogClientListEntry(log_components_t            component,
                         exportlist_client_entry_t * entry)
 {
   char perms[1024];
-  char addr[INET_ADDRSTRLEN];
+  char addr[INET6_ADDRSTRLEN];
+  char *paddr = addr;
 
   StrExportOptions(&entry->client_perms, perms);
 
@@ -371,27 +390,25 @@ void LogClientListEntry(log_components_t            component,
       case HOSTIF_CLIENT:
         if(inet_ntop
            (AF_INET, &(entry->client.hostif.clientaddr),
-            addr, INET_ADDRSTRLEN) == NULL)
+            addr, sizeof(addr)) == NULL)
           {
-            strncpy(addr, "Invalid Host address",
-                    INET_ADDRSTRLEN);
+            paddr = "Invalid Host address";
           }
         LogFullDebug(component,
                      "  %p HOSTIF_CLIENT: %s(%s)",
-                     entry, addr, perms);
+                     entry, paddr, perms);
         return;
 
       case NETWORK_CLIENT:
         if(inet_ntop
            (AF_INET, &(entry->client.network.netaddr),
-            addr, INET_ADDRSTRLEN) == NULL)
+            addr, sizeof(addr)) == NULL)
           {
-            strncpy(addr,
-                    "Invalid Network address", INET_ADDRSTRLEN);
+            paddr = "Invalid Network address";
           }
         LogFullDebug(component,
                      "  %p NETWORK_CLIENT: %s(%s)",
-                     entry, addr, perms);
+                     entry, paddr, perms);
         return;
 
       case NETGROUP_CLIENT:
@@ -415,14 +432,13 @@ void LogClientListEntry(log_components_t            component,
       case HOSTIF_CLIENT_V6:
         if(inet_ntop
            (AF_INET6, &(entry->client.hostif.clientaddr6),
-            addr, INET_ADDRSTRLEN) == NULL)
+            addr, sizeof(addr)) == NULL)
           {
-            strncpy(addr, "Invalid Host address",
-                    INET_ADDRSTRLEN);
+            paddr = "Invalid Host address";
           }
         LogFullDebug(component,
                      "  %p HOSTIF_CLIENT_V6: %s(%s)",
-                     entry, addr, perms);
+                     entry, paddr, perms);
         return;
 
       case MATCH_ANY_CLIENT:
@@ -488,8 +504,16 @@ int nfs_AddClientsToClientList(exportlist_client_t * clients,
       else if(client_hostname[0] == '@')
         {
           /* Entry is a netgroup definition */
-          strncpy(p_client->client.netgroup.netgroupname,
-                  client_hostname + 1, MAXHOSTNAMELEN);
+          if(strmaxcpy(p_client->client.netgroup.netgroupname,
+                      client_hostname + 1,
+                      sizeof(p_client->client.netgroup.netgroupname)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "netgroup %s too long, ignoring",
+                      client_hostname);
+              gsh_free(p_client);
+              continue;
+            }
 
           p_client->type = NETGROUP_CLIENT;
 
@@ -570,8 +594,16 @@ int nfs_AddClientsToClientList(exportlist_client_t * clients,
           if(is_wildcarded_host == TRUE)
             {
               p_client->type = WILDCARDHOST_CLIENT;
-              strncpy(p_client->client.wildcard.wildcard, client_hostname,
-                      MAXHOSTNAMELEN);
+              if(strmaxcpy(p_client->client.wildcard.wildcard,
+                           client_hostname,
+                           sizeof(p_client->client.wildcard.wildcard)) == -1)
+                {
+                  LogCrit(COMPONENT_CONFIG,
+                          "host wildcard %s too long, ignoring",
+                          client_hostname);
+                  gsh_free(p_client);
+                  continue;
+                }
 
               LogFullDebug(COMPONENT_CONFIG,
                            "entry %d %p: %s to wildcard \"%s\"",
@@ -580,9 +612,10 @@ int nfs_AddClientsToClientList(exportlist_client_t * clients,
             }
           else
             {
-              /* Last case: type for client could not be identified. This should not occur */
+              /* Last case: client could not be identified, DNS failed. */
               LogCrit(COMPONENT_CONFIG,
-                      "Unsupported type for client %s", client_hostname);
+                      "Unknown client %s (DNS failed)",
+                      client_hostname);
 
               gsh_free(p_client);
               continue;
@@ -613,20 +646,20 @@ int parseAccessParam(char                * var_name,
                      const char          * label)
 {
   int rc;
-  char *expended_node_list;
+  char *expanded_node_list;
 
   /* temp array of clients */
   char *client_list[EXPORT_MAX_CLIENTS];
-  int idx;
   int count;
 
   LogFullDebug(COMPONENT_CONFIG,
                "Parsing %s=\"%s\"",
                var_name, var_value);
 
+#ifdef _USE_NODELIST
   /* expends host[n-m] notations */
   count =
-    nodelist_common_condensed2extended_nodelist(var_value, &expended_node_list);
+    nodelist_common_condensed2extended_nodelist(var_value, &expanded_node_list);
 
   if(count <= 0)
     {
@@ -643,29 +676,22 @@ int parseAccessParam(char                * var_name,
 	      label, count, EXPORT_MAX_CLIENTS, var_name, var_value);
       return -1;
     }
+#else
+  expanded_node_list = var_value;
+  count = EXPORT_MAX_CLIENTS;
+#endif
 
-  /* allocate clients strings  */
-  for(idx = 0; idx < count; idx++)
-    {
-      client_list[idx] = gsh_malloc(MNTNAMLEN+1);
-      if(client_list[idx] == NULL)
-        {
-          int i;
-          for(i = 0; i < idx; i++)
-            gsh_free(client_list[i]);
-          return -1;
-        }
-      client_list[idx][0] = '\0';
-    }
+  /* fill client list with NULL pointers */
+  memset(client_list, 0, sizeof(client_list));
 
   /*
    * Search for coma-separated list of hosts, networks and netgroups
    */
-  rc = nfs_ParseConfLine(client_list, count,
-			 expended_node_list, find_comma, find_endLine);
-
-  /* free the buffer the nodelist module has allocated */
-  free(expended_node_list);
+  rc = nfs_ParseConfLine(client_list,
+                         count,
+                         0,
+			 expanded_node_list,
+			 ',');
 
   if(rc < 0)
     {
@@ -691,9 +717,10 @@ int parseAccessParam(char                * var_name,
 
  out:
 
-  /* free client strings */
-  for(idx = 0; idx < count; idx++)
-    gsh_free(client_list[idx]);
+#ifdef _USE_NODELIST
+  /* free the buffer the nodelist module has allocated */
+  free(expanded_node_list);
+#endif
 
   return rc;
 }
@@ -701,15 +728,6 @@ int parseAccessParam(char                * var_name,
 bool_t fsal_specific_checks(exportlist_t *p_entry)
 {
   #ifdef _USE_GPFS
-  p_entry->use_fsal_up = TRUE;
-
-  if (strncmp(p_entry->fsal_up_type, "DUMB", 4) != 0)
-    {
-      LogWarn(COMPONENT_CONFIG,
-              "NFS READ EXPORT: %s must be \"DUMB\" when using GPFS."
-              " Setting it to \"DUMB\"", CONF_EXPORT_FSAL_UP_TYPE);
-      strncpy(p_entry->fsal_up_type,"DUMB", 4);
-    }
   if (p_entry->use_ganesha_write_buffer != FALSE)
     {
       LogWarn(COMPONENT_CONFIG,
@@ -775,7 +793,7 @@ static int BuildExportEntry(config_item_t        block,
       p_entry->fsal_up_filter_list = NULL;
       p_entry->fsal_up_timeout.seconds = 30;
       p_entry->fsal_up_timeout.nseconds = 0;
-      strncpy(p_entry->fsal_up_type,"DUMB", 4);
+      strcpy(p_entry->fsal_up_type,"DUMB");
       /* We don't create the thread until all exports are parsed. */
       memset(&p_entry->fsal_up_thr, 0, sizeof(pthread_t));
 #endif /* _USE_FSAL_UP */
@@ -821,7 +839,6 @@ static int BuildExportEntry(config_item_t        block,
       strcpy(p_entry->FS_specific, "");
       strcpy(p_entry->FS_tag, "");
       strcpy(p_entry->fullpath, "/");
-      strcpy(p_entry->dirname, "/");
       strcpy(p_entry->pseudopath, "/");
       strcpy(p_entry->referral, "");
     }
@@ -996,18 +1013,28 @@ static int BuildExportEntry(config_item_t        block,
 
           pathlen = strlen(var_value);
 
-          if(pathlen > MAXPATHLEN)
+          if(pathlen >= MAXPATHLEN)
             {
               LogCrit(COMPONENT_CONFIG,
-                      "NFS READ %s: path \"%s\" too long",
-                      label, var_value);
+                      "NFS READ %s: %s \"%s\" too long",
+                      label, var_name, var_value);
               err_flag = TRUE;
               continue;
             }
 
+          /* Make sure fullpath ends with '/' */
           if(var_value[pathlen-1] != '/')
             {
-              strcpy(temp_path, var_value);
+              if(strmaxcpy(temp_path,
+                           var_value,
+                           sizeof(temp_path) - 1) == -1)
+                {
+                  LogCrit(COMPONENT_CONFIG,
+                          "NFS READ %s: %s \"%s\" too long",
+                          label, var_name, var_value);
+                  err_flag = TRUE;
+                  continue;
+                }
               temp_path[pathlen]   = '/';
               temp_path[pathlen+1] = '\0';
               ppath = temp_path;
@@ -1045,12 +1072,21 @@ static int BuildExportEntry(config_item_t        block,
                   continue;
                 }
 
+              if(strmaxcpy(p_entry->fullpath,
+                           ppath,
+                           sizeof(p_entry->fullpath)) == -1)
+                {
+                  LogCrit(COMPONENT_CONFIG,
+                          "NFS READ %s: %s \"%s\" too long",
+                          label, var_name, var_value);
+                  err_flag = TRUE;
+                  continue;
+                }
+
               /* Remember the entry we found so we can verify Tag and/or Pseudo
                * is set by the time the EXPORT stanza is complete.
                */
               p_found_entry = p_fe;
-              strcpy(p_entry->fullpath, ppath);
-              strcpy(p_entry->dirname, ppath);
             }
           else if(p_entry == NULL)
             {
@@ -1062,6 +1098,7 @@ static int BuildExportEntry(config_item_t        block,
                   err_flag = TRUE;
                   continue;
                 }
+
               p_entry = p_fe;
             }
 
@@ -1256,7 +1293,16 @@ static int BuildExportEntry(config_item_t        block,
               continue;
             }
 
-          strncpy(p_entry->pseudopath, var_value, MAXPATHLEN);
+          if(strmaxcpy(p_entry->pseudopath,
+                       var_value,
+                       sizeof(p_entry->pseudopath)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "NFS READ %s: %s: \"%s\" too long",
+                      label, var_name, var_value);
+              err_flag = TRUE;
+              continue;
+            }
 
           p_perms->options |= EXPORT_OPTION_PSEUDO;
         }
@@ -1271,7 +1317,16 @@ static int BuildExportEntry(config_item_t        block,
               continue;
             }
 
-          strncpy(p_entry->referral, var_value, MAXPATHLEN);
+          if(strmaxcpy(p_entry->referral,
+                       var_value,
+                       sizeof(p_entry->referral)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "NFS READ %s: %s: \"%s\" too long",
+                      label, var_name, var_value);
+              err_flag = TRUE;
+              continue;
+            }
         }
       else if(!STRCMP(var_name, CONF_EXPORT_ACCESSTYPE))
         {
@@ -1323,7 +1378,6 @@ static int BuildExportEntry(config_item_t        block,
         {
 
 #     define MAX_NFSPROTO      10       /* large enough !!! */
-#     define MAX_NFSPROTO_LEN  256      /* so is it !!! */
 
           char *nfsvers_list[MAX_NFSPROTO];
           int idx, count;
@@ -1340,15 +1394,17 @@ static int BuildExportEntry(config_item_t        block,
           /* reset nfs proto flags (clean defaults) */
           p_perms->options &= ~EXPORT_OPTION_PROTOCOLS;
 
-          /* allocate nfs vers strings */
-          for(idx = 0; idx < MAX_NFSPROTO; idx++)
-            nfsvers_list[idx] = gsh_malloc(MAX_NFSPROTO_LEN);
+          /* fill nfs vers list with NULL pointers */
+          memset(nfsvers_list, 0, sizeof(nfsvers_list));
 
           /*
            * Search for coma-separated list of nfsprotos
            */
-          count = nfs_ParseConfLine(nfsvers_list, MAX_NFSPROTO,
-                                    var_value, find_comma, find_endLine);
+          count = nfs_ParseConfLine(nfsvers_list,
+                                    MAX_NFSPROTO,
+                                    0,
+                                    var_value,
+                                    ',');
 
           if(count < 0)
             {
@@ -1356,11 +1412,6 @@ static int BuildExportEntry(config_item_t        block,
               LogCrit(COMPONENT_CONFIG,
                       "NFS READ %s: NFS protocols list too long (>%d)",
                       label, MAX_NFSPROTO);
-
-              /* free sec strings */
-              for(idx = 0; idx < MAX_NFSPROTO; idx++)
-                if(nfsvers_list[idx] != NULL)
-                  gsh_free(nfsvers_list[idx]);
 
               continue;
             }
@@ -1411,11 +1462,6 @@ static int BuildExportEntry(config_item_t        block,
                 }
             }
 
-          /* free vers strings */
-          for(idx = 0; idx < MAX_NFSPROTO; idx++)
-            if(nfsvers_list[idx] != NULL)
-              gsh_free(nfsvers_list[idx]);
-
           /* check that at least one nfs protocol has been specified */
           if((p_perms->options & EXPORT_OPTION_PROTOCOLS) == 0)
             {
@@ -1429,7 +1475,6 @@ static int BuildExportEntry(config_item_t        block,
         {
 
 #     define MAX_TRANSPROTO      10     /* large enough !!! */
-#     define MAX_TRANSPROTO_LEN  256    /* so is it !!! */
 
           char *transproto_list[MAX_TRANSPROTO];
           int idx, count;
@@ -1444,15 +1489,17 @@ static int BuildExportEntry(config_item_t        block,
           /* reset TRANS proto flags (clean defaults) */
           p_perms->options &= ~EXPORT_OPTION_TRANSPORTS;
 
-          /* allocate TRANS vers strings */
-          for(idx = 0; idx < MAX_TRANSPROTO; idx++)
-            transproto_list[idx] = gsh_malloc(MAX_TRANSPROTO_LEN);
+          /* fill TRANS vers list with NULL pointers */
+          memset(transproto_list, 0, sizeof(transproto_list));
 
           /*
            * Search for coma-separated list of TRANSprotos
            */
-          count = nfs_ParseConfLine(transproto_list, MAX_TRANSPROTO,
-                                    var_value, find_comma, find_endLine);
+          count = nfs_ParseConfLine(transproto_list,
+                                    MAX_TRANSPROTO,
+                                    0,
+                                    var_value,
+                                    ',');
 
           if(count < 0)
             {
@@ -1460,11 +1507,6 @@ static int BuildExportEntry(config_item_t        block,
               LogCrit(COMPONENT_CONFIG,
                       "NFS READ %s: Protocol list too long (>%d)",
                       label, MAX_TRANSPROTO);
-
-              /* free sec strings */
-              for(idx = 0; idx < MAX_TRANSPROTO; idx++)
-                if(transproto_list[idx] != NULL)
-                  gsh_free(transproto_list[idx]);
 
               continue;
             }
@@ -1489,11 +1531,6 @@ static int BuildExportEntry(config_item_t        block,
                   err_flag = TRUE;
                 }
             }
-
-          /* free sec strings */
-          for(idx = 0; idx < MAX_TRANSPROTO; idx++)
-            if(transproto_list[idx] != NULL)
-              gsh_free(transproto_list[idx]);
 
           /* check that at least one TRANS protocol has been specified */
           if((p_perms->options & EXPORT_OPTION_TRANSPORTS) == 0)
@@ -1647,7 +1684,6 @@ static int BuildExportEntry(config_item_t        block,
       else if(!STRCMP(var_name, CONF_EXPORT_SECTYPE))
         {
 #     define MAX_SECTYPE      10        /* large enough !!! */
-#     define MAX_SECTYPE_LEN  256       /* so is it !!! */
 
           char *sec_list[MAX_SECTYPE];
           int idx, count;
@@ -1664,15 +1700,17 @@ static int BuildExportEntry(config_item_t        block,
           /* reset security flags (clean defaults) */
           p_perms->options &= ~EXPORT_OPTION_AUTH_TYPES;
 
-          /* allocate sec strings */
-          for(idx = 0; idx < MAX_SECTYPE; idx++)
-            sec_list[idx] = gsh_malloc(MAX_SECTYPE_LEN);
+          /* fill sec list with NULL pointers */
+          memset(sec_list, 0, sizeof(sec_list));
 
           /*
            * Search for coma-separated list of sectypes
            */
-          count = nfs_ParseConfLine(sec_list, MAX_SECTYPE,
-                                    var_value, find_comma, find_endLine);
+          count = nfs_ParseConfLine(sec_list,
+                                    MAX_SECTYPE,
+                                    0,
+                                    var_value,
+                                    ',');
 
           if(count < 0)
             {
@@ -1680,11 +1718,6 @@ static int BuildExportEntry(config_item_t        block,
               LogCrit(COMPONENT_CONFIG,
                       "NFS READ %s: SecType list too long (>%d)",
                       label, MAX_SECTYPE);
-
-              /* free sec strings */
-              for(idx = 0; idx < MAX_SECTYPE; idx++)
-                if(sec_list[idx] != NULL)
-                  gsh_free(sec_list[idx]);
 
               continue;
             }
@@ -1721,11 +1754,6 @@ static int BuildExportEntry(config_item_t        block,
                   err_flag = TRUE;
                 }
             }
-
-          /* free sec strings */
-          for(idx = 0; idx < MAX_SECTYPE; idx++)
-            if(sec_list[idx] != NULL)
-              gsh_free(sec_list[idx]);
 
           /* check that at least one sectype has been specified */
           if((p_perms->options & EXPORT_OPTION_AUTH_TYPES) == 0)
@@ -2282,7 +2310,16 @@ static int BuildExportEntry(config_item_t        block,
 
           set_options |= FLAG_EXPORT_FS_SPECIFIC;
 
-          strncpy(p_entry->FS_specific, var_value, MAXPATHLEN);
+          if(strmaxcpy(p_entry->FS_specific,
+                       var_value,
+                       sizeof(p_entry->FS_specific)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "NFS READ %s: %s: \"%s\" too long",
+                      label, var_name, var_value);
+              err_flag = TRUE;
+              continue;
+            }
         }
       else if(!STRCMP(var_name, CONF_EXPORT_FS_TAG))
         {
@@ -2317,7 +2354,16 @@ static int BuildExportEntry(config_item_t        block,
               continue;
             }
 
-          strncpy(p_entry->FS_tag, var_value, MAXPATHLEN);
+          if(strmaxcpy(p_entry->FS_tag,
+                       var_value,
+                       sizeof(p_entry->FS_tag)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "NFS READ %s: %s: \"%s\" too long",
+                      label, var_name, var_value);
+              err_flag = TRUE;
+              continue;
+            }
         }
       else if(!STRCMP(var_name, CONF_EXPORT_MAX_OFF_WRITE))
         {
@@ -2467,7 +2513,16 @@ static int BuildExportEntry(config_item_t        block,
               continue;
             }
 
-          strncpy(p_entry->fsal_up_type,var_value,sizeof(var_value));
+          if(strmaxcpy(p_entry->fsal_up_type,
+                       var_value,
+                       sizeof(p_entry->fsal_up_type)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "NFS READ %s: %s: \"%s\" too long",
+                      label, var_name, var_value);
+              err_flag = TRUE;
+              continue;
+            }
         }
       else if(!STRCMP(var_name, CONF_EXPORT_FSAL_UP_TIMEOUT))
         {
@@ -2826,7 +2881,6 @@ exportlist_t *BuildDefaultExport()
   p_entry->id = 1;
 
   strcpy(p_entry->fullpath, "/");
-  strcpy(p_entry->dirname, "/");
   strcpy(p_entry->pseudopath, "/");
   strcpy(p_entry->referral, "");
 
@@ -3135,12 +3189,12 @@ static int export_client_match(sockaddr_t *hostaddr,
 
         case NETGROUP_CLIENT:
           /* Try to get the entry from th IP/name cache */
-          if((rc = nfs_ip_name_get(hostaddr, hostname)) != IP_NAME_SUCCESS)
+          if((rc = nfs_ip_name_get(hostaddr, hostname, sizeof(hostname))) != IP_NAME_SUCCESS)
             {
               if(rc == IP_NAME_NOT_FOUND)
                 {
                   /* IPaddr was not cached, add it to the cache */
-                  if(nfs_ip_name_add(hostaddr, hostname) != IP_NAME_SUCCESS)
+                  if(nfs_ip_name_add(hostaddr, hostname, sizeof(hostname)) != IP_NAME_SUCCESS)
                     {
                       /* Major failure, name could not be resolved */
                       break;
@@ -3181,12 +3235,12 @@ static int export_client_match(sockaddr_t *hostaddr,
                        "Did not match the ip address with a wildcard.");
 
           /* Try to get the entry from th IP/name cache */
-          if((rc = nfs_ip_name_get(hostaddr, hostname)) != IP_NAME_SUCCESS)
+          if((rc = nfs_ip_name_get(hostaddr, hostname, sizeof(hostname))) != IP_NAME_SUCCESS)
             {
               if(rc == IP_NAME_NOT_FOUND)
                 {
                   /* IPaddr was not cached, add it to the cache */
-                  if(nfs_ip_name_add(hostaddr, hostname) != IP_NAME_SUCCESS)
+                  if(nfs_ip_name_add(hostaddr, hostname, sizeof(hostname)) != IP_NAME_SUCCESS)
                     {
                       /* Major failure, name could not be resolved */
                       LogInfo(COMPONENT_DISPATCH,
@@ -3751,7 +3805,6 @@ int nfs_export_create_root_entry(struct glist_head * pexportlist)
       cache_inode_fsal_data_t fsdata;
       fsal_handle_t fsal_handle;
       fsal_path_t exportpath_fsal;
-      fsal_mdsize_t strsize = MNTPATHLEN + 1;
       cache_entry_t *pentry = NULL;
 
       fsal_op_context_t context;
@@ -3774,7 +3827,8 @@ int nfs_export_create_root_entry(struct glist_head * pexportlist)
 
           /* Build the FSAL path */
           if(FSAL_IS_ERROR((fsal_status = FSAL_str2path(pcurrent->fullpath,
-                                                        strsize, &exportpath_fsal))))
+                                                        0,
+                                                        &exportpath_fsal))))
             {
               LogCrit(COMPONENT_INIT,
                       "Couldn't build FSAL path for %s, removing export id %u",
@@ -3923,38 +3977,53 @@ int CleanUpExportContext(fsal_export_context_t * p_export_context)
 }
 
 /* Frees current export entry and returns next export entry. */
-exportlist_t *GetExportEntry(char *exportPath)
+exportlist_t *GetExportEntry(char *path)
 {
   exportlist_t *p_current_item = NULL;
   struct glist_head * glist;
-  char tmplist_path[MAXPATHLEN];
-  char tmpexport_path[MAXPATHLEN];
   int found = 0;
+  int len_path = strlen(path);
+  int len_export;
 
   /*
-   * Find the export for the dirname (using as well Path or Tag )
+   * Find the export for the path (using as well Path or Tag )
    */
   glist_for_each(glist, nfs_param.pexportlist)
     {
     p_current_item = glist_entry(glist, exportlist_t, exp_list);
 
-    LogDebug(COMPONENT_CONFIG, "full path %s, export path %s",
-             p_current_item->fullpath, exportPath);
+    len_export = strlen(p_current_item->fullpath);
 
-    /* Make sure the path in export entry ends with a '/', if not adds one */
-    if(p_current_item->fullpath[strlen(p_current_item->fullpath) - 1] == '/')
-      strncpy(tmplist_path, p_current_item->fullpath, MAXPATHLEN);
-    else
-      snprintf(tmplist_path, MAXPATHLEN, "%s/", p_current_item->fullpath);
+    LogDebug(COMPONENT_CONFIG,
+             "export path %s, path %s",
+             p_current_item->fullpath, path);
 
-    /* Make sure that the argument from MNT ends with a '/', if not adds one */
-    if(exportPath[strlen(exportPath) - 1] == '/')
-      strncpy(tmpexport_path, exportPath, MAXPATHLEN);
-    else
-      snprintf(tmpexport_path, MAXPATHLEN, "%s/", exportPath);
+    /* If path doesn't end with '/' */
+    if(path[len_path - 1] != '/' &&
+       len_path == (len_export - 1))
+      {
+        /* Path would be same length as export if it had trailing '/'.
+         * Since we know the path is otherwise the same length as
+         * the export path, we don't need to try to compare the
+         * trailing '/'. As long as the two strings are equal not
+         * considering the trailing '/' in the export path, then path
+         * is a proper sub-directory of the export path (mainly being
+         * the exported directory...)
+         */
+        len_export = len_path;
+      }
 
-    /* Is tmplist_path a subdirectory of tmpexport_path ? */
-    if(!strncmp(tmplist_path, tmpexport_path, strlen(tmplist_path)))
+    /* If path is shorter than export path we are looking for,
+     * then path we are looking for can't be this export path
+     * or a sub-directory of it...
+     */
+    if(len_path < len_export)
+      continue;
+
+    /* Is export path a subdirectory of path? */
+    if(!strncmp(p_current_item->fullpath,
+                path,
+                len_export))
     {
       found = 1;
       break;

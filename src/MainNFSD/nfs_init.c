@@ -348,10 +348,17 @@ void nfs_set_param_default()
 #endif                          /* _USE_PROXY */
 
   nfs_param.core_param.use_nfs_commit = FALSE;
-  strncpy(nfs_param.core_param.stats_file_path, "/tmp/ganesha.stat", MAXPATHLEN);
+  if(strmaxcpy(nfs_param.core_param.stats_file_path,
+               "/tmp/ganesha.stat",
+               sizeof(nfs_param.core_param.stats_file_path)) == -1)
+    LogFatal(COMPONENT_INIT,
+             "default stats file path is too long");
   nfs_param.core_param.dump_stats_per_client = 0;
-  strncpy(nfs_param.core_param.stats_per_client_directory, "/tmp", MAXPATHLEN);
-
+  if(strmaxcpy(nfs_param.core_param.stats_per_client_directory,
+               "/tmp",
+               sizeof(nfs_param.core_param.stats_per_client_directory)) == -1)
+    LogFatal(COMPONENT_INIT,
+             "default stats per client path is too long");
   nfs_param.core_param.max_send_buffer_size = NFS_DEFAULT_SEND_BUFFER_SIZE;
   nfs_param.core_param.max_recv_buffer_size = NFS_DEFAULT_RECV_BUFFER_SIZE;
 
@@ -367,12 +374,21 @@ void nfs_set_param_default()
 
 #ifdef _HAVE_GSSAPI
   /* krb5 parameter */
-  strlcpy(nfs_param.krb5_param.svc.principal, DEFAULT_NFS_PRINCIPAL,
-          sizeof(nfs_param.krb5_param.svc.principal));
-  strlcpy(nfs_param.krb5_param.keytab, DEFAULT_NFS_KEYTAB,
-          sizeof(nfs_param.krb5_param.keytab));
-  strlcpy(nfs_param.krb5_param.ccache_dir, DEFAULT_NFS_CCACHE_DIR,
-          sizeof(nfs_param.krb5_param.ccache_dir));
+  if(strmaxcpy(nfs_param.krb5_param.svc.principal,
+               DEFAULT_NFS_PRINCIPAL,
+               sizeof(nfs_param.krb5_param.svc.principal)) == -1)
+    LogFatal(COMPONENT_INIT,
+             "default kerberos principal too long");
+  if(strmaxcpy(nfs_param.krb5_param.keytab,
+               DEFAULT_NFS_KEYTAB,
+               sizeof(nfs_param.krb5_param.keytab)) == -1)
+    LogFatal(COMPONENT_INIT,
+             "default kerberos keytab too long");
+  if(strmaxcpy(nfs_param.krb5_param.ccache_dir,
+               DEFAULT_NFS_CCACHE_DIR,
+               sizeof(nfs_param.krb5_param.ccache_dir)) == -1)
+    LogFatal(COMPONENT_INIT,
+             "default kerberos ccache_dir too long");
   nfs_param.krb5_param.active_krb5 = TRUE;
 #endif
 
@@ -381,8 +397,16 @@ void nfs_set_param_default()
   nfs_param.nfsv4_param.fh_expire = FALSE;
   nfs_param.nfsv4_param.returns_err_fh_expired = TRUE;
   nfs_param.nfsv4_param.return_bad_stateid = TRUE;
-  strncpy(nfs_param.nfsv4_param.domainname, DEFAULT_DOMAIN, MAXNAMLEN);
-  strncpy(nfs_param.nfsv4_param.idmapconf, DEFAULT_IDMAPCONF, MAXPATHLEN);
+  if(strmaxcpy(nfs_param.nfsv4_param.domainname,
+               DEFAULT_DOMAIN,
+               sizeof(nfs_param.nfsv4_param.domainname)) == -1)
+    LogFatal(COMPONENT_INIT,
+             "DEFAULT_DOMAIN is too long");
+  if(strmaxcpy(nfs_param.nfsv4_param.idmapconf,
+               DEFAULT_IDMAPCONF,
+               sizeof(nfs_param.nfsv4_param.idmapconf)) == -1)
+    LogFatal(COMPONENT_INIT,
+             "DEFAULT_IDMAPCONF is too long");
 
   /*  Worker parameters : IP/name hash table */
   nfs_param.ip_name_param.hash_param.index_size = PRIME_IP_NAME;
@@ -396,7 +420,7 @@ void nfs_set_param_default()
   nfs_param.ip_name_param.hash_param.flags = HT_FLAG_NONE;
   nfs_param.ip_name_param.hash_param.ht_log_component = COMPONENT_DISPATCH;
   nfs_param.ip_name_param.expiration_time = IP_NAME_EXPIRATION;
-  strncpy(nfs_param.ip_name_param.mapfile, "", MAXPATHLEN);
+  nfs_param.ip_name_param.mapfile[0] = '\0';
 
   /*  Worker parameters : UID_MAPPER hash table */
   nfs_param.uidmap_cache_param.hash_param.index_size = PRIME_ID_MAPPER;
@@ -409,7 +433,7 @@ void nfs_set_param_default()
   nfs_param.uidmap_cache_param.hash_param.ht_name = "UID Map Cache";
   nfs_param.uidmap_cache_param.hash_param.flags = HT_FLAG_NONE;
   nfs_param.uidmap_cache_param.hash_param.ht_log_component = COMPONENT_IDMAPPER;
-  strncpy(nfs_param.uidmap_cache_param.mapfile, "", MAXPATHLEN);
+  nfs_param.uidmap_cache_param.mapfile[0] = '\0';
 
   /*  Worker parameters : UNAME_MAPPER hash table */
   nfs_param.unamemap_cache_param.hash_param.index_size = PRIME_ID_MAPPER;
@@ -422,7 +446,7 @@ void nfs_set_param_default()
   nfs_param.unamemap_cache_param.hash_param.ht_name = "UNAME Map Cache";
   nfs_param.unamemap_cache_param.hash_param.flags = HT_FLAG_NONE;
   nfs_param.unamemap_cache_param.hash_param.ht_log_component = COMPONENT_IDMAPPER;
-  strncpy(nfs_param.unamemap_cache_param.mapfile, "", MAXPATHLEN);
+  nfs_param.unamemap_cache_param.mapfile[0] = '\0';
 
   /*  Worker parameters : GID_MAPPER hash table */
   nfs_param.gidmap_cache_param.hash_param.index_size = PRIME_ID_MAPPER;
@@ -435,7 +459,7 @@ void nfs_set_param_default()
   nfs_param.gidmap_cache_param.hash_param.ht_name = "GID Map Cache";
   nfs_param.gidmap_cache_param.hash_param.flags = HT_FLAG_NONE;
   nfs_param.gidmap_cache_param.hash_param.ht_log_component = COMPONENT_IDMAPPER;
-  strncpy(nfs_param.gidmap_cache_param.mapfile, "", MAXPATHLEN);
+  nfs_param.gidmap_cache_param.mapfile[0] = '\0';
 
   /*  Worker parameters : UID->GID  hash table (for RPCSEC_GSS) */
   nfs_param.uidgidmap_cache_param.hash_param.index_size = PRIME_ID_MAPPER;
@@ -461,7 +485,7 @@ void nfs_set_param_default()
   nfs_param.gnamemap_cache_param.hash_param.ht_name = "GNAME Map Cache";
   nfs_param.gnamemap_cache_param.hash_param.flags = HT_FLAG_NONE;
   nfs_param.gnamemap_cache_param.hash_param.ht_log_component = COMPONENT_IDMAPPER;
-  strncpy(nfs_param.gnamemap_cache_param.mapfile, "", MAXPATHLEN);
+  nfs_param.gnamemap_cache_param.mapfile[0] = '\0';
 
   /*  Worker parameters : IP/stats hash table */
   nfs_param.ip_stats_param.hash_param.index_size = PRIME_IP_STATS;
@@ -674,9 +698,9 @@ void nfs_set_param_default()
 
   /* SNMP ADM parameters */
 #ifdef _SNMP_ADM_ACTIVE
-  strcpy(nfs_param.extern_param.snmp_adm.snmp_agentx_socket, "");
+  nfs_param.extern_param.snmp_adm.snmp_agentx_socket[0] = '\0';
   nfs_param.extern_param.snmp_adm.product_id = 1;
-  strcpy(nfs_param.extern_param.snmp_adm.snmp_log_file, "");
+  nfs_param.extern_param.snmp_adm.snmp_log_file[0] = '\0';
 
   nfs_param.extern_param.snmp_adm.export_cache_stats = TRUE;
   nfs_param.extern_param.snmp_adm.export_requests_stats = TRUE;
@@ -1483,7 +1507,7 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
 #ifdef _HAVE_GSSAPI
   gss_buffer_desc gss_service_buf;
   OM_uint32 maj_stat, min_stat;
-  char GssError[MAXNAMLEN];
+  char GssError[MAXNAMLEN+1];
 #endif
 
   /* FSAL Initialisation */

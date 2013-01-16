@@ -89,33 +89,6 @@ static void fsal_set_times_current(fsal_attrib_list_t * attrs)
 }
 
 /**
- *
- * nfs_Is_XattrD_Name: returns true is the string given as input is the name of an xattr object.
- *
- * Returns true is the string given as input is the name of an xattr object and returns the name of the object
- *
- * @param strname    [IN]  the name that is to be tested
- * @param objectname [OUT] if strname is related to a xattr, contains the name of the related object
- *
- * @return TRUE if strname is a xattr, FALSE otherwise
- *
- */
-int nfs_XattrD_Name(char *strname, char *objectname)
-{
-  if(strname == NULL)
-    return 0;
-
-  if(!strncmp(strname, XATTRD_NAME, XATTRD_NAME_LEN))
-    {
-      memcpy(objectname, (char *)(strname + XATTRD_NAME_LEN),
-             strlen(strname) - XATTRD_NAME_LEN + 1);
-      return 1;
-    }
-
-  return 0;
-}                               /* nfs_Is_XattrD_Name */
-
-/**
  * nfs3_fh_to_xattrfh: builds the fh to the xattrs ghost directory
  *
  * @param pfhin  [IN]  input file handle (the object whose xattr fh is queryied)
@@ -462,7 +435,7 @@ int nfs3_Lookup_Xattr(nfs_arg_t * parg,
   pfsal_handle = &pentry_dir->handle;
 
   if((cache_status = cache_inode_error_convert(FSAL_str2name(strpath,
-                                                             MAXNAMLEN,
+                                                             0,
                                                              &name))) !=
      CACHE_INODE_SUCCESS)
     {
@@ -561,7 +534,7 @@ int nfs3_Readdir_Xattr(nfs_arg_t * parg,
                        fsal_op_context_t * pcontext,
                        struct svc_req *preq, nfs_res_t * pres)
 {
-  typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN];
+  typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN+1];
   typedef char fh3_buffer_item_t[NFS3_FHSIZE];
 
   unsigned int delta = 0;
@@ -921,7 +894,7 @@ int nfs3_Create_Xattr(nfs_arg_t * parg,
   pfsal_handle = &parent_pentry->handle;
 
   /* convert attr name to FSAL name */
-  FSAL_str2name(parg->arg_create3.where.name, FSAL_MAX_NAME_LEN, &attr_name);
+  FSAL_str2name(parg->arg_create3.where.name, 0, &attr_name);
 
   /* set empty attr */
   fsal_status = FSAL_SetXAttrValue(pfsal_handle,
@@ -1270,7 +1243,7 @@ int nfs3_Readdirplus_Xattr(nfs_arg_t * parg,
                            fsal_op_context_t * pcontext,
                            struct svc_req *preq, nfs_res_t * pres)
 {
-  typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN];
+  typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN+1];
   typedef char fh3_buffer_item_t[NFS3_FHSIZE];
 
   unsigned int delta = 0;
@@ -1784,7 +1757,7 @@ int nfs3_Remove_Xattr(nfs_arg_t * parg /* IN  */ ,
   pfsal_handle = &pentry->handle;
 
   /* convert attr name to FSAL name */
-  FSAL_str2name(parg->arg_remove3.object.name, MAXNAMLEN, &name);
+  FSAL_str2name(parg->arg_remove3.object.name, 0, &name);
 
   fsal_status = FSAL_RemoveXAttrByName(pfsal_handle, pcontext, &name);
   if(FSAL_IS_ERROR(fsal_status))

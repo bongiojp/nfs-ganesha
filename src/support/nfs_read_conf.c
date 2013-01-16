@@ -364,7 +364,6 @@ int nfs_read_core_conf(config_file_t in_config, nfs_core_parameter_t * pparam)
         {
 
 #     define MAX_NFSPROTO      10       /* large enough !!! */
-#     define MAX_NFSPROTO_LEN  256      /* so is it !!! */
 
           char *nfsvers_list[MAX_NFSPROTO];
           int idx, count;
@@ -372,25 +371,23 @@ int nfs_read_core_conf(config_file_t in_config, nfs_core_parameter_t * pparam)
           /* reset nfs versions flags (clean defaults) */
           pparam->core_options &= ~(CORE_OPTION_ALL_VERS);
 
-          /* allocate nfs vers strings */
-          for(idx = 0; idx < MAX_NFSPROTO; idx++)
-            nfsvers_list[idx] = gsh_malloc(MAX_NFSPROTO_LEN);
+          /* fill nfs vers list with NULL pointers */
+          memset(nfsvers_list, 0, sizeof(nfsvers_list));
 
           /*
            * Search for coma-separated list of nfsprotos
            */
-          count = nfs_ParseConfLine(nfsvers_list, MAX_NFSPROTO,
-                                    key_value, find_comma, find_endLine);
+          count = nfs_ParseConfLine(nfsvers_list,
+                                    MAX_NFSPROTO,
+                                    0,
+                                    key_value,
+                                    ',');
 
           if(count < 0)
             {
               LogCrit(COMPONENT_CONFIG,
                       "NFS_Protocols list too long (>%d)",
                       MAX_NFSPROTO);
-
-              /* free sec strings */
-              for(idx = 0; idx < MAX_NFSPROTO; idx++)
-                gsh_free(nfsvers_list[idx]);
 
               return -1;
             }
@@ -420,10 +417,6 @@ int nfs_read_core_conf(config_file_t in_config, nfs_core_parameter_t * pparam)
                 }
             }
 
-          /* free sec strings */
-          for(idx = 0; idx < MAX_NFSPROTO; idx++)
-            gsh_free(nfsvers_list[idx]);
-
           /* check that at least one nfs protocol has been specified */
           if((pparam->core_options & (CORE_OPTION_ALL_VERS)) == 0)
             {
@@ -452,7 +445,14 @@ int nfs_read_core_conf(config_file_t in_config, nfs_core_parameter_t * pparam)
         }
       else if(!strcasecmp(key_name, "Stats_File_Path"))
         {
-          strncpy(pparam->stats_file_path, key_value, MAXPATHLEN);
+          if(strmaxcpy(pparam->stats_file_path,
+                       key_value,
+                       sizeof(pparam->stats_file_path)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else if(!strcasecmp(key_name, "Stats_Update_Delay"))
         {
@@ -473,7 +473,14 @@ int nfs_read_core_conf(config_file_t in_config, nfs_core_parameter_t * pparam)
         }
       else if(!strcasecmp(key_name, "Stats_Per_Client_Directory"))
         {
-          strncpy(pparam->stats_per_client_directory, key_value, MAXPATHLEN);
+          if(strmaxcpy(pparam->stats_per_client_directory,
+                       key_value,
+                       sizeof(pparam->stats_per_client_directory)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else if(!strcasecmp( key_name, "MaxRPCSendBufferSize" ) )
         {
@@ -657,7 +664,14 @@ int nfs_read_ip_name_conf(config_file_t in_config, nfs_ip_name_parameter_t * ppa
         }
       else if(!strcasecmp(key_name, "Map"))
         {
-          strncpy(pparam->mapfile, key_value, MAXPATHLEN);
+          if(strmaxcpy(pparam->mapfile,
+                       key_value,
+                       sizeof(pparam->mapfile)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else
         {
@@ -945,7 +959,14 @@ int nfs_read_uidmap_conf(config_file_t in_config, nfs_idmap_cache_parameter_t * 
         }
       else if(!strcasecmp(key_name, "Map"))
         {
-          strncpy(pparam->mapfile, key_value, MAXPATHLEN);
+          if(strmaxcpy(pparam->mapfile,
+                       key_value,
+                       sizeof(pparam->mapfile)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else
         {
@@ -1028,7 +1049,14 @@ int nfs_read_gidmap_conf(config_file_t in_config, nfs_idmap_cache_parameter_t * 
         }
       else if(!strcasecmp(key_name, "Map"))
         {
-          strncpy(pparam->mapfile, key_value, MAXPATHLEN);
+          if(strmaxcpy(pparam->mapfile,
+                       key_value,
+                       sizeof(pparam->mapfile)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else
         {
@@ -1104,12 +1132,25 @@ int nfs_read_krb5_conf(config_file_t in_config, nfs_krb5_parameter_t * pparam)
 
       if(!strcasecmp(key_name, "PrincipalName"))
         {
-          strlcpy(pparam->svc.principal, key_value,
-                  sizeof(pparam->svc.principal));
+          if(strmaxcpy(pparam->svc.principal,
+                       key_value,
+                       sizeof(pparam->svc.principal)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else if(!strcasecmp(key_name, "KeytabPath"))
         {
-          strlcpy(pparam->keytab, key_value, sizeof(pparam->keytab));
+          if(strmaxcpy(pparam->keytab,
+                       key_value,
+                       sizeof(pparam->keytab)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else if(!strcasecmp(key_name, "Active_krb5"))
         {
@@ -1193,11 +1234,25 @@ int nfs_read_version4_conf(config_file_t in_config, nfs_version4_parameter_t * p
         }
       else if(!strcasecmp(key_name, "DomainName"))
         {
-          strncpy(pparam->domainname, key_value, MAXNAMLEN);
+          if(strmaxcpy(pparam->domainname,
+                       key_value,
+                       sizeof(pparam->domainname)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else if(!strcasecmp(key_name, "IdmapConf"))
         {
-          strncpy(pparam->idmapconf, key_value, MAXPATHLEN);
+          if(strmaxcpy(pparam->idmapconf,
+                       key_value,
+                       sizeof(pparam->idmapconf)) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
         }
       else if(!strcasecmp(key_name, "FH_Expire"))
         {
@@ -1318,7 +1373,14 @@ int nfs_get_fsalpathlib_conf(char *configPath, path_str_t * PathLib, unsigned in
 
       if(!strcasecmp(key_name, "FSAL_Shared_Library"))
         {
-          strncpy(PathLib[index], key_value, MAXPATHLEN);
+          if(strmaxcpy(PathLib[index],
+                       key_value,
+                       sizeof(PathLib[index])) == -1)
+            {
+              LogCrit(COMPONENT_CONFIG,
+                      "%s=\"%s\" too long",
+                      key_name, key_value);
+            }
           index += 1 ;
 
           found = TRUE;

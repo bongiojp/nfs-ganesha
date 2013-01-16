@@ -121,7 +121,11 @@ void nfs_rpc_cb_pkginit(void)
         LogCrit(COMPONENT_INIT, "Failed to get local host name");
     }
     else
-        strlcpy(host_name, localmachine, MAXHOSTNAMELEN);
+        if(strmaxcpy(host_name, localmachine, sizeof(host_name)) == -1) {
+            LogCrit(COMPONENT_INIT,
+                    "local host name %s too long",
+                    localmachine);
+        }
 
     /* ccache */
     nfs_rpc_cb_init_ccache(nfs_param.krb5_param.ccache_dir);
@@ -204,7 +208,7 @@ setup_client_saddr(nfs_client_id_t *pclientid, const char *uaddr)
                    &bytes[5], &bytes[6]) == 6) {
             struct sockaddr_in *sin =
                 (struct sockaddr_in *) &pclientid->cid_cb.cid_addr.ss;
-            snprintf(addr_buf, SOCK_NAME_MAX, "%u.%u.%u.%u",
+            snprintf(addr_buf, sizeof(addr_buf), "%u.%u.%u.%u",
                      bytes[1], bytes[2],
                      bytes[3], bytes[4]);
             sin->sin_family = AF_INET;
@@ -229,7 +233,7 @@ setup_client_saddr(nfs_client_id_t *pclientid, const char *uaddr)
                    &bytes[9], &bytes[10]) == 10) {
             struct sockaddr_in6 *sin6 =
                 (struct sockaddr_in6 *) &pclientid->cid_cb.cid_addr.ss;
-            snprintf(addr_buf, SOCK_NAME_MAX,
+            snprintf(addr_buf, sizeof(addr_buf),
                      "%2x:%2x:%2x:%2x:%2x:%2x:%2x:%2x",
                      bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
                      bytes[6], bytes[7], bytes[8]);
@@ -253,8 +257,13 @@ setup_client_saddr(nfs_client_id_t *pclientid, const char *uaddr)
 void nfs_set_client_location(nfs_client_id_t *pclientid, const clientaddr4 *addr4)
 {
     pclientid->cid_cb.cid_addr.nc = nfs_netid_to_nc(addr4->r_netid);
-    strlcpy(pclientid->cid_cb.cid_client_r_addr, addr4->r_addr,
-            SOCK_NAME_MAX);
+    if(strmaxcpy(pclientid->cid_cb.cid_client_r_addr,
+                 addr4->r_addr,
+                 sizeof(pclientid->cid_cb.cid_client_r_addr)) == -1) {
+        LogCrit(COMPONENT_NFS_CB,
+                "cid_client_r_addr %s too long",
+                pclientid->cid_cb.cid_client_r_addr);
+    }
     setup_client_saddr(pclientid, pclientid->cid_cb.cid_client_r_addr);
 }
 
@@ -367,14 +376,14 @@ format_host_principal(rpc_call_channel_t *chan, char *buf, size_t len)
         {
             struct sockaddr_in *sin = (struct sockaddr_in *) &pclientid->cid_cb.cid_addr.ss;
             host = inet_ntop(AF_INET, &sin->sin_addr, addr_buf,
-                             INET_ADDRSTRLEN);
+                             sizeof(addr_buf));
             break;
         }
         case AF_INET6:
         {
             struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) &pclientid->cid_cb.cid_addr.ss;
             host = inet_ntop(AF_INET6, &sin6->sin6_addr, addr_buf,
-                             INET6_ADDRSTRLEN);
+                             sizeof(addr_buf));
             break;
         }
         default:
@@ -421,7 +430,7 @@ nfs_rpc_callback_setup_gss(rpc_call_channel_t *chan,
         goto out;
     }
 
-    if (! format_host_principal(chan, hprinc, MAXPATHLEN)) {
+    if (! format_host_principal(chan, hprinc, sizeof(hprinc))) {
         LogCrit(COMPONENT_NFS_CB, "format_host_principal failed");
         goto out;
     }

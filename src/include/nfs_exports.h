@@ -156,7 +156,6 @@ struct exportlist__
 {
   struct glist_head exp_list;
   unsigned short id;            /* entry identifier   */
-  char dirname[MAXPATHLEN+2];   /* path relative to fs root */
   char fullpath[MAXPATHLEN+2];  /* the path from the root */
   char pseudopath[MAXPATHLEN+2];/* nfsv4 pseudo-filesystem 'virtual' path */
   char referral[MAXPATHLEN+2];  /* String describing NFSv4 referral */
@@ -309,7 +308,7 @@ struct exportlist__
  */
 typedef struct pseudofs_entry
 {
-  char name[MAXNAMLEN];                         /**< The entry name          */
+  char name[MAXNAMLEN+1];                       /**< The entry name          */
   unsigned int pseudo_id;                       /**< ID within the pseudoFS  */
   exportlist_t *junction_export;                /**< Export list related to the junction, NULL if entry is no junction*/
   struct pseudofs_entry *sons;                  /**< pointer to a linked list of sons */
@@ -326,13 +325,10 @@ typedef struct pseudofs
   pseudofs_entry_t *reverse_tab[MAX_PSEUDO_ENTRY];
 } pseudofs_t;
 
-#define NFS_CLIENT_NAME_LEN 256
 typedef struct nfs_client_cred_gss__
 {
   unsigned int svc;
   unsigned int qop;
-  unsigned char cname[NFS_CLIENT_NAME_LEN];
-  unsigned char stroid[NFS_CLIENT_NAME_LEN];
 #ifdef _HAVE_GSSAPI
   gss_ctx_id_t gss_context_id;
 #endif

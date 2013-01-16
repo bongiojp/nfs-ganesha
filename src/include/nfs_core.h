@@ -144,11 +144,6 @@
 #define GANESHA_RAW_DEV_MAJOR 168
 #define GANESHA_RAW_DEV_MINOR 168
 
-/* Other #define */
-#define TMP_STR_LEN 256
-#define AUTH_STR_LEN 30
-#define PWENT_MAX_LEN 81       /* MUST be a multiple of 9 */
-
 /* Id Mapper cache error */
 #define ID_MAPPER_SUCCESS             0
 #define ID_MAPPER_INSERT_MALLOC_ERROR 1
@@ -305,7 +300,7 @@ typedef struct nfs_session_id_param__
 } nfs_session_id_parameter_t;
 #endif
 
-typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN];
+typedef char entry_name_array_item_t[FSAL_MAX_NAME_LEN+1];
 
 typedef struct nfs_version4_parameter__
 {
@@ -739,7 +734,7 @@ int clean_entry_dupreq(LRU_entry_t * pentry, void *addparam);
 
 int print_pending_request(LRU_data_t data, char *str);
 
-void auth_stat2str(enum auth_stat, char *str);
+const char * auth_stat2str(enum auth_stat);
 
 uint64_t idmapper_rbt_hash_func(hash_parameter_t * p_hparam,
                                 hash_buffer_t * buffclef);
@@ -781,9 +776,9 @@ int idmap_get(hash_table_t * ht, char *key, uint32_t *pval);
 int uidmap_get(char *key, uid_t *pval);
 int gidmap_get(char *key, gid_t *pval);
 
-int namemap_get(hash_table_t * ht, uint32_t key, char *pval);
-int unamemap_get(uid_t key, char *val);
-int gnamemap_get(gid_t key, char *val);
+int namemap_get(hash_table_t * ht, uint32_t key, char *pval, size_t size);
+int unamemap_get(uid_t key, char *val, size_t size);
+int gnamemap_get(gid_t key, char *val, size_t size);
 int uidgidmap_get(uid_t key, gid_t *pval);
 
 int idmap_remove(hash_table_t * ht, char *key);
@@ -819,4 +814,32 @@ void nfs_Init_FSAL_UP();
 void stats_collect (ganesha_stats_t *ganesha_stats);
 void nfs_rpc_destroy_chan(rpc_call_channel_t *chan);
 int32_t nfs_rpc_dispatch_call(rpc_call_t *call, uint32_t flags);
+
+/**
+ *
+ * nfs_Is_XattrD_Name: returns true is the string given as input is the name of an xattr object.
+ *
+ * Returns true is the string given as input is the name of an xattr object and returns the name of the object
+ *
+ * @param strname    [IN]  the name that is to be tested
+ * @param objectname [OUT] if strname is related to a xattr, points to the portion of strname
+                           that is the related object name.
+ *
+ * @return TRUE if strname is a xattr, FALSE otherwise
+ *
+ */
+static inline bool_t nfs_XattrD_Name(char *strname, char **objectname)
+{
+  if(strname == NULL)
+    return FALSE;
+
+  if(!strncmp(strname, XATTRD_NAME, XATTRD_NAME_LEN))
+    {
+      *objectname = strname + XATTRD_NAME_LEN;
+      return TRUE;
+    }
+
+  return FALSE;
+}
+
 #endif                          /* _NFS_CORE_H */

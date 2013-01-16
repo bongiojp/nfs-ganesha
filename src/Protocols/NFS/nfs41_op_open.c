@@ -179,10 +179,9 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
   /* First switch is based upon claim type */
   switch (arg_OPEN4.claim.claim)
     {
-    case CLAIM_DELEGATE_CUR:
     case CLAIM_DELEGATE_PREV:
       /* Check for name length */
-      if(arg_OPEN4.claim.open_claim4_u.file.utf8string_len > FSAL_MAX_NAME_LEN)
+      if(arg_OPEN4.claim.open_claim4_u.file_delegate_prev.utf8string_len > FSAL_MAX_NAME_LEN)
         {
           res_OPEN4.status = NFS4ERR_NAMETOOLONG;
           LogDebug(COMPONENT_STATE,
@@ -191,7 +190,7 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
         }
 
       /* get the filename from the argument, it should not be empty */
-      if(arg_OPEN4.claim.open_claim4_u.file.utf8string_len == 0)
+      if(arg_OPEN4.claim.open_claim4_u.file_delegate_prev.utf8string_len == 0)
         {
           res_OPEN4.status = NFS4ERR_INVAL;
           LogDebug(COMPONENT_STATE,
@@ -199,6 +198,9 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
           goto out;
         }
 
+      /* Fall through */
+
+    case CLAIM_DELEGATE_CUR:
       res_OPEN4.status = NFS4ERR_NOTSUPP;
       LogDebug(COMPONENT_STATE,
                "NFS41 OPEN returning NFS4ERR_NOTSUPP for CLAIM_DELEGATE");
@@ -206,21 +208,6 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
 
     case CLAIM_NULL:
       cause = "CLAIM_NULL";
-
-      /* Check for name length */
-      if(arg_OPEN4.claim.open_claim4_u.file.utf8string_len > FSAL_MAX_NAME_LEN)
-        {
-          res_OPEN4.status = NFS4ERR_NAMETOOLONG;
-          goto out;
-        }
-
-      /* get the filename from the argument, it should not be empty */
-      if(arg_OPEN4.claim.open_claim4_u.file.utf8string_len == 0)
-        {
-          res_OPEN4.status = NFS4ERR_INVAL;
-          cause2 = " (empty filename)";
-          goto out;
-        }
 
       /* Check if asked attributes are correct */
       if(arg_OPEN4.openhow.openflag4_u.how.mode == GUARDED4 ||
@@ -245,10 +232,10 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
         }
 
       /* Check if filename is correct */
-      if((cache_status =
-          cache_inode_error_convert(FSAL_buffdesc2name
-                                    ((fsal_buffdesc_t *) & arg_OPEN4.claim.open_claim4_u.
-                                     file, &filename))) != CACHE_INODE_SUCCESS)
+      cache_status = utf8_to_name(&arg_OPEN4.claim.open_claim4_u.file,
+                                  &filename);
+
+      if(cache_status != CACHE_INODE_SUCCESS)
         {
           res_OPEN4.status = nfs4_Errno(cache_status);
           cause2 = " FSAL_buffdesc2name";
@@ -687,9 +674,9 @@ int nfs41_op_open(struct nfs_argop4 *op, compound_data_t * data, struct nfs_reso
              should be kept to detect non vicious double open */
           if(arg_OPEN4.openhow.openflag4_u.how.mode == EXCLUSIVE4)
             {
-              strncpy(candidate_data.share.share_oexcl_verifier,
-                      arg_OPEN4.openhow.openflag4_u.how.createhow4_u.createverf,
-                      NFS4_VERIFIER_SIZE);
+              memcpy(candidate_data.share.share_oexcl_verifier,
+                     arg_OPEN4.openhow.openflag4_u.how.createhow4_u.createverf,
+                     NFS4_VERIFIER_SIZE);
             }
 
           if(state_add(pentry_newfile,
