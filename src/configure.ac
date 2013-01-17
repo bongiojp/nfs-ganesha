@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT( [nfs-ganesha], [1.4.0], [philippe.deniel@cea.fr,thomas.leibovici@cea.fr] )
+AC_INIT( [nfs-ganesha], [1.5.0], [philippe.deniel@cea.fr,thomas.leibovici@cea.fr] )
 
 AC_SUBST(RELEASE)
 
@@ -701,8 +701,8 @@ case $FSAL in
 		FSAL_LDFLAGS=""
 		FSAL_LIB="\$(top_builddir)/FSAL/FSAL_PT/libfsalpt.la"
 		FS_NAME="pt"
-		AC_SUBST(RELEASE, [1])
-		AC_SUBST(DIST_VER, [_23])
+		AC_SUBST(RELEASE, [ptv3.3.1])
+		AC_SUBST(DIST_VER, [_rev_1])
 		;;
         ZFS)
                 AC_DEFINE([_USE_ZFS], 1, [GANESHA exports ZFS Filesystem])
