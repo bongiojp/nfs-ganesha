@@ -4,6 +4,8 @@
 #ifndef _RPC_SVC_AUTH_H
 #define _RPC_SVC_AUTH_H
 
+#include <stdbool.h>
+
 /* Here is what we should pick up from  /usr/include/tirpc/rpc/svc_auth.h */
 typedef struct SVCAUTH {
 	struct svc_auth_ops {
