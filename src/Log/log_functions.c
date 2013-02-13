@@ -47,6 +47,7 @@
 
 #include "log.h"
 #include "rpc/rpc.h"
+#include "../RPCAL/gssd/err_util.h"
 //#include "nfs_core.h"
 
 /* La longueur d'une chaine */
@@ -628,6 +629,9 @@ void InitLogging()
                  LogComponents[component].comp_name, ReturnLevelInt(oldlevel),
                  ReturnLevelInt(newlevel));
     }
+
+  /* Enable logging for RPC GSS */
+  gssd_set_err((gssd_err_func_t)gssd_ganesha_err_func);
 
 }                               /* InitLogging */
 
@@ -1465,13 +1469,51 @@ out:
 
 } /* rpc_warnx */
 
+/* RPCAL/gssd/err_util.h will use this function for logging */
+void gssd_ganesha_err_func(int priority, const char *format, ...)
+{
+  va_list arguments;
+  int component = COMPONENT_RPCSEC_GSS;
+  char str[512];
+
+  va_start(arguments, format);
+  vsnprintf(str, 512, format, arguments);
+  va_end(arguments);
+
+  switch (priority)
+    {
+    case 0:
+      DisplayLogComponentLevel(component, (char *)__FUNCTION__, NIV_CRIT,
+                               "%s: CRITICAL ERROR: %s",
+                               LogComponents[component].comp_str, str);
+      break;
+    case 1:
+      DisplayLogComponentLevel(component, (char *)__FUNCTION__, NIV_WARN,
+                               "%s: WARN: %s",
+                               LogComponents[component].comp_str, str);
+      break;
+    case 3:
+    case 4:
+      DisplayLogComponentLevel(component, (char *)__FUNCTION__, NIV_INFO,
+                               "%s: INFO: %s",
+                               LogComponents[component].comp_str, str);
+      break;
+    case 2:
+    default:
+      DisplayLogComponentLevel(component, (char *)__FUNCTION__, NIV_EVENT,
+                               "%s: EVENT: %s",
+                               LogComponents[component].comp_str, str);
+      break;
+    }
+  return;
+}
+
 /*
  * For info : printf tags that can be used:
  * w DMNOPQTUWX
  */
 
 #ifdef _SNMP_ADM_ACTIVE
-
 
 /* Enable/disable logging for tirpc */
 int get_tirpc_debug_bitmask(snmp_adm_type_union *param, void *opt)
