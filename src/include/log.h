@@ -569,6 +569,8 @@ extern log_component_info __attribute__ ((__unused__)) LogComponents[COMPONENT_C
 #define isFullDebug(component) \
     (unlikely(LogComponents[component].comp_log_level >= NIV_FULL_DEBUG))
 
+void gssd_ganesha_err_func(int priority, const char *format, ...);
+
 /*
  *  Re-export component logging to TI-RPC internal logging
  */
