@@ -347,6 +347,12 @@ typedef struct nfs_core_param {
 	/** Whether to support the Remote Quota protocol.  Defaults
 	    to true and is settable with Enable_RQUOTA. */
 	bool enable_RQUOTA;
+        /** Whether to add padding of 0's to end of filehandles to force a
+            network filehandle of 4 byte segments. The Oracle dNFS client
+            does not pad filehandles, but our RPC implementation expects
+            it. So we break without this enabled.
+        */
+        bool forcefhpadding;
 } nfs_core_parameter_t;
 
 /** @} */

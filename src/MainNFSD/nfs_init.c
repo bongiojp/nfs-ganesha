@@ -119,7 +119,7 @@ nfs_parameter_t nfs_param =
   .core_param.rpc.max_recv_buffer_size = NFS_DEFAULT_RECV_BUFFER_SIZE,
   .core_param.enable_NLM = true,
   .core_param.enable_RQUOTA = true,
-
+  .core_param.forcefhpadding = false,
 
   /* Workers parameters : IP/Name values pool prealloc */
 

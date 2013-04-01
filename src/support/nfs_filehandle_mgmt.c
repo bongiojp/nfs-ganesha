@@ -260,6 +260,7 @@ bool nfs3_FSALToFhandle(nfs_fh3 *fh3,
   fsal_status_t fsal_status;
   file_handle_v3_t *file_handle;
   struct gsh_buffdesc fh_desc;
+  int padding = 0;
 
   /* reset the buffer to be used as handle */
   fh3->data.data_len = sizeof(struct alloc_file_handle_v3);
