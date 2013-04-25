@@ -135,7 +135,6 @@ cache_inode_invalidate(cache_inode_fsal_data_t *fsal_data,
      if ((flags & CACHE_INODE_INVALIDATE_CLEARBITS) != 0)
        atomic_clear_uint32_t_bits(&entry->flags,
                                   CACHE_INODE_TRUST_ATTRS |
-                                  CACHE_INODE_DIR_POPULATED |
                                   CACHE_INODE_TRUST_CONTENT);
 
      /* The main reason for holding the lock at this point is so we
