@@ -85,7 +85,6 @@ cache_inode_invalidate_all_cached_dirent(cache_entry_t *entry,
           *status = CACHE_INODE_BAD_TYPE;
           return *status;
      }
-
      /* Get ride of entries cached in the DIRECTORY */
      cache_inode_release_dirents(entry, CACHE_INODE_AVL_BOTH);
 
@@ -359,6 +358,80 @@ cache_inode_remove_cached_dirent(cache_entry_t *directory,
 
 } /* cache_inode_remove_cached_dirent */
 
+cache_inode_status_t
+cache_inode_validate_all_cached_dirent(cache_entry_t *directory,
+                                       fsal_op_context_t *context,
+                                       cache_inode_status_t *status)
+{
+  /* Used in verifying if any dirents should be removed. */
+  struct avltree_node *dirent_node = NULL;
+  struct avltree_node *next_dirent_node = NULL;
+  cache_inode_dir_entry_t *dirent = NULL;
+  cache_inode_status_t lookup_status = 0;
+  cache_entry_t *entry;
+  struct avltree *tree;
+
+  tree = &directory->object.dir.avl.t;
+  if (tree) {
+    dirent_node = avltree_first(tree);
+
+    while( dirent_node )
+      {
+        next_dirent_node = avltree_next(dirent_node);
+        dirent = avltree_container_of(dirent_node,
+                                      cache_inode_dir_entry_t,
+                                      node_hk);
+        entry = cache_inode_weakref_get(&dirent->entry,
+                                        LRU_REQ_SCAN);
+        if(entry == NULL) {
+          /* Entry fell out of the cache, load it back in.
+           * Note that we don't restore the weakref... */
+          entry = cache_inode_lookup_weakref(directory,
+                                             &dirent->name,
+                                             context,
+                                             &lookup_status);
+          if(entry == NULL) {
+            LogFullDebug(COMPONENT_NFS_READDIR,
+                         "Lookup returned %s",
+                         cache_inode_err_str(lookup_status));
+            if (lookup_status == CACHE_INODE_NOT_FOUND) {
+              /* Can't even renew the inode entry, just get rid of it. */
+              avltree_remove(dirent_node, tree);
+              pool_free(cache_inode_dir_entry_pool, dirent);
+	      dirent_node = next_dirent_node;
+	      goto next;
+            } else {
+              /* Something is more seriously wrong,
+                 probably an inconsistency. Can't stop now though! */
+              avltree_remove(dirent_node, tree);
+              pool_free(cache_inode_dir_entry_pool, dirent);
+	      goto next;
+            }
+          }
+        }
+        if(entry->present == FALSE)
+          {
+            avltree_remove(dirent_node, tree);
+            pool_free(cache_inode_dir_entry_pool, dirent);
+          }
+        else
+          {
+            entry->present = FALSE;
+          }
+      next:
+        dirent_node = next_dirent_node;
+      }
+
+    if (tree == &directory->object.dir.avl.t) {
+      directory->object.dir.nbactive = 0;
+      atomic_set_uint32_t_bits(&directory->flags,
+                                 (CACHE_INODE_TRUST_CONTENT |
+                                  CACHE_INODE_DIR_POPULATED));
+    }
+  }
+  return *status;
+}
+
 /**
  *
  * @brief Cache complete directory contents
@@ -386,19 +459,10 @@ cache_inode_readdir_populate(cache_entry_t *directory,
   fsal_count_t found = 0;
   uint32_t iter = 0;
   fsal_boolean_t eod = FALSE;
-
   cache_entry_t *entry = NULL;
-  fsal_attrib_list_t object_attributes;
-
-  cache_inode_create_arg_t create_arg = {
-       .newly_created_dir = FALSE
-  };
-  cache_inode_file_type_t type = UNASSIGNED;
-  cache_inode_status_t cache_status = CACHE_INODE_SUCCESS;
   fsal_dirent_t array_dirent[FSAL_READDIR_SIZE + 20];
-  cache_inode_fsal_data_t new_entry_fsdata;
-  cache_inode_dir_entry_t *new_dir_entry = NULL;
   uint64_t i = 0;
+  bool_t ignorevalidity = FALSE;
 
   /* Set the return default to CACHE_INODE_SUCCESS */
   *status = CACHE_INODE_SUCCESS;
@@ -416,11 +480,6 @@ cache_inode_readdir_populate(cache_entry_t *directory,
       *status = CACHE_INODE_SUCCESS;
       return *status;
     }
-
-  /* Invalidate all the dirents */
-  if(cache_inode_invalidate_all_cached_dirent(directory,
-                                              status) != CACHE_INODE_SUCCESS)
-    return *status;
 
   /* Open the directory */
   dir_attributes.asked_attributes = cache_inode_params.attrmask;
@@ -442,8 +501,23 @@ cache_inode_readdir_populate(cache_entry_t *directory,
   FSAL_SET_COOKIE_BEGINNING(end_cookie);
   eod = FALSE;
 
+  /* Set file type in each directory entry so we know if attributes were set. */
+  for(iter = 0; iter < FSAL_READDIR_SIZE + 20; iter++)
+    array_dirent[iter].attributes.type = 0;
+
+  /* We want cache_inode_lookup_impl() to actually use the cache. */
+  if (directory->flags & CACHE_INODE_DIR_POPULATED)
+    ignorevalidity = TRUE;
+
+  /* First we lookup all the entries the FSAL says are in the directory. 
+   * This effectively verifies the entries are in the avltree, they are
+   * up-to-date, and adds them if they are not already there.
+   * Meanwhile each entry looked up is marked as a part of this process
+   * so afterwrds we can remove entries there were not in the list returned
+   * by the FSAL_readdir() function. */
   do
     {
+      /* Get list of filenames in directory currently */
       fsal_status
         = FSAL_readdir(&dir_handle,
                        context,
@@ -474,83 +548,18 @@ cache_inode_readdir_populate(cache_entry_t *directory,
                           "cache readdir populate : do not cache . and ..");
               continue;
             }
-
-          /* If dir entry is a symbolic link, its content has to be read */
-          if((type =
-              cache_inode_fsal_type_convert(array_dirent[iter]
-                                            .attributes.type))
-             == SYMBOLIC_LINK)
+          /* if cache_inode_lookup() can't find the inode entry, then it adds a new entry */
+          if((entry = cache_inode_lookup_impl(directory,
+					     &(array_dirent[iter].name),
+					      context, status,ignorevalidity)) == NULL)
             {
-              /* Let's read the link for caching its value */
-              object_attributes.asked_attributes = cache_inode_params.attrmask;
-              fsal_status
-                = FSAL_readlink(&array_dirent[iter].handle,
-                                context,
-                                &create_arg.link_content, &object_attributes);
-
-              if(FSAL_IS_ERROR(fsal_status))
-                {
-                     *status = cache_inode_error_convert(fsal_status);
-                     if (fsal_status.major == ERR_FSAL_STALE) {
-                          LogEvent(COMPONENT_CACHE_INODE,
-                                "FSAL returned STALE from readlink");
-                          cache_inode_kill_entry(directory);
-                     }
-                     goto bail;
-                }
+              continue; /* Assume the file is deleted. */
             }
-          else
-            {
-              create_arg.newly_created_dir = FALSE;
-            }
-
-          /* Try adding the entry, if it exists then this existing entry is
-             returned */
-          new_entry_fsdata.fh_desc.start
-            = (caddr_t)(&array_dirent[iter].handle);
-          new_entry_fsdata.fh_desc.len = 0;
-          FSAL_ExpandHandle(context->export_context,
-                            FSAL_DIGEST_SIZEOF,
-                            &new_entry_fsdata.fh_desc);
-
-          if((entry
-              = cache_inode_new_entry(&new_entry_fsdata,
-                                      &array_dirent[iter].attributes,
-                                      type,
-                                      &create_arg,
-                                      status)) == NULL)
-            goto bail;
-          cache_status
-            = cache_inode_add_cached_dirent(directory,
-                                            &(array_dirent[iter].name),
-                                            entry,
-                                            &new_dir_entry,
-                                            status);
-
           /* Once the weakref is stored in the directory entry, we
              can release the reference we took on the entry. */
+          entry->present = TRUE;
           cache_inode_lru_unref(entry, 0);
-
-          if(cache_status != CACHE_INODE_SUCCESS
-             && cache_status != CACHE_INODE_ENTRY_EXISTS)
-            goto bail;
-
-          /*
-           * Remember the FSAL readdir cookie associated with this
-           * dirent.  This is needed for partial directory reads.
-           *
-           * to_uint64 should be a lightweight operation--it is in the
-           * current default implementation.
-           *
-           * I'm ignoring the status because the default operation is
-           * a memcpy-- we already -have- the cookie. */
-
-          if (cache_status != CACHE_INODE_ENTRY_EXISTS)
-              FSAL_cookie_to_uint64(&array_dirent[iter].handle,
-                                    context, &array_dirent[iter].cookie,
-                                    &new_dir_entry->fsal_cookie);
         } /* iter */
-
       /* Get prepared for next step */
       begin_cookie = end_cookie;
 
@@ -567,10 +576,9 @@ cache_inode_readdir_populate(cache_entry_t *directory,
       return *status;
     }
 
-  /* End of work */
-  atomic_set_uint32_t_bits(&directory->flags,
-                           (CACHE_INODE_DIR_POPULATED |
-                            CACHE_INODE_TRUST_CONTENT));
+  /* for name cache and cookie cache validate all entries*/
+  cache_inode_validate_all_cached_dirent( directory, context, status);
+  
   *status = CACHE_INODE_SUCCESS;
   return *status;
 
@@ -655,7 +663,6 @@ cache_inode_readdir(cache_entry_t *directory,
          != CACHE_INODE_SUCCESS) {
           goto unlock_attrs;
      }
-
      PTHREAD_RWLOCK_RDLOCK(&directory->content_lock);
      PTHREAD_RWLOCK_UNLOCK(&directory->attr_lock);
      if (!((directory->flags & CACHE_INODE_TRUST_CONTENT) &&
@@ -806,7 +813,6 @@ unlock_dir:
           cache_inode_status_t tmp_status;
 
           PTHREAD_RWLOCK_WRLOCK(&directory->content_lock);
-
           cache_inode_invalidate_all_cached_dirent(directory, &tmp_status);
 
           if(tmp_status != CACHE_INODE_SUCCESS) {

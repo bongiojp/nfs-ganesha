@@ -219,7 +219,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t *dir_src,
       = cache_inode_lookup_impl(dir_src,
                                 oldname,
                                 context,
-                                status)) == NULL) {
+                                status, FALSE)) == NULL) {
     /* If FSAL FH is stale, then this was managed in cache_inode_lookup */
     if(*status != CACHE_INODE_FSAL_ESTALE)
       *status = CACHE_INODE_NOT_FOUND;
@@ -239,7 +239,7 @@ cache_inode_status_t cache_inode_rename(cache_entry_t *dir_src,
       = cache_inode_lookup_impl(dir_dest,
                                 newname,
                                 context,
-                                status)) != NULL)
+                                status, FALSE)) != NULL)
     {
       LogDebug(COMPONENT_CACHE_INODE,
                "Rename (%p,%s)->(%p,%s) : destination already exists",

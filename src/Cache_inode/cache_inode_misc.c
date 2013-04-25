@@ -367,7 +367,7 @@ cache_inode_new_entry(cache_inode_fsal_data_t *fsdata,
             fsdata->fh_desc.len);
      entry->fh_desc.start = (caddr_t) &entry->handle;
      entry->fh_desc.len = fsdata->fh_desc.len;
-
+     entry->present = 0;
      /* Enroll the object in the weakref table */
 
      entry->weakref =
@@ -1000,9 +1000,9 @@ cache_inode_check_trust(cache_entry_t *entry,
      } else if ((entry->type == DIRECTORY) &&
                 (oldmtime < entry->attributes.mtime.seconds)) {
 
-          atomic_clear_uint32_t_bits(&entry->flags, CACHE_INODE_TRUST_CONTENT |
-                                     CACHE_INODE_DIR_POPULATED);
+       atomic_clear_uint32_t_bits(&entry->flags, CACHE_INODE_TRUST_CONTENT);
 
+       /*
           if (cache_inode_invalidate_all_cached_dirent(entry, &status)
               != CACHE_INODE_SUCCESS) {
                LogCrit(COMPONENT_CACHE_INODE,
@@ -1010,7 +1010,7 @@ cache_inode_check_trust(cache_entry_t *entry,
                        "returned %d (%s)", status,
                        cache_inode_err_str(status));
           }
-
+       */
      }
      PTHREAD_RWLOCK_UNLOCK(&entry->content_lock);
      return status;
