@@ -263,7 +263,7 @@ cache_inode_remove_impl(cache_entry_t *entry,
           = cache_inode_lookup_impl(entry,
                                     name,
                                     context,
-                                    status)) == NULL) {
+                                    status, FALSE)) == NULL) {
           goto out;
      }
 

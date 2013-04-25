@@ -87,7 +87,8 @@ cache_entry_t *
 cache_inode_lookup_impl(cache_entry_t *parent,
                         fsal_name_t *name,
                         fsal_op_context_t *context,
-                        cache_inode_status_t *status)
+                        cache_inode_status_t *status,
+			bool_t ignorevalidity)
 {
      cache_inode_dir_entry_t dirent_key;
      cache_inode_dir_entry_t *dirent = NULL;
@@ -150,7 +151,7 @@ cache_inode_lookup_impl(cache_entry_t *parent,
           FSAL_namecpy(&dirent_key.name, name);
           for (write_locked = 0; write_locked < 2; ++write_locked) {
                /* If the dirent cache is untrustworthy, don't even ask it */
-               if (parent->flags & CACHE_INODE_TRUST_CONTENT) {
+               if (parent->flags & CACHE_INODE_TRUST_CONTENT || ignorevalidity) {
                     dirent = cache_inode_avl_qp_lookup_s(parent,
                                                          &dirent_key, 1);
                     if (dirent) {
@@ -172,13 +173,18 @@ cache_inode_lookup_impl(cache_entry_t *parent,
                        valid, it can serve negative lookups. */
                     if (!dirent &&
                         (parent->flags & CACHE_INODE_DIR_POPULATED)) {
+		      if (ignorevalidity) {
+			goto addnew;
+		      }
                          entry = NULL;
                          *status = CACHE_INODE_NOT_FOUND;
                          goto out;
                     }
-               } 
+               }
                if ((write_locked) && 
-                        !(parent->flags & CACHE_INODE_TRUST_CONTENT)) {
+		   !(parent->flags & CACHE_INODE_TRUST_CONTENT) &&
+		   !ignorevalidity)
+		 {
                     /* We have the write lock and the content is
                        still invalid.  Empty it out and mark it valid
                        in preparation for caching the result of this
@@ -198,7 +204,7 @@ cache_inode_lookup_impl(cache_entry_t *parent,
                    "Cache Miss detected for %s len %u",
                    name->name, name->len);
      }
-
+ addnew:
      memset(&object_attributes, 0, sizeof(fsal_attrib_list_t));
      object_attributes.asked_attributes = cache_inode_params.attrmask;
      fsal_status =
@@ -252,21 +258,23 @@ cache_inode_lookup_impl(cache_entry_t *parent,
           broken_dirent->entry = entry->weakref;
           cache_status = CACHE_INODE_SUCCESS;
      } else {
-          /* Entry was found in the FSAL, add this entry to the
-             parent directory */
-          cache_status = cache_inode_add_cached_dirent(parent,
-                                                       name,
-                                                       entry,
-                                                       NULL,
-                                                       status);
-          if(cache_status != CACHE_INODE_SUCCESS &&
-             cache_status != CACHE_INODE_ENTRY_EXISTS) {
-               return NULL;
-          }
+       /* Entry was found in the FSAL, add this entry to the
+          parent directory */
+       cache_status = cache_inode_add_cached_dirent(parent,
+                                                    name,
+                                                    entry,
+                                                    &dirent,
+                                                    status);
+       if(cache_status != CACHE_INODE_SUCCESS &&
+          cache_status != CACHE_INODE_ENTRY_EXISTS)
+         return NULL;
      }
-
+     
 out:
 
+     /* Used in readdir avltree updating. */
+     if (dirent && ignorevalidity)
+       dirent->present = TRUE;
      return entry;
 } /* cache_inode_lookup_impl */
 
@@ -312,7 +320,8 @@ cache_inode_lookup(cache_entry_t *parent,
      entry = cache_inode_lookup_impl(parent,
                                      name,
                                      context,
-                                     status);
+                                     status,
+				     FALSE);
      PTHREAD_RWLOCK_UNLOCK(&parent->content_lock);
 
      if (entry) {

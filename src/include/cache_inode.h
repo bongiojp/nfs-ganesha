@@ -285,6 +285,8 @@ typedef struct cache_inode_dir_entry__
   fsal_name_t name; /*< The filename */
   uint64_t fsal_cookie; /*< The cookie returned by the FSAL. */
   uint32_t flags; /*< Flags */
+  bool_t present; /* marker for checking which entries belong in tree
+                     during directory updates. */
 } cache_inode_dir_entry_t;
 
 /**
@@ -367,6 +369,7 @@ struct cache_entry_t
   pthread_rwlock_t content_lock; /*< Lock on type-specific cached
                                      content.  See locking discipline
                                      for details. */
+
   union cache_inode_fsobj__
   {
     struct cache_inode_file__
@@ -688,7 +691,8 @@ cache_inode_status_t cache_inode_getattr(cache_entry_t *entry,
 cache_entry_t *cache_inode_lookup_impl(cache_entry_t *entry_parent,
                                        fsal_name_t *name,
                                        fsal_op_context_t *context,
-                                       cache_inode_status_t *status);
+                                       cache_inode_status_t *status,
+				       bool_t ignoreverify);
 cache_entry_t *cache_inode_lookup(cache_entry_t *entry_parent,
                                   fsal_name_t *name,
                                   fsal_attrib_list_t *attr,
