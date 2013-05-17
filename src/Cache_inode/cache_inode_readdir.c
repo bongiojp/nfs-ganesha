@@ -287,6 +287,7 @@ cache_inode_add_cached_dirent(cache_entry_t *parent,
 
      FSAL_namecpy(&new_dir_entry->name, name);
      new_dir_entry->entry = entry->weakref;
+     new_dir_entry->handle = entry->handle;
 
      /* add to avl */
      code = cache_inode_avl_qp_insert(parent, new_dir_entry);
@@ -479,6 +480,11 @@ cache_inode_readdir_populate(cache_entry_t *directory,
   /* We want cache_inode_lookup_impl() to actually use the cache. */
   if (directory->flags & CACHE_INODE_DIR_POPULATED)
     ignorevalidity = TRUE;
+  if (directory->flags & CACHE_INODE_TRUST_CONTENT) {
+    LogWarn(COMPONENT_NFS_READDIR, "We are populating while the content is"
+	    "supposed to be trusted! Clearing the bit.");
+    atomic_clear_uint32_t_bits(&directory->flags, CACHE_INODE_TRUST_CONTENT);
+  }
 
   /* First we lookup all the entries the FSAL says are in the directory. 
    * This effectively verifies the entries are in the avltree, they are
@@ -720,7 +726,6 @@ cache_inode_readdir(cache_entry_t *directory,
                                                   &dirent->name,
                                                   context,
                                                   &lookup_status);
-
                if(entry == NULL) {
                     LogFullDebug(COMPONENT_NFS_READDIR,
                                  "Lookup returned %s",
@@ -734,10 +739,16 @@ cache_inode_readdir(cache_entry_t *directory,
                     } else {
                          /* Something is more seriously wrong,
                             probably an inconsistency. */
+                    LogFullDebug(COMPONENT_NFS_READDIR,
+                                 "couldn't find weakref, something seriously wrong");
                          *status = lookup_status;
                          goto unlock_dir;
                     }
-               }
+	       }
+	       if (memcmp((void *)&entry->handle, (void *)&dirent->handle, sizeof(fsal_handle_t)) != 0)
+		 LogFullDebug(COMPONENT_NFS_READDIR,"weakref expired or is missing and handle changed for file %s", dirent->name.name);
+	       else
+		 LogFullDebug(COMPONENT_NFS_READDIR,"weakref expired or is missing and handle stayed the same for file %s", dirent->name.name);
           }
 
           LogFullDebug(COMPONENT_NFS_READDIR,
@@ -750,7 +761,8 @@ cache_inode_readdir(cache_entry_t *directory,
           if (*status != CACHE_INODE_SUCCESS)
             {
               cache_inode_lru_unref(entry, 0);
-              goto unlock_dir;
+	      /* Skip it */
+	      continue;
             }
 
           set_mounted_on_fileid(entry,

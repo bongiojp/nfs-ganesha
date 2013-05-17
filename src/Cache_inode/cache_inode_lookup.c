@@ -152,6 +152,7 @@ cache_inode_lookup_impl(cache_entry_t *parent,
           for (write_locked = 0; write_locked < 2; ++write_locked) {
                /* If the dirent cache is untrustworthy, don't even ask it */
                if (parent->flags & CACHE_INODE_TRUST_CONTENT || ignorevalidity) {
+		 assert(parent->flags & CACHE_INODE_DIR_POPULATED);
                     dirent = cache_inode_avl_qp_lookup_s(parent,
                                                          &dirent_key, 1);
                     if (dirent) {
@@ -160,6 +161,7 @@ cache_inode_lookup_impl(cache_entry_t *parent,
                                                          LRU_REQ_SCAN);
 
                          if (entry == NULL) {
+			   LogFullDebug(COMPONENT_CACHE_INODE,"Found broken_dirent. Planning to fix.");
                               broken_dirent = dirent;
                               break;
                          } else {
@@ -174,6 +176,7 @@ cache_inode_lookup_impl(cache_entry_t *parent,
                     if (!dirent &&
                         (parent->flags & CACHE_INODE_DIR_POPULATED)) {
 		      if (ignorevalidity) {
+			LogFullDebug(COMPONENT_CACHE_INODE,"no dirent for file %s", name->name);
 			goto addnew;
 		      }
                          entry = NULL;
@@ -181,22 +184,10 @@ cache_inode_lookup_impl(cache_entry_t *parent,
                          goto out;
                     }
                }
-               if ((write_locked) && 
-		   !(parent->flags & CACHE_INODE_TRUST_CONTENT) &&
-		   !ignorevalidity)
-		 {
-                    /* We have the write lock and the content is
-                       still invalid.  Empty it out and mark it valid
-                       in preparation for caching the result of this
-                       lookup. */
-                    cache_inode_release_dirents(parent,
-                                                CACHE_INODE_AVL_BOTH);
-                    atomic_set_uint32_t_bits(&parent->flags,
-                                             CACHE_INODE_TRUST_CONTENT);
-               } else if (!write_locked) {
-                    /* Get a write lock and try weakref_get again. */
-                    PTHREAD_RWLOCK_UNLOCK(&parent->content_lock);
-                    PTHREAD_RWLOCK_WRLOCK(&parent->content_lock);
+	       if (!write_locked) {
+		 /* Get a write lock and try weakref_get again. */
+		 PTHREAD_RWLOCK_UNLOCK(&parent->content_lock);
+		 PTHREAD_RWLOCK_WRLOCK(&parent->content_lock);
                }
           }
           assert(entry == NULL);
@@ -255,11 +246,19 @@ cache_inode_lookup_impl(cache_entry_t *parent,
      if (broken_dirent) {
           /* Directory entry existed, but the weak reference
              was broken.  Just update with the new one. */
+       LogFullDebug(COMPONENT_CACHE_INODE,"lookup adding weakref");
           broken_dirent->entry = entry->weakref;
+	  if (memcmp((void *)&entry->handle, (void *)&broken_dirent->handle, sizeof(fsal_handle_t)) != 0) {
+	    LogFullDebug(COMPONENT_CACHE_INODE,"weakref expired and handle changed for file %s", name->name);
+	  } else {
+	    LogFullDebug(COMPONENT_CACHE_INODE,"weakref expired but handle stayed same for file %s", name->name);
+	  }
+          broken_dirent->handle = entry->handle;
           cache_status = CACHE_INODE_SUCCESS;
-     } else {
+     } else if ( (!parent->flags & CACHE_INODE_TRUST_CONTENT) || ignorevalidity) {
        /* Entry was found in the FSAL, add this entry to the
           parent directory */
+       LogFullDebug(COMPONENT_CACHE_INODE,"lookup adding cached_dirent()");
        cache_status = cache_inode_add_cached_dirent(parent,
                                                     name,
                                                     entry,
