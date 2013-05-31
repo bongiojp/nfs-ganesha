@@ -240,9 +240,9 @@ int nfs4_op_lookup(struct nfs_argop4 *op, compound_data_t * data, struct nfs_res
 
     }
 
-  /* If the part of the code is reached, then something wrong occured in the lookup process, status is not HPSS_E_NOERROR 
-   * and contains the code for the error */
-
+  /* If the part of the code is reached, then something wrong occured in the
+   * lookup process, status is not HPSS_E_NOERROR and contains the code for the
+   * error */
   res_LOOKUP4.status = nfs4_Errno(cache_status);
 
   return res_LOOKUP4.status;
