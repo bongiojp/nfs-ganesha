@@ -114,9 +114,8 @@ static inline size_t nfs3_sizeof_handle(struct file_handle_v3 *hdl)
 	return len;
 }
 
-/* This is up to 128 bytes, aligned on 32 bits
- */
-static const uint16_t 0x0001 FILE_HANDLE_V4_FLAG_DS;
+/* This is up to 128 bytes, aligned on 32 bits */
+#define FILE_HANDLE_V4_FLAG_DS 0x0001
 typedef struct file_handle_v4
 {
   uint8_t fhversion;   /* set to 0x42 to separate from Linux knfsd */
