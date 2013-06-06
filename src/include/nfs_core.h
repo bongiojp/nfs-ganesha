@@ -339,6 +339,7 @@ typedef struct nfs_param__
 #ifdef _USE_NFS4_1
   nfs_session_id_parameter_t session_id_param;
 #endif                          /* _USE_NFS4_1 */
+  nfs4_pseudo_parameter_t nfs4_pseudofs_param;
   nfs4_owner_parameter_t nfs4_owner_param;
 #ifdef _USE_NLM
   hash_parameter_t nsm_client_hash_param;
@@ -789,6 +790,14 @@ int nfs_Init_ip_name(nfs_ip_name_parameter_t param);
 hash_table_t *nfs_Init_ip_stats(nfs_ip_stats_parameter_t param);
 int nfs_Init_dupreq(nfs_rpc_dupreq_parameter_t param);
 int Init_nfs4_pseudo(nfs4_pseudo_parameter_t param);
+uint32_t nfs4_pseudo_value_hash_func(hash_parameter_t * p_hparam,
+                                     hash_buffer_t    * buffclef);
+uint64_t nfs4_pseudo_rbt_hash_func(hash_parameter_t * p_hparam,
+                                   hash_buffer_t    * buffclef);
+int compare_nfs4_pseudo_key(hash_buffer_t *buff1,
+                            hash_buffer_t *buff2);
+int display_pseudo_val(struct display_buffer * dspbuf, hash_buffer_t * pbuff);
+int display_pseudo_key(struct display_buffer * dspbuf, hash_buffer_t * pbuff);
 
 extern const nfs_function_desc_t *INVALID_FUNCDESC;
 

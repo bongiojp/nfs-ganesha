@@ -131,7 +131,7 @@ typedef struct file_handle_v4
  */
 struct alloc_file_handle_v4 {
 	struct file_handle_v4 handle;	/* the real handle, 6 bytes fixed */
-	uint8_t pad[121];		/* pad to mandatory max 128 bytes */
+	uint8_t pad[120];		/* pad to mandatory max 128 bytes */
 };
 
 /* nfs4_sizeof_handle

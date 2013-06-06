@@ -364,7 +364,8 @@ int nfs4_FSALToFhandle(nfs_fh4 *pfh4,
   if(nfs_param.nfsv4_param.fh_expire == TRUE)
     {
       LogFullDebug(COMPONENT_NFS_V4, "An expireable file handle was created.");
-      file_handle->srvboot_time = ServerBootTime;
+      //TODO: FIX, this is to be replaced by an FSAL specific function
+      //      file_handle->srvboot_time = ServerBootTime;
     }
 
   /* Set the len */
@@ -633,11 +634,12 @@ int nfs4_Is_Fh_Empty(nfs_fh4 * pfh)
  */
 int nfs4_Is_Fh_Xattr(nfs_fh4 * pfh)
 {
-  file_handle_v4_t *pfhandle4;
+  //  file_handle_v4_t *pfhandle4;
 
   if(pfh == NULL)
     return 0;
 
+  //TODO: FIX, an FSAL function will have to replace this functionality
   //  pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
 
   //  return (pfhandle4->xattr_pos != 0) ? 1 : 0;
@@ -716,8 +718,10 @@ int nfs4_Is_Fh_Expired(nfs_fh4 * pfh)
 
   pfilehandle4 = (file_handle_v4_t *) pfh;
 
-  if((nfs_param.nfsv4_param.fh_expire == TRUE)
-     && (pfilehandle4->srvboot_time != (unsigned int)ServerBootTime))
+
+  if((nfs_param.nfsv4_param.fh_expire == TRUE))
+  //TODO: FIX, this is to be replaced by an FSAL specific function
+    //   && (pfilehandle4->srvboot_time != (unsigned int)ServerBootTime))
     {
       if(nfs_param.nfsv4_param.returns_err_fh_expired == TRUE)
         {
@@ -769,9 +773,8 @@ int nfs4_Is_Fh_Invalid(nfs_fh4 * pfh)
      pfile_handle->fhversion != GANESHA_FH_VERSION ||
      pfh->nfs_fh4_len < offsetof(struct file_handle_v4, fsopaque) ||
      pfh->nfs_fh4_len > sizeof(struct alloc_file_handle_v4) ||
-     pfh->nfs_fh4_len != nfs4_sizeof_handle(pfile_handle) ||
-     (pfile_handle->pseudofs_id != 0 &&
-      pfile_handle->pseudofs_flag == FALSE))
+     pfh->nfs_fh4_len != nfs4_sizeof_handle(pfile_handle)
+     )
     {
       if(isInfo(COMPONENT_FILEHANDLE))
         {
@@ -813,10 +816,12 @@ int nfs4_Is_Fh_Invalid(nfs_fh4 * pfh)
             }
           else
             {
-              LogInfo(COMPONENT_FILEHANDLE,
-                      "INVALID HANDLE: pseudofs_id=%d pseudofs_flag=%d",
+              // TODO: Print fsopaque
+              /*LogInfo(COMPONENT_FILEHANDLE,
+                      "INVALID HANDLE: pseudofs_id=%d exportid=%d",
                       pfile_handle->pseudofs_id,
-                      pfile_handle->pseudofs_flag);
+                      pfile_handle->exportid);
+              */
             }
         }
                
@@ -934,8 +939,9 @@ int nfs4_Is_Fh_Referral(nfs_fh4 * pfh)
 
   pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
 
+  //TODO: FIX when new referrals implementation is done
   /* Referrals are fh whose pseudofs_id is set without pseudofs_flag set */
-  if(pfhandle4->refid > 0)
+  if (0)/*  if(pfhandle4->refid > 0) */
     {
       return TRUE;
     }

@@ -576,16 +576,16 @@ void nfs_set_param_default()
 #endif                          /* _USE_NFS4_1 */
 
   /* NFSv4 Pseudo FS <-> nodeid hash */
-  nfs_param.nfs4_pseudo_param.hash_param.index_size = PRIME_STATE_ID;
-  nfs_param.nfs4_pseudo_param.hash_param.alphabet_length = 10;
-  nfs_param.nfs4_pseudo_param.hash_param.hash_func_key = nfs4_pseudo_value_hash_func;
-  nfs_param.nfs4_pseudo_param.hash_param.hash_func_rbt = nfs4_pseudo_rbt_hash_func;
-  nfs_param.nfs4_pseudo_param.hash_param.compare_key = compare_nfs4_pseudo_key;
-  nfs_param.nfs4_pseudo_param.hash_param.key_to_str = display_nfs4_pseudo_key;
-  nfs_param.nfs4_pseudo_param.hash_param.val_to_str = display_nfs4_pseudo_val;
-  nfs_param.nfs4_pseudo_param.hash_param.ht_name = "NFS4 PseudoFS nodeid";
-  nfs_param.nfs4_pseudo_param.hash_param.flags = HT_FLAG_CACHE;
-  nfs_param.nfs4_pseudo_param.hash_param.ht_log_component = COMPONENT_NFS_V4_PSEUDO;
+  nfs_param.nfs4_pseudofs_param.hash_param.index_size = PRIME_STATE_ID;
+  nfs_param.nfs4_pseudofs_param.hash_param.alphabet_length = 10;
+  nfs_param.nfs4_pseudofs_param.hash_param.hash_func_key = nfs4_pseudo_value_hash_func;
+  nfs_param.nfs4_pseudofs_param.hash_param.hash_func_rbt = nfs4_pseudo_rbt_hash_func;
+  nfs_param.nfs4_pseudofs_param.hash_param.compare_key = compare_nfs4_pseudo_key;
+  nfs_param.nfs4_pseudofs_param.hash_param.key_to_str = display_pseudo_key;
+  nfs_param.nfs4_pseudofs_param.hash_param.val_to_str = display_pseudo_val;
+  nfs_param.nfs4_pseudofs_param.hash_param.ht_name = "NFS4 PseudoFS nodeid";
+  nfs_param.nfs4_pseudofs_param.hash_param.flags = HT_FLAG_CACHE;
+  nfs_param.nfs4_pseudofs_param.hash_param.ht_log_component = COMPONENT_NFS_V4_PSEUDO;
 
   /* NFSv4 Open Owner hash */
   nfs_param.nfs4_owner_param.hash_param.index_size = PRIME_STATE_ID;
@@ -1871,7 +1871,7 @@ static void nfs_Init(const nfs_start_info_t * p_start_info)
   LogInfo(COMPONENT_INIT,
           "Cache Inode root entries successfully created");
 
-  if(Init_nfs4_pseudo(nfs_param.nfs4_pseudo_param); != 0)
+  if(Init_nfs4_pseudo(nfs_param.nfs4_pseudofs_param) != 0)
     {
       LogFatal(COMPONENT_INIT, "Error while initializing NFSv4 Pseudofs cache");
     }

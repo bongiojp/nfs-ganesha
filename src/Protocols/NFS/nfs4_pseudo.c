@@ -72,6 +72,15 @@ static pseudofs_t gPseudoFs;
 hash_table_t *ht_nfs4_pseudo;
 struct alloc_file_handle_v4 notused; /* Used for sizeof()*/
 
+void display_v4handle(char *buffer, void *fsopaque, int len) {
+  int i;
+  fprintf(stderr, "len:%d\n", len);
+  for(i = 0; i < len; i++) {
+  fprintf(stderr, "%02x", ((unsigned char *)fsopaque)[i]);
+    sprintf(buffer, "%02x", ((unsigned char *)fsopaque)[i]);
+  }
+}
+
 /**
  * nfs4_GetPseudoFs: Gets the root of the pseudo file system.
  * 
@@ -147,24 +156,34 @@ static inline int avl_pseudo_name_cmp(const struct avltree_node *lhs,
                                       const struct avltree_node *rhs) {
   pseudofs_entry_t *lk, *rk;
   int llen,rlen,minlen,res;
-  lk = avltree_container_of(lhs, pseudofs_entry_t, avlnode);
-  rk = avltree_container_of(rhs, pseudofs_entry_t, avlnode);
+  lk = avltree_container_of(lhs, pseudofs_entry_t, nameavlnode);
+  rk = avltree_container_of(rhs, pseudofs_entry_t, nameavlnode);
+
+  fprintf(stderr, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa    lhsptr=%p   rhsptr=%p\n", lhs, rhs);
   
   llen = strlen(lk->name);
   rlen = strlen(rk->name);
   minlen = min(llen, rlen);
 
   /* Compare strings*/
+  fprintf(stderr, "lk->name:%s  rk->name:%s  minlen:%d\n", lk->name, rk->name, minlen);
+  fprintf(stderr, "llen=%d rlen=%d\n", llen, rlen);
   res = strncmp(lk->name, rk->name, minlen);
-  if (res != 0)
+  if (res != 0) {
+  fprintf(stderr, "111111111111111\n");
     return res;
+  }
 
   /* Same characters so far, now compare length of string. */
-  if (llen < rlen)
+  if (llen < rlen) {
+  fprintf(stderr, "22222222222222\n");
     return (-1);
-  if (llen > rlen)
+  }
+  if (llen > rlen) {
+  fprintf(stderr, "33333333333333\n");
     return (1);
-
+  }
+  fprintf(stderr, "44444444444444\n");
   /* Exact same name */
   return 0;
 }
@@ -174,8 +193,10 @@ static inline int avl_pseudo_name_cmp(const struct avltree_node *lhs,
 static inline int avl_pseudo_id_cmp(const struct avltree_node *lhs,
                                     const struct avltree_node *rhs) {
   pseudofs_entry_t *lk, *rk;
-  lk = avltree_container_of(lhs, pseudofs_entry_t, avlnode);
-  rk = avltree_container_of(rhs, pseudofs_entry_t, avlnode);
+  lk = avltree_container_of(lhs, pseudofs_entry_t, idavlnode);
+  rk = avltree_container_of(rhs, pseudofs_entry_t, idavlnode);
+
+  fprintf(stderr, "bbbbbbbbbbbbbbbbbbbbbbbbbbbb\n");
 
   if (lk->pseudo_id < rk->pseudo_id)
     return (-1);
@@ -184,6 +205,19 @@ static inline int avl_pseudo_id_cmp(const struct avltree_node *lhs,
   return 0;
 }
 
+void fullpath(char *fullpseudopath, char **PathTok, int tok, int maxlen) {
+  int currtok, currlen=0;
+
+  fullpseudopath[currlen++] = '/';
+  for(currtok=0; currtok<=tok&&currlen<maxlen; currtok++) {
+    if (currlen + strlen(PathTok[currtok]) > maxlen)
+      return;
+    strncpy(fullpseudopath+currlen, PathTok[currtok], strlen(PathTok[currtok]));
+    currlen += strlen(PathTok[currtok]);
+    if (currtok<tok)
+      fullpseudopath[currlen++] = '/';
+  }
+}
 
 /**
  * nfs4_ExportToPseudoFS: Build a pseudo fs from an exportlist
@@ -199,8 +233,8 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
   hash_buffer_t key, value;
   exportlist_t *entry;
   struct glist_head * glist;
-  int j=0, currchar=0,NbTokPath;
-  char tmp_pseudopath[MAXPATHLEN+2], *PathTok[NB_TOK_PATH];
+  int j=0, NbTokPath;
+  char handle2str[128], tmp_pseudopath[MAXPATHLEN+2], fullpseudopath[MAXPATHLEN+2], *PathTok[NB_TOK_PATH];
   pseudofs_t *PseudoFs = NULL;
   pseudofs_entry_t *PseudoFsCurrent=NULL,*newPseudoFsEntry=NULL;
   hash_error_t hrc = 0;
@@ -212,14 +246,32 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
   /* Init Root of the Pseudo FS tree */
   strcpy(PseudoFs->root.name, "/");
   PseudoFs->root.pseudo_id = 0;
-  PseudoFs->root.fsopaque = NULL;
   PseudoFs->root.junction_export = NULL;
   /* root is its own parent */
   PseudoFs->root.parent = &PseudoFs->root;
-  avltree_init(&newPseudoFsEntry->child_tree_byname,avl_pseudo_name_cmp, 0);
-  avltree_init(&newPseudoFsEntry->child_tree_byid,avl_pseudo_id_cmp, 0);
-  //  newPseudoFsEntry->child_tree_byname.root = &newPseudoFsEntry.avlnode;
-  //  newPseudoFsEntry->child_tree_byid.root = &newPseudoFsEntry.avlnode;
+  avltree_init(&PseudoFs->root.child_tree_byname, avl_pseudo_name_cmp, 0);
+  avltree_init(&PseudoFs->root.child_tree_byid, avl_pseudo_id_cmp, 0);
+
+  key = create_pseudo_handle_key(PseudoFs->root.name, strlen(PseudoFs->root.name));
+  memset(handle2str, 0, sizeof(handle2str));
+  display_v4handle(handle2str, key.pdata, key.len);
+  LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for path:%s handle:%s",
+	       PseudoFs->root.name,handle2str);
+
+  PseudoFs->root.fsopaque = (uint8_t *)key.pdata;
+  fprintf(stderr, "POINTER: %p", PseudoFs->root.fsopaque);
+  value.pdata = &PseudoFs->root;
+  value.len = sizeof(PseudoFs->root);
+  hrc = HashTable_Test_And_Set(ht_nfs4_pseudo, &key, &value,
+			       HASHTABLE_SET_HOW_SET_NO_OVERWRITE);
+  if(hrc != HASHTABLE_SUCCESS) {
+    LogCrit(COMPONENT_NFS_V4_PSEUDO,
+	    "Failed to add ROOT pseudofs path %s due to hashtable error: %s",
+	    PseudoFs->root.name, hash_table_err_to_str(hrc));
+                return -1;
+  }
+
+  LogDebug(COMPONENT_NFS_V4_PSEUDO, "Added root pseudofs node to hashtable");
               
   glist_for_each(glist, pexportlist)
     {
@@ -277,11 +329,13 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
           for(j = 0; j < NbTokPath; j++)
             {
               /* Pseudofs path */
-              /* key generated from FULL pathname and cityhash64 of pathname.
-               * currchar keeps track of the full pathname for this pseudofs
-               * node. +1 for the "/" character */
-              currchar += strlen(PathTok[j]) + 1;
-              key = create_pseudo_handle_key(tmp_pseudopath, currchar);
+	      fullpath(fullpseudopath, PathTok, j, MAXPATHLEN);
+              key = create_pseudo_handle_key(fullpseudopath, strlen(fullpseudopath));
+	      
+	      memset(handle2str, 0, sizeof(handle2str));
+	      display_v4handle(handle2str, key.pdata, key.len);
+	      LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for path:%s handle:%s",
+			   fullpseudopath,handle2str);
 
               /* Now we create the pseudo entry */
               newPseudoFsEntry = gsh_malloc(sizeof(pseudofs_entry_t));
@@ -293,19 +347,17 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
 
               /* Creating the new pseudofs entry */
               strncpy(newPseudoFsEntry->name, PathTok[j], strlen(PathTok[j]));
-              newPseudoFsEntry->fsopaque = (uint8_t *)&key.pdata;
+              newPseudoFsEntry->fsopaque = (uint8_t *)key.pdata;
               memcpy(&newPseudoFsEntry->pseudo_id, key.pdata,
                      sizeof(newPseudoFsEntry->pseudo_id));
               newPseudoFsEntry->junction_export = NULL;
               newPseudoFsEntry->parent = PseudoFsCurrent;
               avltree_init(&newPseudoFsEntry->child_tree_byname,avl_pseudo_name_cmp, 0);
               avltree_init(&newPseudoFsEntry->child_tree_byid,avl_pseudo_id_cmp, 0);
-              //              newPseudoFsEntry->child_tree_byname.root = &newPseudoFsEntry->avlnode;
-              //              newPseudoFsEntry->child_tree_byid.root = &newPseudoFsEntry->avlnode;
 
               LogMidDebug(COMPONENT_NFS_V4_PSEUDO,
                           "Creating pseudo fs entry for %s, pseudo_id %llud",
-                          PathTok[j], newPseudoFsEntry->pseudo_id);
+                          newPseudoFsEntry->name, newPseudoFsEntry->pseudo_id);
 
               value.pdata = newPseudoFsEntry;
               value.len = sizeof(newPseudoFsEntry);
@@ -350,10 +402,15 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
               }
 
               /* Insert new pseudofs entry into tree */
-              node = avltree_insert(&newPseudoFsEntry->avlnode,
+	      fprintf(stderr, "inserting new pseudofs node into tree_byname: %s nameavlnodeptr:%p\n", fullpseudopath,
+		      &newPseudoFsEntry->nameavlnode);
+              node = avltree_insert(&newPseudoFsEntry->nameavlnode,
                                     &PseudoFsCurrent->child_tree_byname);
               assert(!node);
-              node = avltree_insert(&newPseudoFsEntry->avlnode,
+
+	      fprintf(stderr, "inserting new pseudofs node into tree_byid: %s idavlnodeptr:%p\n", fullpseudopath,
+		      &newPseudoFsEntry->idavlnode);
+              node = avltree_insert(&newPseudoFsEntry->idavlnode,
                                     &PseudoFsCurrent->child_tree_byid);
               assert(!node);
 
@@ -1348,12 +1405,13 @@ int nfs4_CurrentFHToPseudo(compound_data_t   * data,
   hash_buffer_t key, value;
   hash_error_t hrc = 0;
   struct hash_latch latch;
+  char handle2str[128];
 
   /* Map the filehandle to the correct structure */
   pfhandle4 = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
 
   /* The function must be called with a fh pointed to a pseudofs entry */
-  if(pfhandle4 == NULL || pfhandle4->exportid == 0 ||
+  if(pfhandle4 == NULL || pfhandle4->exportid != 0 || /* exportid 0 indicates pseudofs node*/
      pfhandle4->fhversion != GANESHA_FH_VERSION)
     {
       LogDebug(COMPONENT_NFS_V4_PSEUDO,
@@ -1368,6 +1426,11 @@ int nfs4_CurrentFHToPseudo(compound_data_t   * data,
   /* key generated from pathname and cityhash64 of pathname */
   key.pdata = pfhandle4->fsopaque;
   key.len = pfhandle4->fs_len;
+
+  memset(handle2str, 0, sizeof(handle2str));
+  display_v4handle(handle2str, key.pdata, key.len);
+  LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"looking up pseudofs node for handle:%s",
+	       handle2str);
 
   hrc = HashTable_GetLatch(ht_nfs4_pseudo, &key, &value, FALSE, &latch);
   if ((hrc != HASHTABLE_SUCCESS)) {
@@ -1403,10 +1466,10 @@ int nfs4_CurrentFHToPseudo(compound_data_t   * data,
  * @param psfsentry [IN]  pointer to pseudofs entry
  * 
  */
-
 void nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
 {
   file_handle_v4_t *fhandle4;
+  char handle2str[128];
 
   assert(psfsentry != NULL);
   memset(fh4p->nfs_fh4_val, 0, sizeof(struct alloc_file_handle_v4)); /* clean whole thing */
@@ -1414,9 +1477,20 @@ void nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
   fhandle4->fhversion = GANESHA_FH_VERSION;
   fhandle4->exportid = 0;
   memcpy(fhandle4->fsopaque, psfsentry->fsopaque, sizeof(notused.pad));
+  fhandle4->fs_len = sizeof(notused.pad);
 
-  //  LogFullDebug(COMPONENT_NFS_V4_PSEUDO, "PSEUDO_TO_FH: Pseudo id = %d -> %d",
-  //               psfsentry->pseudo_id, fhandle4->pseudofs_id);
+  fprintf(stderr, "rootPOINTER: %p\n", gPseudoFs.root.fsopaque);
+  fprintf(stderr, "POINTER: %p\n", psfsentry->fsopaque);
+
+  memset(handle2str, 0, sizeof(handle2str));
+  display_v4handle(handle2str, gPseudoFs.root.fsopaque, sizeof(notused.pad));
+  LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle for ROOThandle:%s",
+	       handle2str);
+
+  memset(handle2str, 0, sizeof(handle2str));
+  display_v4handle(handle2str, psfsentry->fsopaque, sizeof(notused.pad));
+  LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle for name:%s handle:%s",
+	       psfsentry->name,handle2str);
 
   fh4p->nfs_fh4_len = nfs4_sizeof_handle(fhandle4); /* no handle in opaque */
 
@@ -1534,7 +1608,7 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
 
   /* Used for child avltree lookup*/
   pseudofs_entry_t tempentry;
-  struct avltree_node keynode, *foundnode;
+  struct avltree_node *keynode, *foundnode;
 
   resp->resop = NFS4_OP_LOOKUP;
 
@@ -1553,9 +1627,14 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
   /* Search for name in pseudo fs directory. We use a temporary
    * avlnode and pseudofs_entry_t to perform a name lookup in
    * the child tree. If it's not here, it doesn't exist.*/
-  keynode = tempentry.avlnode;
-  strncpy(tempentry.name, name, strlen(name));
-  foundnode = avltree_lookup(&keynode, &parent_fsentry->child_tree_byname);
+  keynode = &tempentry.nameavlnode;
+  //  fprintf(stderr, "NAAAAAAAAAAAAAAAAAAAAME:%s   and ptr:%p       tempentryptr:%p\n", name, &keynode, &tempentry);
+  strcpy(tempentry.name, name);
+  //  fprintf(stderr, "name name name:%s        offsetof=%d\n", tempentry.name, offsetof(pseudofs_entry_t, nameavlnode)   );
+  pseudofs_entry_t *lk = avltree_container_of(keynode, pseudofs_entry_t, nameavlnode);
+  //  fprintf(stderr, "name again:%s   lkptr:%p\n", lk->name, lk);
+
+  foundnode = avltree_lookup(keynode, &parent_fsentry->child_tree_byname);
   if(foundnode == NULL)
     {
       res_LOOKUP4.status = NFS4ERR_NOENT;
@@ -1564,7 +1643,7 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
 
   /* we found the requested pseudofs node. */
   thefsentry = avltree_container_of(foundnode, pseudofs_entry_t,
-                                    avlnode);
+                                    nameavlnode);
 
   /* A matching entry was found */
   if(thefsentry->junction_export == NULL)
@@ -2052,8 +2131,8 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
     currnode = avltree_first(&psfsentry->child_tree_byid);
   else {
     /* Find entry with cookie (which was set to pseudo_id) */
-    memset(&tempentry.avlnode, 0, sizeof(tempentry.avlnode));
-    keynode = tempentry.avlnode;
+    memset(&tempentry.idavlnode, 0, sizeof(tempentry.idavlnode));
+    keynode = tempentry.idavlnode;
     tempentry.pseudo_id = cookie;
     currnode = avltree_lookup(&keynode, &psfsentry->child_tree_byid);
     if(currnode == NULL)
@@ -2066,7 +2145,7 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
   for( ;
        currnode != NULL;
        currnode = avltree_next(currnode)) {
-    curr_psfsentry = avltree_container_of(currnode, pseudofs_entry_t, avlnode);
+    curr_psfsentry = avltree_container_of(currnode, pseudofs_entry_t, idavlnode);
     LogMidDebug(COMPONENT_NFS_V4_PSEUDO,
                 "PSEUDO FS: Found entry %s pseudo_id %llu",
                 curr_psfsentry->name, curr_psfsentry->pseudo_id);
@@ -2427,6 +2506,27 @@ uint64_t nfs4_pseudo_rbt_hash_func(hash_parameter_t * p_hparam,
     LogFullDebug(p_hparam->ht_log_component, "rbt = %"PRIu64, res);
   return res;
 }                               /* state_id_rbt_hash_func */
+
+int display_pseudo_val(struct display_buffer * dspbuf, hash_buffer_t * pbuff)
+{
+  pseudofs_entry_t *psfsentry = (pseudofs_entry_t *)pbuff->pdata;
+
+  return display_printf(dspbuf, "nodename=%s nodeid=%llu", psfsentry->name,
+                        psfsentry->pseudo_id);
+}
+
+int display_pseudo_key(struct display_buffer * dspbuf, hash_buffer_t * pbuff)
+{
+  uint64_t ch64_hash = 0;
+  int len;
+  char pseudopath[MAXPATHLEN+2];
+
+  ch64_hash = *(uint64_t *)pbuff->pdata;
+  len = *(ushort *)(pbuff->pdata+sizeof(ch64_hash));
+  strncpy(pseudopath, pbuff->pdata + sizeof(ch64_hash) + sizeof(ushort),
+         len);
+  return display_printf(dspbuf, "len=%d path=%s", len, pseudopath);
+}
 
 /**
  *

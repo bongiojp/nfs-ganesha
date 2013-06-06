@@ -309,7 +309,8 @@ struct exportlist__
  */
 typedef struct pseudofs_entry
 {
-  struct avltree_node avlnode;      /** AVL node in tree */
+  struct avltree_node idavlnode;      /** AVL node in tree */
+  struct avltree_node nameavlnode;      /** AVL node in tree */
   char name[MAXNAMLEN+1];           /** The entry name, not full path */
   uint8_t *fsopaque;                /** do not garbage collect this, it points
                                         to an already gc'd file_handle_v4_t. 
