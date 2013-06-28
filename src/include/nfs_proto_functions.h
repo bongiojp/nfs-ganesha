@@ -1148,4 +1148,16 @@ nfsstat3 nfs3_Errno_verbose(cache_inode_status_t error, const char *);
 #define nfs3_Errno(e) nfs3_Errno_verbose(e, __func__)
 int nfs3_AllocateFH(nfs_fh3 * fh);
 int nfs4_AllocateFH(nfs_fh4 * fh);
+
+/* Pseudofs cache initialization, hashtable, and avltree functions */
+int Init_nfs4_pseudo(nfs4_pseudo_parameter_t param);
+uint32_t nfs4_pseudo_value_hash_func(hash_parameter_t * p_hparam,
+                                     hash_buffer_t    * buffclef);
+uint64_t nfs4_pseudo_rbt_hash_func(hash_parameter_t * p_hparam,
+                                   hash_buffer_t    * buffclef);
+int compare_nfs4_pseudo_key(hash_buffer_t *buff1,
+                            hash_buffer_t *buff2);
+int display_pseudo_val(struct display_buffer * dspbuf, hash_buffer_t * pbuff);
+int display_pseudo_key(struct display_buffer * dspbuf, hash_buffer_t * pbuff);
+
 #endif /* _NFS_PROTO_FUNCTIONS_H */
