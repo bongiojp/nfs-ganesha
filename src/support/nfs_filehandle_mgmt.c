@@ -261,7 +261,7 @@ bool nfs2_FSALToFhandle(fhandle2 *fh2,
   file_handle->exportid = fsalhandle->export->exp_entry->id;
 
   /* Set the last byte */
-  file_handle->xattr_pos = 0;
+  //  file_handle->xattr_pos = 0;
 
   /*   /\* Set the data *\/ */
   /*   memcpy((caddr_t) pfh2, &file_handle, sizeof(file_handle_v2_t)); */
@@ -376,7 +376,8 @@ int nfs3_Is_Fh_Xattr(nfs_fh3 * pfh)
 
   pfhandle3 = (file_handle_v3_t *) (pfh->data.data_val);
 
-  return (pfhandle3->xattr_pos != 0) ? 1 : 0;
+  //  return (pfhandle3->xattr_pos != 0) ? 1 : 0;
+  return 0;
 }                               /* nfs4_Is_Fh_Xattr */
 
 /**
@@ -422,7 +423,7 @@ int nfs4_Is_Fh_Pseudo(nfs_fh4 * pfh)
 
   pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
 
-  return pfhandle4->pseudofs_flag;
+  return (pfhandle4->exportid == 0);
 }                               /* nfs4_Is_Fh_Pseudo */
 
 /**
@@ -445,7 +446,7 @@ int nfs4_Is_Fh_DSHandle(nfs_fh4 * pfh)
 
   pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
 
-  return pfhandle4->ds_flag;
+  return (pfhandle4->flags & FILE_HANDLE_V4_FLAG_DS)
 }
 
 /**
