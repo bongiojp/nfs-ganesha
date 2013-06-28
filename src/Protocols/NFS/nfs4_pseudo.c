@@ -49,12 +49,152 @@
 #include "cache_inode.h"
 #include "cache_inode_lru.h"
 #include "export_mgr.h"
+#include "city.h"
+#include "cache_inode_avl.h"
+#include "avltree.h"
 
 #define NB_TOK_ARG 10
 #define NB_OPT_TOK 10
 #define NB_TOK_PATH 20
 
+#define min(a,b)                        \
+  ({ typeof (a) _a = (a);               \
+    typeof (b) _b = (b);                \
+    _a < _b ? _a : _b; })
+
 static pseudofs_t gPseudoFs;
+hash_table_t *ht_nfs4_pseudo;
+struct alloc_file_handle_v4 notused; /* Used for sizeof()*/
+
+/* Print a nfsv4 handle to a string buffer. */
+void v4handle2str(char *buffer, void *fsopaque, int len)
+{
+  int i;
+  for(i = 0; i < len; i++)
+    sprintf(buffer+2*i, "%02x", ((unsigned char *)fsopaque)[i]);
+}
+
+void free_pseudo_handle_key(hash_buffer_t key)
+{
+  gsh_free(key.pdata);
+}
+
+char *package_pseudo_handle(char *pseudopath, ushort len, uint64 hashkey)
+{
+  char *buff = NULL;
+  int opaque_bytes_used=0,pathlen=0;
+
+  /* This is the size of the v4 file handle opaque area used for pseudofs or
+   * FSAL file handles. */
+  buff = gsh_malloc(sizeof(notused.pad)); 
+  if (buff == NULL) {
+    LogCrit(COMPONENT_NFS_V4_PSEUDO,
+            "Failed to malloc space for pseudofs handle.");
+    return NULL;
+  }
+
+  memcpy(buff, &hashkey, sizeof(hashkey));
+  opaque_bytes_used += sizeof(hashkey);
+
+  /* include length of the path in the handle */
+  /* MAXPATHLEN=4096 ... max path length can be contained in a short int. */
+  memcpy(buff + opaque_bytes_used, &len, sizeof(ushort));
+  opaque_bytes_used += sizeof(ushort);
+
+  /* Either the nfsv4 fh opaque size or the length of the pseudopath. Ideally
+   * we can include entire pseudofs pathname for guaranteed uniqueness of
+   * pseudofs handles. */
+  pathlen = min(sizeof(notused.pad) - opaque_bytes_used, len);
+  memcpy(buff + opaque_bytes_used, pseudopath, pathlen);
+  opaque_bytes_used += pathlen;
+
+  /* If there is more space in the opaque handle due to a short pseudofs path
+   * ... zero it. */
+  if (opaque_bytes_used < sizeof(notused.pad)) {
+    memset(buff + opaque_bytes_used, 0,
+           sizeof(notused.pad) - opaque_bytes_used);
+  }
+
+  return buff;
+}
+
+hash_buffer_t create_pseudo_handle_key(char *pseudopath, int len)
+{
+  hash_buffer_t key;
+  ushort smalllen = len;
+  uint64 hashkey;
+
+
+  hashkey = CityHash64(pseudopath, len);
+  key.pdata = package_pseudo_handle(pseudopath, smalllen, hashkey);
+  key.len = sizeof(notused.pad);
+
+  /* key.pdata == NULL upon error */
+  return key;
+}
+
+/* avltree nodes are compared by name and name length */
+static inline int avl_pseudo_name_cmp(const struct avltree_node *lhs,
+                                      const struct avltree_node *rhs)
+{
+  pseudofs_entry_t *lk, *rk;
+  int llen,rlen,minlen,res;
+  lk = avltree_container_of(lhs, pseudofs_entry_t, nameavlnode);
+  rk = avltree_container_of(rhs, pseudofs_entry_t, nameavlnode);
+
+  llen = strlen(lk->name);
+  rlen = strlen(rk->name);
+  minlen = min(llen, rlen);
+
+  /* Compare strings*/
+  res = strncmp(lk->name, rk->name, minlen);
+  if (res != 0)
+    return res;
+
+  /* Same characters so far, now compare length of string. */
+  if (llen < rlen)
+    return (-1);
+  if (llen > rlen)
+    return (1);
+
+  /* Exact same name */
+  return 0;
+}
+
+/* Compare pseudofs ids. There is a chance of a collision. We will
+ * not have the node name to avoid the collision */
+static inline int avl_pseudo_id_cmp(const struct avltree_node *lhs,
+                                    const struct avltree_node *rhs)
+{
+  pseudofs_entry_t *lk, *rk;
+  lk = avltree_container_of(lhs, pseudofs_entry_t, idavlnode);
+  rk = avltree_container_of(rhs, pseudofs_entry_t, idavlnode);
+
+  if (lk->pseudo_id < rk->pseudo_id)
+    return (-1);
+  if (lk->pseudo_id > rk->pseudo_id)
+    return (1);
+  return 0;
+}
+
+void fullpath(char *fullpseudopath, char **PathTok, int tok, int maxlen)
+{
+  int currtok, currlen=0;
+
+  fullpseudopath[currlen++] = '/';
+  for(currtok=0; currtok<=tok&&currlen<maxlen; currtok++) {
+    if (currlen + strlen(PathTok[currtok]) > maxlen) {
+      LogWarn(COMPONENT_NFS_V4_PSEUDO,"Pseudopath length is too long, can't "
+      "create pseudofs node.");
+      break;
+    }
+    strncpy(fullpseudopath+currlen, PathTok[currtok], strlen(PathTok[currtok]));
+    currlen += strlen(PathTok[currtok]);
+    if (currtok<tok)
+      fullpseudopath[currlen++] = '/';
+  }
+  fullpseudopath[currlen] = '\0';
+}
 
 /**
  * @brief Convert a file handle to the id of an object in the pseudofs
@@ -109,17 +249,22 @@ pseudofs_t *nfs4_GetPseudoFs(void)
 
 int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
 {
+  hash_buffer_t key, value;
   exportlist_t *entry;
   struct glist_head * glist;
-  int j = 0;
-  int found = 0;
-  char *PathTok[NB_TOK_PATH];
-  int NbTokPath;
+  int j=0, NbTokPath;
+  char tmp_pseudopath[MAXPATHLEN+2],
+    fullpseudopath[MAXPATHLEN+2],
+    *PathTok[NB_TOK_PATH];
   pseudofs_t *PseudoFs = NULL;
   pseudofs_entry_t *PseudoFsRoot = NULL;
   pseudofs_entry_t *PseudoFsCurrent = NULL;
   pseudofs_entry_t *newPseudoFsEntry = NULL;
   pseudofs_entry_t *iterPseudoFs = NULL;
+  pseudofs_entry_t *PseudoFsCurrent=NULL,*newPseudoFsEntry=NULL;
+  hash_error_t hrc = 0;
+  struct hash_latch latch;
+  struct avltree_node *node;
 
   PseudoFs = &gPseudoFs;
 
@@ -127,13 +272,33 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
   strcpy(PseudoFs->root.name, "/");
   PseudoFs->root.pseudo_id = 0;
   PseudoFs->root.junction_export = NULL;
-  PseudoFs->root.next = NULL;
-  PseudoFs->root.last = PseudoFsRoot;
-  PseudoFs->root.sons = NULL;
-  PseudoFs->root.parent = &(PseudoFs->root);    /* root is its own parent */
+  /* root is its own parent */
+  PseudoFs->root.parent = &PseudoFs->root;
+  avltree_init(&PseudoFs->root.child_tree_byname, avl_pseudo_name_cmp, 0);
+  avltree_init(&PseudoFs->root.child_tree_byid, avl_pseudo_id_cmp, 0);
 
-  /* To not forget to init "/" entry */
-  PseudoFs->reverse_tab[0] = &(PseudoFs->root);
+  key = create_pseudo_handle_key(PseudoFs->root.name, strlen(PseudoFs->root.name));
+  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
+    char handle2str[256];
+    memset(handle2str, 0, sizeof(handle2str));
+    v4handle2str(handle2str, key.pdata, key.len);
+    LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for path:%s handle:%s",
+                 PseudoFs->root.name,handle2str);
+  }
+
+  PseudoFs->root.fsopaque = (uint8_t *)key.pdata;
+  value.pdata = &PseudoFs->root;
+  value.len = sizeof(PseudoFs->root);
+  hrc = HashTable_Test_And_Set(ht_nfs4_pseudo, &key, &value,
+                               HASHTABLE_SET_HOW_SET_NO_OVERWRITE);
+  if(hrc != HASHTABLE_SUCCESS) {
+    LogCrit(COMPONENT_NFS_V4_PSEUDO,
+            "Failed to add ROOT pseudofs path %s due to hashtable error: %s",
+            PseudoFs->root.name, hash_table_err_to_str(hrc));
+    return -1;
+  }
+ 
+  LogDebug(COMPONENT_NFS_V4_PSEUDO, "Added root pseudofs node to hashtable");
 
   glist_for_each(glist, pexportlist)
     {
@@ -142,9 +307,8 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
       /* skip exports that aren't for NFS v4 */
       if((entry->export_perms.options & EXPORT_OPTION_NFSV4) == 0 ||
 	 entry->pseudopath == NULL)
-        {
-          continue;
-        }
+        {  continue;   }
+
       if(entry->export_perms.options & EXPORT_OPTION_PSEUDO)
         {
 	  char *tmp_pseudopath;
@@ -198,68 +362,95 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
             {
               found = 0;
 	      LogFullDebug(COMPONENT_NFS_V4_PSEUDO, "token %s", PathTok[j]);
-              for(iterPseudoFs = PseudoFsCurrent->sons; iterPseudoFs != NULL;
-                  iterPseudoFs = iterPseudoFs->next)
+                            /* Pseudofs path */
+              fullpath(fullpseudopath, PathTok, j, MAXPATHLEN);
+              key = create_pseudo_handle_key(fullpseudopath, strlen(fullpseudopath));
+              
+              if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
                 {
-                  /* Looking for a matching entry */
-                  if(!strcmp(iterPseudoFs->name, PathTok[j]))
-                    {
-                      found = 1;
-                      break;
-                    }
-                }               /* for iterPseudoFs */
-
-              if(found)
-                {
-                  /* a matching entry was found in the tree */
-                  PseudoFsCurrent = iterPseudoFs;
+                  char handle2str[256];
+                  memset(handle2str, 0, sizeof(handle2str));
+                  v4handle2str(handle2str, key.pdata, key.len);
+                  LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for "
+                               "path:%s handle:%s", fullpseudopath,handle2str);
                 }
-              else
+              /* Now we create the pseudo entry */
+              newPseudoFsEntry = gsh_malloc(sizeof(pseudofs_entry_t));
+              if(newPseudoFsEntry == NULL)
                 {
-                  /* a new entry is to be created */
-                  if(PseudoFs->last_pseudo_id == (MAX_PSEUDO_ENTRY - 1))
-                    {
-                      LogMajor(COMPONENT_NFS_V4_PSEUDO,
-                               "Too many nodes in Export_Id %d Path=\"%s\" Pseudo=\"%s\"",
-                               entry->id, entry->fullpath, entry->pseudopath);
-                      return ENOMEM;
-                    }
-                  newPseudoFsEntry = gsh_malloc(sizeof(pseudofs_entry_t));
-                  if(newPseudoFsEntry == NULL)
-                    {
-                      LogMajor(COMPONENT_NFS_V4_PSEUDO,
-                               "Insufficient memory to create pseudo fs node");
-                      return ENOMEM;
-                    }
-
-                  /* Copy component name, no need to check buffer because size
-		   * was checked by nfs_ParseConfLine.
-		   */ 
-                  strcpy(newPseudoFsEntry->name, PathTok[j]);
-                  newPseudoFsEntry->pseudo_id = PseudoFs->last_pseudo_id + 1;
-                  PseudoFs->last_pseudo_id = newPseudoFsEntry->pseudo_id;
-                  PseudoFs->reverse_tab[PseudoFs->last_pseudo_id] = newPseudoFsEntry;
-                  newPseudoFsEntry->junction_export = NULL;
-                  newPseudoFsEntry->last = newPseudoFsEntry;
-                  newPseudoFsEntry->next = NULL;
-                  newPseudoFsEntry->sons = NULL;
-                  snprintf(newPseudoFsEntry->fullname, MAXPATHLEN, "%s/%s",
-                           PseudoFsCurrent->fullname, PathTok[j]);
-
-                  /* Step into the new entry and attach it to the tree */
-                  if(PseudoFsCurrent->sons == NULL)
-                    PseudoFsCurrent->sons = newPseudoFsEntry;
-                  else
-                    {
-                      PseudoFsCurrent->sons->last->next = newPseudoFsEntry;
-                      PseudoFsCurrent->sons->last = newPseudoFsEntry;
-                    }
-                  newPseudoFsEntry->parent = PseudoFsCurrent;
-                  PseudoFsCurrent = newPseudoFsEntry;
+                  LogMajor(COMPONENT_NFS_V4_PSEUDO,
+                           "Insufficient memory to create pseudo fs node");
+                  return ENOMEM;
                 }
-
+              
+              /* Creating the new pseudofs entry */
+              strncpy(newPseudoFsEntry->name, PathTok[j], strlen(PathTok[j]));
+              newPseudoFsEntry->name[strlen(PathTok[j])] = '\0';
+              newPseudoFsEntry->fsopaque = (uint8_t *)key.pdata;
+              memcpy(&newPseudoFsEntry->pseudo_id, key.pdata,
+                     sizeof(newPseudoFsEntry->pseudo_id));
+              newPseudoFsEntry->junction_export = NULL;
+              newPseudoFsEntry->parent = PseudoFsCurrent;
+              avltree_init(&newPseudoFsEntry->child_tree_byname,avl_pseudo_name_cmp, 0);
+              avltree_init(&newPseudoFsEntry->child_tree_byid,avl_pseudo_id_cmp, 0);
+              
+              LogMidDebug(COMPONENT_NFS_V4_PSEUDO,
+                          "Creating pseudo fs entry for %s, pseudo_id %"PRIu64,
+                          newPseudoFsEntry->name, newPseudoFsEntry->pseudo_id);
+              
+              value.pdata = newPseudoFsEntry;
+              value.len = sizeof(newPseudoFsEntry);
+              
+              /* Looking for a matching entry and creating if nonexistent */
+              hrc = HashTable_Test_And_Set(ht_nfs4_pseudo, &key, &value,
+                                           HASHTABLE_SET_HOW_SET_NO_OVERWRITE);
+              if(hrc != HASHTABLE_SUCCESS && hrc != HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
+                LogCrit(COMPONENT_NFS_V4_PSEUDO,
+                        "Failed to add pseudofs path %s due to hashtable error: %s",
+                        newPseudoFsEntry->name, hash_table_err_to_str(hrc));
+                return -1;
+              }
+              if (hrc == HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
+                LogDebug(COMPONENT_NFS_V4_PSEUDO,
+                         "Failed to add pseudofs path, path already exists: %s",
+                         newPseudoFsEntry->name);
+                
+                /* Now set PseudoFsCurrent to existing entry. */
+                hrc = HashTable_GetLatch(ht_nfs4_pseudo, &key, &value,
+                                         FALSE, &latch);
+                if ((hrc != HASHTABLE_SUCCESS))
+                  {
+                    /* This should not happened */
+                    LogCrit(COMPONENT_NFS_V4_PSEUDO, "Can't add/get key for %s"
+                            " hashtable error: %s",
+                            newPseudoFsEntry->name, hash_table_err_to_str(hrc));
+                    return -1;
+                  } else
+                  {
+                    /* Now we have the cached pseudofs entry*/
+                    PseudoFsCurrent = value.pdata;
+                    
+                    /* Release the lock ... we should be calling this funciton
+                     * in a serial fashion before Ganesha is operational. No
+                     * chance of contention. */
+                    HashTable_ReleaseLatched(ht_nfs4_pseudo, &latch);
+                  }
+                /* Free the key and value that we weren't able to add. */
+                free_pseudo_handle_key(key);
+                gsh_free(newPseudoFsEntry);
+                continue;
+              }
+              /* Insert new pseudofs entry into tree */
+              node = avltree_insert(&newPseudoFsEntry->nameavlnode,
+                                    &PseudoFsCurrent->child_tree_byname);
+              assert(!node);
+              node = avltree_insert(&newPseudoFsEntry->idavlnode,
+                                    &PseudoFsCurrent->child_tree_byid);
+              assert(!node);
+              
+              PseudoFsCurrent = newPseudoFsEntry;
             }                   /* for j */
-
+          
           /* Now that all entries are added to pseudofs tree,
 	   * add the junction to the pseudofs */
           PseudoFsCurrent->junction_export = entry;
@@ -268,12 +459,11 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
           entry->exp_mounted_on_file_id = PseudoFsCurrent->pseudo_id;
 
         }
-      /* if( entry->options & EXPORT_OPTION_PSEUDO ) */
     }                           /* glist_for_each */
 
   if(isMidDebug(COMPONENT_NFS_V4_PSEUDO))
     {
-      int i;
+      /*int i;
 
       for(i = 0; i <= PseudoFs->last_pseudo_id; i++)
         {
@@ -292,6 +482,7 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
                         "pseudo_id %d is %s (not a junction)",
                         i, PseudoFs->reverse_tab[i]->name);
         }
+      */
     }
 
   return (0);
@@ -366,24 +557,45 @@ static bool nfs4_FhandleToPseudo(nfs_fh4 * fh4p, pseudofs_t * psfstree,
 				 pseudofs_entry_t **psfsentry)
 {
   file_handle_v4_t *pfhandle4;
+  hash_buffer_t key, value;
+  hash_error_t hrc = 0;
+  struct hash_latch latch;
 
   /* Map the filehandle to the correct structure */
   pfhandle4 = (file_handle_v4_t *) (fh4p->nfs_fh4_val);
 
   /* The function must be called with a fh pointed to a pseudofs entry */
-  if(!(pfhandle4->pseudofs_flag))
+  if( pfhandle4->exportid != 0 )
     return false;
 
-  if(pfhandle4->pseudofs_id > MAX_PSEUDO_ENTRY)
-    {
-      LogDebug(COMPONENT_NFS_V4_PSEUDO,
-               "Pseudo fs handle pseudofs_id %u > %d",
-               pfhandle4->pseudofs_id, MAX_PSEUDO_ENTRY);
-      return false;
-    }
+  /* Find pseudofs in hashtable */
+  /* key generated from pathname and cityhash64 of pathname */
+  key.pdata = pfhandle4->fsopaque;
+  key.len = pfhandle4->fs_len;
 
-  /* Get the object pointer by using the reverse tab in the pseudofs structure */
-  *psfsentry = psfstree->reverse_tab[pfhandle4->pseudofs_id];
+  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
+    char handle2str[256];
+    memset(handle2str, 0, sizeof(handle2str));
+    v4handle2str(handle2str, key.pdata, key.len);
+    LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"looking up pseudofs node for handle:%s",
+                 handle2str);
+  }
+
+  hrc = HashTable_GetLatch(ht_nfs4_pseudo, &key, &value, FALSE, &latch);
+  if ((hrc != HASHTABLE_SUCCESS)) {
+    /* This should not happened */
+    LogDebug(COMPONENT_NFS_V4_PSEUDO, "Can't get key for FHToPseudo conversion"
+             ", hashtable error %s", hash_table_err_to_str(hrc));
+    *psfsentry = NULL;
+  } else {
+    *psfsentry = value.pdata;
+
+    /* Release the lock ... This is a read-only hashtable and entry.
+     * It's possible we reload exports ... but in that case we 
+     * catch the worker threads at a safe location where we aren't
+     * using any export entries. */
+    HashTable_ReleaseLatched(ht_nfs4_pseudo, &latch);
+  }
 
   return true;
 }                               /* nfs4_FhandleToPseudo */
@@ -404,15 +616,22 @@ int nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
 {
   file_handle_v4_t *fhandle4;
 
+  assert(psfsentry != NULL);
   memset(fh4p->nfs_fh4_val, 0, sizeof(struct alloc_file_handle_v4)); /* clean whole thing */
   fhandle4 = (file_handle_v4_t *)fh4p->nfs_fh4_val;
   fhandle4->fhversion = GANESHA_FH_VERSION;
-  fhandle4->pseudofs_flag = true;
-  fhandle4->pseudofs_id = psfsentry->pseudo_id;
 
-  LogFullDebug(COMPONENT_NFS_V4_PSEUDO, "PSEUDO_TO_FH: Pseudo id = %d -> %d",
-               psfsentry->pseudo_id, fhandle4->pseudofs_id);
+  fhandle4->exportid = 0;
+  memcpy(fhandle4->fsopaque, psfsentry->fsopaque, sizeof(notused.pad));
+  fhandle4->fs_len = sizeof(notused.pad);
 
+  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
+    char handle2str[256];
+    memset(handle2str, 0, sizeof(handle2str));
+    v4handle2str(handle2str, psfsentry->fsopaque, sizeof(notused.pad));
+    LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle for name:%s handle:%s",
+                 psfsentry->name,handle2str);
+  }
   fh4p->nfs_fh4_len = sizeof(file_handle_v4_t); /* no handle in opaque */
 
   return true;
@@ -599,11 +818,14 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
                           compound_data_t * data, struct nfs_resop4 *resp)
 {
   char *name;
-  pseudofs_entry_t *psfsentry;
-  pseudofs_entry_t *iter = NULL;
+  struct pseudofs_entry *parent_fsentry=NULL, *thefsentry;
   int error = 0;
   cache_inode_status_t cache_status;
   cache_entry_t *entry = NULL;
+
+  /* Used for child avltree lookup*/
+  pseudofs_entry_t tempentry;
+  struct avltree_node *keynode, *foundnode;
 
   resp->resop = NFS4_OP_LOOKUP;
 
@@ -617,28 +839,36 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
     }
 
   /* Get the pseudo fs entry related to the file handle */
-  if(!nfs4_FhandleToPseudo(&(data->currentFH), data->pseudofs, &psfsentry))
+  if(!nfs4_FhandleToPseudo(&(data->currentFH), data->pseudofs,
+                           &parent_fsentry))
     {
       res_LOOKUP4.status = NFS4ERR_BADHANDLE;
       goto out;
     }
 
-  /* Search for name in pseudo fs directory */
-  for(iter = psfsentry->sons; iter != NULL; iter = iter->next)
-      if(!strcmp(iter->name, name))
-          break;
+  /* Search for name in pseudo fs directory. We use a temporary
+   * avlnode and pseudofs_entry_t to perform a name lookup in
+   * the child tree. If it's not here, it doesn't exist.*/
+  keynode = &tempentry.nameavlnode;
+  strcpy(tempentry.name, name);
+  avltree_container_of(keynode, pseudofs_entry_t, nameavlnode);
 
-  if(iter == NULL)
+  foundnode = avltree_lookup(keynode, &parent_fsentry->child_tree_byname);
+  if(foundnode == NULL)
     {
       res_LOOKUP4.status = NFS4ERR_NOENT;
       goto out;
     }
 
+  /* we found the requested pseudofs node. */
+  thefsentry = avltree_container_of(foundnode, pseudofs_entry_t,
+                                    nameavlnode);
+
   /* A matching entry was found */
-  if(iter->junction_export == NULL)
+  if(thefsentry->junction_export == NULL)
     {
       /* The entry is not a junction, we stay within the pseudo fs */
-      if(!nfs4_PseudoToFhandle(&(data->currentFH), iter))
+      nfs4_PseudoToFhandle(&(data->currentFH), thefsentry);
         {
           res_LOOKUP4.status = NFS4ERR_SERVERFAULT;
 	  goto out;
@@ -649,7 +879,7 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
       /* The entry is a junction */
       LogFullDebug(COMPONENT_NFS_V4_PSEUDO,
                    "A junction in pseudo fs is traversed: name = %s, id = %d",
-                   iter->name, iter->junction_export->id);
+                   thefsentry->name, thefsentry->junction_export->id);
       /**
        * @todo Danger Will Robinson!!
        * We do a get_gsh_export here to take a reference on the export
@@ -814,8 +1044,10 @@ int nfs4_op_lookupp_pseudo_by_exp(struct nfs_argop4  * op,
 
   resp->resop = NFS4_OP_LOOKUPP;
 
-  /* Get the pseudo fs entry related to the export */
-  psfsentry = data->pseudofs->reverse_tab[data->req_ctx->export->export.exp_mounted_on_file_id];
+  /* Get the parent pseudo fs entry related to the export */
+  res_LOOKUP4.status = nfs4_CurrentFHToPseudo(data, &psfsentry);
+  if(res_LOOKUP4.status != NFS4_OK)
+    return res_LOOKUP4.status;
 
   LogDebug(COMPONENT_NFS_V4_PSEUDO,
            "LOOKUPP Traversing junction from Export_Id %d Pseudo %s back to pseudo fs id %"PRIu64,
@@ -887,12 +1119,11 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
   unsigned long dircount = 0;
   unsigned long maxcount = 0;
   unsigned long estimated_num_entries = 0;
-  unsigned long i = 0;
+  unsigned long nodecount = 0;
   nfs_cookie4 cookie;
   verifier4 cookie_verifier;
   unsigned long space_used = 0;
-  pseudofs_entry_t *psfsentry;
-  pseudofs_entry_t *iter = NULL;
+  pseudofs_entry_t *psfsentry, *curr_psfsentry;
   entry4 *entry_nfs_array = NULL;
   exportlist_t *save_pexport;
   struct gsh_export *saved_gsh_export;
@@ -901,6 +1132,8 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
   int error = 0;
   size_t namelen = 0;
   cache_entry_t *entry = NULL;
+  seudofs_entry_t tempentry;
+  struct avltree_node *keynode, *currnode;
 
   resp->resop = NFS4_OP_READDIR;
   res_READDIR4.status = NFS4_OK;
@@ -1045,21 +1278,23 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
    * For these reason, there will be an offset of 3 between NFS4 cookie and HPSS cookie */
 
   /* make sure to start at the right position given by the cookie */
-  iter = psfsentry->sons;
-  if(cookie != 0)
-    {
-      for(; iter != NULL; iter = iter->next)
-        if((iter->pseudo_id + 3) == cookie)
-          break;
-    }
+  if (cookie == 0)
+    { currnode = avltree_first(&psfsentry->child_tree_byid); }
+  else {
+    /* Find entry with cookie (which was set to pseudo_id) */
+    memset(&tempentry.idavlnode, 0, sizeof(tempentry.idavlnode));
+    keynode = &tempentry.idavlnode;
+    tempentry.pseudo_id = cookie;
+    currnode = avltree_lookup(keynode, &psfsentry->child_tree_byid);
+    if(currnode == NULL)
+      {
+        res_READDIR4.status = NFS4ERR_BAD_COOKIE;
+        return res_READDIR4.status;
+      }
+  }
 
-  /* Here, where are sure that iter is set to the position indicated eventually by the cookie */
-  i = 0;
-  for(; iter != NULL; iter = iter->next)
-    {
-      LogFullDebug(COMPONENT_NFS_V4_PSEUDO,
-                   "PSEUDO FS: Found entry %s", iter->name);
 
+  /*
       namelen = strlen(iter->name);
       entry_nfs_array[i].name.utf8string_len = namelen;
       if ((entry_nfs_array[i].name.utf8string_val = gsh_malloc(namelen + 1)) == NULL) 
@@ -1070,8 +1305,29 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
         }
       memcpy(entry_nfs_array[i].name.utf8string_val, iter->name, namelen);
       entry_nfs_array[i].name.utf8string_val[namelen] = '\0';
-
       entry_nfs_array[i].cookie = iter->pseudo_id + 3;
+  */
+  for( ;
+       currnode != NULL;
+       currnode = avltree_next(currnode)) {
+    curr_psfsentry = avltree_container_of(currnode, pseudofs_entry_t, idavlnode);
+    LogMidDebug(COMPONENT_NFS_V4_PSEUDO,
+                "PSEUDO FS: Found entry %s pseudo_id %"PRIu64,
+                curr_psfsentry->name, curr_psfsentry->pseudo_id);
+
+    /////////
+      namelen = strlen(curr_psfsentry->name);
+      entry_nfs_array[i].name.utf8string_len = namelen;
+      if ((entry_nfs_array[i].name.utf8string_val = gsh_malloc(namelen + 1)) == NULL) 
+        {
+            LogError(COMPONENT_NFS_V4_PSEUDO, ERR_SYS, ERR_MALLOC, errno);
+            res_READDIR4.status = NFS4ERR_SERVERFAULT;
+            return res_READDIR4.status;
+        }
+      memcpy(entry_nfs_array[i].name.utf8string_val, curr_psfsentry->name, namelen);
+      entry_nfs_array[i].name.utf8string_val[namelen] = '\0';
+      entry_nfs_array[i].cookie = curr_psfsentry->pseudo_id;
+    /////////
 
       /* This used to be in an if with a bogus check for FATTR4_FILEHANDLE. Such
        * a common case, elected to set up FH for call to xxxx_ToFattr
@@ -1080,42 +1336,39 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
       if(entryFH.nfs_fh4_len == 0)
         {
           if(nfs4_AllocateFH(&entryFH) != NFS4_OK)
+            {  return res_READDIR4.status; }
+        }
+
+      /* Do the case where we stay within the pseudo file system. */
+      if(curr_psfsentry->junction_export == NULL)
+        {
+          nfs4_PseudoToFhandle(&entryFH, curr_psfsentry);
+          
+          if(nfs4_PseudoToFattr(curr_psfsentry,
+                                &(entry_nfs_array[i].attrs),
+                                data, &entryFH, &(arg_READDIR4.attr_request)) != 0)
             {
-              return res_READDIR4.status;
+              LogFatal(COMPONENT_NFS_V4_PSEUDO,
+                       "nfs4_PseudoToFattr failed to convert pseudo fs attr");
             }
         }
-      /* Do the case where we stay within the pseudo file system. */
-      if(iter->junction_export == NULL) {
-
-          if(!nfs4_PseudoToFhandle(&entryFH, iter))
-            {
-              res_READDIR4.status = NFS4ERR_SERVERFAULT;
-              gsh_free(entry_nfs_array);
-              return res_READDIR4.status;
-            }
-
-          if(nfs4_PseudoToFattr(iter,
-                            &(entry_nfs_array[i].attrs),
-                            data, &entryFH, &(arg_READDIR4.attr_request)) != 0)
-            {
-              /* Should never occured, but the is no reason for leaving the section without any information */
-              entry_nfs_array[i].attrs.attrmask = RdAttrErrorBitmap;
-              entry_nfs_array[i].attrs.attr_vals = RdAttrErrorVals;
-            }
-      } else {
-      /* This is a junction. Code used to not recognize this which resulted
-       * in readdir giving different attributes ( including FH, FSid, etc... )
-       * to clients from a lookup. AIX refused to list the directory because of
-       * this. Now we go to the junction to get the attributes.
-       */
+      else
+        {
+          /* This is a junction. Code used to not recognize this which resulted
+           * in readdir giving different attributes ( including FH, FSid, etc... )
+           * to clients from a lookup. AIX refused to list the directory because of
+           * this. Now we go to the junction to get the attributes.
+           */
           LogFullDebug(COMPONENT_NFS_V4_PSEUDO,
-                 "PSEUDOFS READDIR : Offspring DIR #%s# id=%u is a junction full path %s ", 
-                  iter->name, iter->junction_export->id, iter->junction_export->fullpath); 
+                       "PSEUDOFS READDIR : Offspring DIR #%s# id=%u is a junction full path %s ", 
+                       curr_psfsentry->name,
+                       curr_psfsentry->junction_export->id,
+                       curr_psfsentry->junction_export->fullpath); 
           /* Save the compound data context */
           save_pexport = data->pexport;
-          data->pexport = iter->junction_export;
+          data->pexport = curr_psfsentry->junction_export;
 	  saved_gsh_export = data->req_ctx->export;
-	  data->req_ctx->export = get_gsh_export(iter->junction_export->id,
+	  data->req_ctx->export = get_gsh_export(curr_psfsentry->junction_export->id,
 						 true);
           /* Build the credentials */
           /* XXX Is this really necessary for doing a lookup and 
@@ -1130,18 +1383,18 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
               LogMajor(COMPONENT_NFS_V4_PSEUDO,
 		       "PSEUDO FS JUNCTION TRAVERSAL: /!\\ |"
 		       " Failed to get FSAL credentials for %s, id=%d",
-		       iter->junction_export->fullpath,
-		       iter->junction_export->id);
+		       curr_psfsentry->junction_export->fullpath,
+		       curr_psfsentry->junction_export->id);
               return res_READDIR4.status;
             }
-	  cache_status = nfs_export_get_root_entry(iter->junction_export, &entry);
+	  cache_status = nfs_export_get_root_entry( thefsentry->junction_export, &entry);
 	  if(cache_status != CACHE_INODE_SUCCESS)
             {
               LogMajor(COMPONENT_NFS_V4_PSEUDO,
 		       "PSEUDO FS JUNCTION TRAVERSAL: Failed to get root for %s ,"
 		       " id=%d, status = %d",
-		       iter->junction_export->fullpath,
-		       iter->junction_export->id, cache_status);
+		       thefsentry->junction_export->fullpath,
+		       curr_psfsentry->junction_export->id, cache_status);
               res_READDIR4.status = NFS4ERR_SERVERFAULT;
               return res_READDIR4.status;
             }
@@ -1166,23 +1419,24 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
 	  data->pexport = save_pexport;
       }
       /* Chain the entry together */
-      entry_nfs_array[i].nextentry = NULL;
-      if(i != 0)
-        entry_nfs_array[i - 1].nextentry = &(entry_nfs_array[i]);
+      entry_nfs_array[nodecount].nextentry = NULL;
+      if(nodecount != 0)
+        entry_nfs_array[nodecount - 1].nextentry =
+          &(entry_nfs_array[nodecount]);
 
       /* Increment the counter */
-      i += 1;
+      nodecount += 1;
 
       /* Did we reach the maximum number of entries */
-      if(i == estimated_num_entries)
-        break;
-    }
+      if(nodecount == estimated_num_entries)
+        { break; }
+  } /* avltree for loop */
 
   /* Resize entry_nfs_array */
   /* @todo : Is this reallocation actually needed ? */
 #ifdef BUGAZOMEU
-  if(i < estimated_num_entries)
-    if((entry_nfs_array = gsh_realloc(entry_nfs_array, i *
+  if(nodecount < estimated_num_entries)
+    if((entry_nfs_array = gsh_realloc(entry_nfs_array, nodecount *
                                       sizeof(entry4))) == NULL)
       {
         LogError(COMPONENT_NFS_V4_PSEUDO, ERR_SYS, ERR_MALLOC, errno);
@@ -1191,16 +1445,17 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
         return res_READDIR4.status;
       }
 #endif
+
   /* Build the reply */
   memcpy(res_READDIR4.READDIR4res_u.resok4.cookieverf, cookie_verifier,
          NFS4_VERIFIER_SIZE);
-  if(i == 0)
+  if(nodecount == 0)
     res_READDIR4.READDIR4res_u.resok4.reply.entries = NULL;
   else
     res_READDIR4.READDIR4res_u.resok4.reply.entries = entry_nfs_array;
 
   /* did we reach the end ? */
-  if(iter == NULL)
+  if(currnode == NULL) /* currnode from the for loop above. */
     {
       /* Yes, we did */
       res_READDIR4.READDIR4res_u.resok4.reply.eof = TRUE;
@@ -1216,3 +1471,96 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
 
   return NFS4_OK;
 }                               /* nfs4_op_readdir_pseudo */
+
+/**                                                                           
+ *                                                                            
+ * @brief Compares two pseudofs ids used in pseudofs hashtable                
+ *                                                                            
+ * Compare two keys used in pseudofs cache. These keys are made from          
+ * the pseudofs pathname and a hash of that pathname.                         
+ *                                                                            
+ * @param[in] buff1 First key                                                 
+ * @param[in] buff2 Second key                                                
+ * @return 0 if keys are the same, 1 otherwise                                
+ *                                                                            
+ *                                                                            
+ */
+int compare_nfs4_pseudo_key(hash_buffer_t *buff1,
+                            hash_buffer_t *buff2)
+{
+  /* This compares cityhash64, path length, and fullpath */
+  if (buff1->len != buff2->len ||
+      (memcmp(buff1->pdata, buff2->pdata, buff1->len != 0)) )
+    return 1;
+  return 0;
+}
+
+uint32_t nfs4_pseudo_value_hash_func(hash_parameter_t * p_hparam,
+                                     hash_buffer_t    * buffclef)
+{
+  uint32_t res = 0;
+  uint64_t ch64_hash = 0;
+
+  memcpy(&ch64_hash, buffclef->pdata, sizeof(ch64_hash));
+  /* 64 bit modulo 32 bit ... is that ok? */
+  res = ch64_hash % (uint32_t) p_hparam->index_size;
+  if(isDebug(COMPONENT_HASHTABLE))
+    LogFullDebug(p_hparam->ht_log_component, "%s: value = %"PRIu32,
+                 p_hparam->ht_name, res);
+  return res;
+}                               /* nfs4_owner_value_hash_func */
+
+uint64_t nfs4_pseudo_rbt_hash_func(hash_parameter_t * p_hparam,
+                                   hash_buffer_t    * buffclef)
+{
+  uint64_t res = 0;
+  memcpy(&res, buffclef->pdata, sizeof(res));
+  if(isDebug(COMPONENT_HASHTABLE))
+    LogFullDebug(p_hparam->ht_log_component, "rbt = %"PRIu64, res);
+  return res;
+}                               /* state_id_rbt_hash_func */
+
+int display_pseudo_val(struct display_buffer * dspbuf, hash_buffer_t * pbuff)
+{
+  pseudofs_entry_t *psfsentry = (pseudofs_entry_t *)pbuff->pdata;
+
+  return display_printf(dspbuf, "nodename=%s nodeid=%"PRIu64, psfsentry->name,
+                        psfsentry->pseudo_id);
+}
+
+int display_pseudo_key(struct display_buffer * dspbuf, hash_buffer_t * pbuff)
+{
+  uint64_t ch64_hash = 0;
+  int len;
+  char pseudopath[MAXPATHLEN+2];
+
+  ch64_hash = *(uint64_t *)pbuff->pdata;
+  len = *(ushort *)(pbuff->pdata+sizeof(ch64_hash));
+  strncpy(pseudopath, pbuff->pdata + sizeof(ch64_hash) + sizeof(ushort),
+          len);
+  return display_printf(dspbuf, "len=%d path=%s", len, pseudopath);
+}
+
+/**                                                                                   
+ *                                                                                    
+ * Init_nfs4_pseudo: Init the hashtable for NFS Pseudofs nodeid cache.                
+ *                                                                                    
+ * Perform all the required initialization for hashtable Pseudofs nodeid cache        
+ *                                                                                    
+ * @param param [IN] parameter used to init the pseudofs nodeid cache                 
+ *                                                                                    
+ * @return 0 if successful, -1 otherwise                                              
+ *                                                                                    
+ */
+int Init_nfs4_pseudo(nfs4_pseudo_parameter_t param)
+{
+  if((ht_nfs4_pseudo = HashTable_Init(&param.hash_param)) == NULL)
+    {
+      LogCrit(param.hash_param.ht_log_component,
+              "Cannot init %s cache", param.hash_param.ht_name);
+      return -1;
+    }
+
+  return 0;
+}                               /* Init_nfs4_pseudo */
+
