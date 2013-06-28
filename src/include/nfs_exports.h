@@ -53,6 +53,7 @@
 #include "cache_inode.h"
 #include "nfs_ip_stats.h"
 #include "nlm_list.h"
+#include "city.h"
 
 /*
  * Export List structure
@@ -303,15 +304,19 @@ typedef struct exportlist {
  * PseudoFs Tree
  */
 typedef struct pseudofs_entry {
-	char name[MAXNAMLEN + 1]; /*< The entry name */
-	char fullname[MAXPATHLEN + 1]; /*< The full path in the pseudo fs */
-	unsigned int pseudo_id; /*< ID within the pseudoFS  */
-	exportlist_t *junction_export; /*< Export list related to the junction,
-					   NULL if entry is no junction */
-	struct pseudofs_entry *sons; /*< Pointer to a linked list of sons */
-	struct pseudofs_entry *parent; /*< Reverse pointer (for LOOKUPP) */
-	struct pseudofs_entry *next; /*< Next entry in a list of sons */
-	struct pseudofs_entry *last; /*< Last entry in a list of sons */
+  struct avltree_node idavlnode;      /** AVL node in tree */
+  struct avltree_node nameavlnode;    /** AVL node in tree */
+  char name[MAXNAMLEN+1];             /** The entry name, not full path */
+  int8_t *fsopaque;                   /** do not garbage collect this, it points
+                                          to an already gc'd file_handle_v4_t.
+                                          his is used for convenience when
+                                          converting from entry to handle. */
+  struct pseudofs_entry *parent;
+  uint64_t pseudo_id;                 /** ID within the pseudoFS */
+  exportlist_t *junction_export;      /** Export list related to the junction,
+                                          NULL if entry is no junction */
+  struct avltree child_tree_byname; /** tree of children organized by name */
+  struct avltree child_tree_byid;   /** tree of children organized by id */
 } pseudofs_entry_t;
 
 #define MAX_PSEUDO_ENTRY 100
