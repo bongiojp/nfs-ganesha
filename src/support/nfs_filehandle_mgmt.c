@@ -400,7 +400,8 @@ int nfs4_Is_Fh_Xattr(nfs_fh4 * pfh)
 
   pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
 
-  return (pfhandle4->xattr_pos != 0) ? 1 : 0;
+  // return (pfhandle4->xattr_pos != 0) ? 1 : 0;
+  return 0;
 }                               /* nfs4_Is_Fh_Xattr */
 
 /**
@@ -446,7 +447,7 @@ int nfs4_Is_Fh_DSHandle(nfs_fh4 * pfh)
 
   pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
 
-  return (pfhandle4->flags & FILE_HANDLE_V4_FLAG_DS)
+  return (pfhandle4->flags & FILE_HANDLE_V4_FLAG_DS);
 }
 
 /**
@@ -474,9 +475,7 @@ int nfs4_Is_Fh_Invalid(nfs_fh4 *fh)
   filehandle4 = (file_handle_v4_t *) fh->nfs_fh4_val;
   if((fh->nfs_fh4_len > sizeof(struct alloc_file_handle_v4)) ||
      (fh->nfs_fh4_len < nfs4_sizeof_handle(filehandle4)) ||
-     (filehandle4->fhversion != GANESHA_FH_VERSION) ||
-     (filehandle4->reserved1 != 0) ||
-     (filehandle4->reserved2 != 0))
+     (filehandle4->fhversion != GANESHA_FH_VERSION))
   {
     LogMajor(COMPONENT_FILEHANDLE,
 	     "Invalid File handle: len=%d, version=%x",

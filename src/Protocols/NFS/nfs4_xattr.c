@@ -55,12 +55,12 @@ int nfs4_XattrToFattr(fattr4 * Fattr,
                       compound_data_t * data, nfs_fh4 * objFH,struct bitmap4 * Bitmap)
 {
 	struct attrlist attrs;
-	file_handle_v4_t *pfile_handle = (file_handle_v4_t *) (objFH->nfs_fh4_val);
+        //	file_handle_v4_t *pfile_handle = (file_handle_v4_t *) (objFH->nfs_fh4_val);
 
 	/* cobble up an inode (attributes) for this pseudo */
 	memset(&attrs, 0, sizeof(attrs));
         // TODO: FIX
-        if (1)//          if(pfile_handle->xattr_pos == 1)
+        if (1) {//          if(pfile_handle->xattr_pos == 1)
 		attrs.type = DIRECTORY;
 		attrs.mode = unix2fsal_mode(0555);
 	} else {

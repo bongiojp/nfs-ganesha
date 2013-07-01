@@ -3377,11 +3377,10 @@ nfs4_FhandleToExId(nfs_fh4 *fh4, unsigned short *ExId)
         fhandle4 = (file_handle_v4_t *) (fh4->nfs_fh4_val);
 
         /* The function should not be used on a pseudo fhandle */
-        if(pfhandle4->exportid == 0)
-                return false;
-        }
+        if(fhandle4->exportid == 0)
+          { return false; }
 
-        *ExId = fhandle4->exportid;
+        *ExId = (unsigned short) fhandle4->exportid;
         return true;
 }                               /* nfs4_FhandleToExId */
 

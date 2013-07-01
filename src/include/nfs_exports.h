@@ -322,8 +322,6 @@ typedef struct pseudofs_entry {
 #define MAX_PSEUDO_ENTRY 100
 typedef struct pseudofs {
 	pseudofs_entry_t root;
-	unsigned int last_pseudo_id;
-	pseudofs_entry_t *reverse_tab[MAX_PSEUDO_ENTRY];
 } pseudofs_t;
 
 typedef struct nfs_client_cred_gss {
