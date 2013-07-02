@@ -282,7 +282,7 @@ bool nfs2_FSALToFhandle(fhandle2 *fh2,
  * @return the export id.
  *
  */
-short nfs4_FhandleToExportId(nfs_fh4 * pfh4)
+unsigned short nfs4_FhandleToExportId(nfs_fh4 * pfh4)
 {
   file_handle_v4_t *pfile_handle = NULL;
 
@@ -305,7 +305,7 @@ short nfs4_FhandleToExportId(nfs_fh4 * pfh4)
  * @return the export id.
  *
  */
-short nfs3_FhandleToExportId(nfs_fh3 * pfh3)
+unsigned short nfs3_FhandleToExportId(nfs_fh3 * pfh3)
 {
   file_handle_v3_t *pfile_handle;
 
@@ -319,7 +319,7 @@ short nfs3_FhandleToExportId(nfs_fh3 * pfh3)
   return pfile_handle->exportid;
 }                               /* nfs3_FhandleToExportId */
 
-short nlm4_FhandleToExportId(netobj * pfh3)
+unsigned short nlm4_FhandleToExportId(netobj * pfh3)
 {
   file_handle_v3_t *pfile_handle;
 
@@ -344,7 +344,7 @@ short nlm4_FhandleToExportId(netobj * pfh3)
  * @return the export id.
  *
  */
-short nfs2_FhandleToExportId(fhandle2 * pfh2)
+unsigned short nfs2_FhandleToExportId(fhandle2 * pfh2)
 {
   file_handle_v2_t *pfile_handle;
 

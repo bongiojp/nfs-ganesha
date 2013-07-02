@@ -3324,7 +3324,7 @@ nfs3_Sattr_To_FSALattr(struct attrlist *FSAL_attr,
 
 int nfs4_SetCompoundExport(compound_data_t *data)
 {
-        short exportid;
+        unsigned short exportid;
 
         /* This routine is not related to pseudo fs file handle, do
            not handle them */
