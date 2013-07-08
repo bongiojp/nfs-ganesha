@@ -369,12 +369,12 @@ unsigned short nfs2_FhandleToExportId(fhandle2 * pfh2)
  */
 int nfs3_Is_Fh_Xattr(nfs_fh3 * pfh)
 {
-  file_handle_v3_t *pfhandle3;
+  //  file_handle_v3_t *pfhandle3;
 
   if(pfh == NULL)
     return 0;
 
-  pfhandle3 = (file_handle_v3_t *) (pfh->data.data_val);
+  //  pfhandle3 = (file_handle_v3_t *) (pfh->data.data_val);
 
   //  return (pfhandle3->xattr_pos != 0) ? 1 : 0;
   return 0;
@@ -393,12 +393,12 @@ int nfs3_Is_Fh_Xattr(nfs_fh3 * pfh)
  */
 int nfs4_Is_Fh_Xattr(nfs_fh4 * pfh)
 {
-  file_handle_v4_t *pfhandle4;
+  //  file_handle_v4_t *pfhandle4;
 
   if(pfh == NULL)
     return 0;
 
-  pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
+  //  pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
 
   // return (pfhandle4->xattr_pos != 0) ? 1 : 0;
   return 0;

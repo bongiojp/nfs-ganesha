@@ -100,11 +100,11 @@ int nfs4_XattrToFattr(fattr4 * Fattr,
  */
 nfsstat4 nfs4_fh_to_xattrfh(nfs_fh4 * pfhin, nfs_fh4 * pfhout)
 {
-  file_handle_v4_t *pfile_handle = NULL;
+  //  file_handle_v4_t *pfile_handle = NULL;
 
   memcpy(pfhout->nfs_fh4_val, pfhin->nfs_fh4_val, pfhin->nfs_fh4_len);
 
-  pfile_handle = (file_handle_v4_t *) (pfhout->nfs_fh4_val);
+  //  pfile_handle = (file_handle_v4_t *) (pfhout->nfs_fh4_val);
 
   /* the following choice is made for xattr: the field xattr_pos contains :
    * - 0 if the FH is related to an actual FH object
@@ -130,11 +130,11 @@ nfsstat4 nfs4_fh_to_xattrfh(nfs_fh4 * pfhin, nfs_fh4 * pfhout)
  */
 nfsstat4 nfs4_xattrfh_to_fh(nfs_fh4 * pfhin, nfs_fh4 * pfhout)
 {
-  file_handle_v4_t *pfile_handle = NULL;
+  //  file_handle_v4_t *pfile_handle = NULL;
 
   memcpy(pfhout->nfs_fh4_val, pfhin->nfs_fh4_val, pfhin->nfs_fh4_len);
 
-  pfile_handle = (file_handle_v4_t *) (pfhout->nfs_fh4_val);
+  //  pfile_handle = (file_handle_v4_t *) (pfhout->nfs_fh4_val);
 
   //TODO: FIX
   //  pfile_handle->xattr_pos = 0;  /**< 0 = real filehandle */
@@ -232,7 +232,7 @@ int nfs4_op_lookup_xattr(struct nfs_argop4 *op,
   fsal_status_t fsal_status;
   struct fsal_obj_handle *obj_hdl = NULL;
   unsigned int xattr_id = 0;
-  file_handle_v4_t *pfile_handle = NULL;
+  //  file_handle_v4_t *pfile_handle = NULL;
 
   /* The xattr directory contains no subdirectory, lookup always returns ENOENT */
   res_LOOKUP4.status = NFS4_OK;
@@ -256,7 +256,7 @@ int nfs4_op_lookup_xattr(struct nfs_argop4 *op,
     }
 
   /* Attribute was found */
-  pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
+  //  pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
 
   /* for Xattr FH, we adopt the current convention:
    * xattr_pos = 0 ==> the FH is the one of the actual FS object
@@ -343,7 +343,7 @@ int nfs4_op_readdir_xattr(struct nfs_argop4 *op,
   char **entry_name_array = NULL;
   struct fsal_obj_handle *obj_hdl = NULL;
   fsal_status_t fsal_status;
-  file_handle_v4_t *file_handle;
+  //  file_handle_v4_t *file_handle;
   nfs_fh4 nfsfh;
   struct alloc_file_handle_v4 temp_handle;
 
@@ -357,7 +357,7 @@ int nfs4_op_readdir_xattr(struct nfs_argop4 *op,
   memcpy(nfsfh.nfs_fh4_val, data->currentFH.nfs_fh4_val, data->currentFH.nfs_fh4_len);
   nfsfh.nfs_fh4_len = data->currentFH.nfs_fh4_len;
 
-  file_handle = &temp_handle.handle;
+  //  file_handle = &temp_handle.handle;
 
   LogFullDebug(COMPONENT_NFS_V4_XATTR, "Entering NFS4_OP_READDIR_PSEUDO");
 
@@ -558,7 +558,7 @@ int nfs4_op_open_xattr(struct nfs_argop4 *op,
   fsal_status_t fsal_status;
   struct fsal_obj_handle *obj_hdl = NULL;
   unsigned int xattr_id = 0;
-  file_handle_v4_t *pfile_handle = NULL;
+  //  file_handle_v4_t *pfile_handle = NULL;
   char empty_buff[16] = "";
 
   res_OPEN4.status = NFS4_OK;
@@ -602,7 +602,7 @@ int nfs4_op_open_xattr(struct nfs_argop4 *op,
         }
 
       /* Attribute was found */
-      pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
+      //      pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
 
       /* for Xattr FH, we adopt the current convention:
        * xattr_pos = 0 ==> the FH is the one of the actual FS object
@@ -627,7 +627,7 @@ int nfs4_op_open_xattr(struct nfs_argop4 *op,
         }
 
       /* Attribute was found */
-      pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
+      //      pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
 
       /* for Xattr FH, we adopt the current convention:
        * xattr_pos = 0 ==> the FH is the one of the actual FS object
@@ -669,7 +669,7 @@ int nfs4_op_read_xattr(struct nfs_argop4 *op,
                        compound_data_t * data, struct nfs_resop4 *resp)
 {
   struct fsal_obj_handle *obj_hdl = NULL;
-  file_handle_v4_t *pfile_handle = NULL;
+  //  file_handle_v4_t *pfile_handle = NULL;
   unsigned int xattr_id = 0;
   fsal_status_t fsal_status;
   char *buffer = NULL;
@@ -679,7 +679,7 @@ int nfs4_op_read_xattr(struct nfs_argop4 *op,
   obj_hdl = data->current_entry->obj_handle;
 
   /* Get the xattr_id */
-  pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
+  //  pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
 
   /* for Xattr FH, we adopt the current convention:
    * xattr_pos = 0 ==> the FH is the one of the actual FS object
@@ -733,7 +733,7 @@ int nfs4_op_write_xattr(struct nfs_argop4 *op,
                         compound_data_t * data, struct nfs_resop4 *resp)
 {
   struct fsal_obj_handle *obj_hdl = NULL;
-  file_handle_v4_t *pfile_handle = NULL;
+  //  file_handle_v4_t *pfile_handle = NULL;
   unsigned int xattr_id = 0;
   fsal_status_t fsal_status;
 
@@ -741,7 +741,7 @@ int nfs4_op_write_xattr(struct nfs_argop4 *op,
   obj_hdl = data->current_entry->obj_handle;
 
   /* Get the xattr_id */
-  pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
+  //  pfile_handle = (file_handle_v4_t *) (data->currentFH.nfs_fh4_val);
 
   /* for Xattr FH, we adopt the current convention:
    * xattr_pos = 0 ==> the FH is the one of the actual FS object

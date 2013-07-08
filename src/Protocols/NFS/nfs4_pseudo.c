@@ -66,14 +66,6 @@ static pseudofs_t gPseudoFs;
 hash_table_t *ht_nfs4_pseudo;
 struct alloc_file_handle_v4 notused; /* Used for sizeof()*/
 
-/* Print a nfsv4 handle to a string buffer. */
-void v4handle2str(char *buffer, void *fsopaque, int len)
-{
-  int i;
-  for(i = 0; i < len; i++)
-    sprintf(buffer+2*i, "%02x", ((unsigned char *)fsopaque)[i]);
-}
-
 void free_pseudo_handle_key(struct gsh_buffdesc key)
 {
   gsh_free(key.addr);
@@ -273,11 +265,11 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
 
   key = create_pseudo_handle_key(PseudoFs->root.name, strlen(PseudoFs->root.name));
   if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
-    char handle2str[256];
-    memset(handle2str, 0, sizeof(handle2str));
-    v4handle2str(handle2str, key.addr, key.len);
+    char str[256];
+    memset(str, 0, sizeof(str));
+    sprint_mem(str, key.addr, key.len);
     LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for path:%s handle:%s",
-                 PseudoFs->root.name,handle2str);
+                 PseudoFs->root.name,str);
   }
 
   PseudoFs->root.fsopaque = (uint8_t *)key.addr;
@@ -361,11 +353,11 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
               
               if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
                 {
-                  char handle2str[256];
-                  memset(handle2str, 0, sizeof(handle2str));
-                  v4handle2str(handle2str, key.addr, key.len);
+                  char str[256];
+                  memset(str, 0, sizeof(str));
+                  sprint_mem(str, key.addr, key.len);
                   LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for "
-                               "path:%s handle:%s", fullpseudopath,handle2str);
+                               "path:%s handle:%s", fullpseudopath,str);
                 }
               /* Now we create the pseudo entry */
               newPseudoFsEntry = gsh_malloc(sizeof(pseudofs_entry_t));
@@ -395,11 +387,11 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
               value.len = sizeof(newPseudoFsEntry);
 
               if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
-                char handle2str[256];
-                memset(handle2str, 0, sizeof(handle2str));
-                v4handle2str(handle2str, value.addr, key.len);
+                char str[256];
+                memset(str, 0, sizeof(str));
+                sprint_mem(str, value.addr, value.len);
                 LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for path:%s handle:%s",
-                             PseudoFs->root.name,handle2str);
+                             PseudoFs->root.name,str);
               }
               
               /* Looking for a matching entry and creating if nonexistent */
@@ -630,11 +622,11 @@ int nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
 
   if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
     {
-      char handle2str[256];
-      memset(handle2str, 0, sizeof(handle2str));
-      v4handle2str(handle2str, psfsentry->fsopaque, sizeof(notused.pad));
+      char str[256];
+      memset(str, 0, sizeof(str));
+      sprint_mem(str, psfsentry->fsopaque, sizeof(notused.pad));
       LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle name:%s handle:%s",
-                   psfsentry->name,handle2str);
+                   psfsentry->name,str);
     }
 
   return true;
