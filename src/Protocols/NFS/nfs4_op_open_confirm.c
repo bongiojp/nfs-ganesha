@@ -112,8 +112,7 @@ int nfs4_op_open_confirm(struct nfs_argop4 *op,
 check_seqid:
 
   /* Check seqid */
-  if(!Check_nfs4_seqid(open_owner, arg_OPEN_CONFIRM4.seqid, op,
-                       data->current_entry,
+  if(!Check_nfs4_seqid(open_owner, arg_OPEN_CONFIRM4.seqid, op, data,
                        resp, tag))
     {
       /* Response is all setup for us and LogDebug told what was wrong */
@@ -142,8 +141,7 @@ check_seqid:
                  tag);
 
   /* Save the response in the open owner */
-  Copy_nfs4_state_req(open_owner, arg_OPEN_CONFIRM4.seqid, op,
-                      data->current_entry,
+  Copy_nfs4_state_req(open_owner, arg_OPEN_CONFIRM4.seqid, op, data,
                       resp, tag);
 
   dec_state_owner_ref(open_owner);

@@ -333,8 +333,7 @@ check_seqid:
 
         /* Check seqid (lock_seqid or open_seqid) */
         if (data->minorversion == 0) {
-                if (!Check_nfs4_seqid(resp_owner, seqid, op,
-                                      data->current_entry,
+                if (!Check_nfs4_seqid(resp_owner, seqid, op, data,
                                       resp, lock_tag)) {
                         /* Response is all setup for us and LogDebug
                            told what was wrong */
@@ -457,7 +456,7 @@ check_seqid:
                             !Check_nfs4_seqid(lock_owner,
                                               arg_LOCK4->locker
                                               .locker4_u.open_owner.lock_seqid,
-                                              op, data->current_entry, resp,
+                                              op, data, resp,
                                               lock_tag)) {
                                 LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
                                         "LOCK failed to create new lock "
@@ -555,7 +554,7 @@ check_seqid:
                     res_LOCK4->status != NFS4ERR_BAD_STATEID &&
                     data->minorversion == 0) {
                         Copy_nfs4_state_req(resp_owner, seqid, op,
-                                            data->current_entry, resp, lock_tag);
+                                            data, resp, lock_tag);
                 }
 
                 if (arg_LOCK4->locker.new_lock_owner) {
@@ -586,7 +585,7 @@ check_seqid:
                 Copy_nfs4_state_req(lock_owner,
                           arg_LOCK4->locker.locker4_u.open_owner.lock_seqid,
                           op,
-                          data->current_entry,
+                          data,
                           resp,
                           lock_tag);
 
@@ -606,8 +605,8 @@ out:
 
         if (data->minorversion == 0) {
         /* Save the response in the lock or open owner */
-                Copy_nfs4_state_req(resp_owner, seqid, op, data->current_entry,
-                                    resp, lock_tag);
+                Copy_nfs4_state_req(resp_owner, seqid, op, data, resp,
+                                    lock_tag);
         }
 
 out2:

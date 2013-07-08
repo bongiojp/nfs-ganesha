@@ -75,40 +75,46 @@ nfs4_op_putfh(struct nfs_argop4 *op,
 	/* First check the handle.  If it is rubbish, we go no further
 	 */
         res_PUTFH4->status = nfs4_Is_Fh_Invalid(&arg_PUTFH4->object);
-	if(res_PUTFH4->status != NFS4_OK)
+	if(res_PUTFH4->status != NFS4_OK) {
+			  LogFullDebug(COMPONENT_NFS_V4, "555555555555555");
 		return res_PUTFH4->status;
-	
+	}
+			  LogFullDebug(COMPONENT_NFS_V4, "a1");	
         /* If no currentFH were set, allocate one */
         if(data->currentFH.nfs_fh4_len == 0) {
                 res_PUTFH4->status = nfs4_AllocateFH(&(data->currentFH));
                 if (res_PUTFH4->status != NFS4_OK) {
+			  LogFullDebug(COMPONENT_NFS_V4, "444444444444444444");
                         return res_PUTFH4->status;
                 }
         }
-
+			  LogFullDebug(COMPONENT_NFS_V4, "a2");	
         /* Copy the filehandle from the reply structure */
         data->currentFH.nfs_fh4_len = arg_PUTFH4->object.nfs_fh4_len;
 
         /* Put the data in place */
         memcpy(data->currentFH.nfs_fh4_val, arg_PUTFH4->object.nfs_fh4_val,
                arg_PUTFH4->object.nfs_fh4_len);
-
+			  LogFullDebug(COMPONENT_NFS_V4, "a3");	
         LogHandleNFS4("NFS4_OP_PUTFH CURRENT FH: ", &arg_PUTFH4->object);
 
         /* If the filehandle is not pseudo fs file handle, get the
            entry related to it, otherwise use fake values */
         if (nfs4_Is_Fh_Pseudo(&(data->currentFH))) {
+			  LogFullDebug(COMPONENT_NFS_V4, "a4");	
 		set_compound_data_for_pseudo(data);
         } else {
 		struct fsal_export *export;
 		struct file_handle_v4 *v4_handle
 			= ((struct file_handle_v4 *)data->currentFH.nfs_fh4_val);
-
+			  LogFullDebug(COMPONENT_NFS_V4, "a5");	
 		/* Set up the export (and nfs4_MakeCred) for the new currentFH */
 		res_PUTFH4->status = nfs4_SetCompoundExport(data);
-		if(res_PUTFH4->status != NFS4_OK)
+		if(res_PUTFH4->status != NFS4_OK) {
+			  LogFullDebug(COMPONENT_NFS_V4, "33333333333333333333");
 			return res_PUTFH4->status;
-
+		}
+			  LogFullDebug(COMPONENT_NFS_V4, "a6");	
                 /* As usual, protect existing refcounts */
                 if (data->current_entry) {
                         cache_inode_put(data->current_entry);
@@ -120,13 +126,13 @@ nfs4_op_putfh(struct nfs_argop4 *op,
                 data->current_ds = NULL;
                 data->current_filetype = NO_FILE_TYPE;
 		export = data->req_ctx->export->export.export_hdl;
-
+			  LogFullDebug(COMPONENT_NFS_V4, "a7");	
                 /* The export and fsalid should be updated, but DS handles
                    don't support metdata operations.  Thus, we can't call into
                    Cache_inode to populate the metadata cache. */
                 if (nfs4_Is_Fh_DSHandle(&data->currentFH)) {
                         struct gsh_buffdesc fh_desc;
-
+			  LogFullDebug(COMPONENT_NFS_V4, "a8");	
                         fh_desc.addr = v4_handle->fsopaque;
                         fh_desc.len = v4_handle->fs_len;
                         data->current_entry = NULL;
@@ -137,12 +143,13 @@ nfs4_op_putfh(struct nfs_argop4 *op,
 								&data->current_ds);
 
                         if (res_PUTFH4->status != NFS4_OK) {
+			  LogFullDebug(COMPONENT_NFS_V4, "22222222222222222222");
                                 return res_PUTFH4->status;
                         }
                 } else {
 			cache_inode_fsal_data_t fsal_data;
 			fsal_status_t fsal_status;
-
+			  LogFullDebug(COMPONENT_NFS_V4, "a9");	
 			fsal_data.export = export;
 			fsal_data.fh_desc.len = v4_handle->fs_len;
 			fsal_data.fh_desc.addr = &v4_handle->fsopaque;
@@ -152,6 +159,7 @@ nfs4_op_putfh(struct nfs_argop4 *op,
 								  FSAL_DIGEST_NFSV4,
 								  &fsal_data.fh_desc);
 			if(FSAL_IS_ERROR(fsal_status)) {
+			  LogFullDebug(COMPONENT_NFS_V4, "1111111111111111");
 				res_PUTFH4->status = NFS4ERR_BADHANDLE;
                                 return res_PUTFH4->status;
 			}
@@ -160,14 +168,16 @@ nfs4_op_putfh(struct nfs_argop4 *op,
 					data->req_ctx,
 					&data->current_entry);
                         if(data->current_entry == NULL) {
+			  LogFullDebug(COMPONENT_NFS_V4, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 				res_PUTFH4->status = NFS4ERR_STALE;
                                 return res_PUTFH4->status;
                         }
+			  LogFullDebug(COMPONENT_NFS_V4, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
                         /* Extract the filetype */
                         data->current_filetype = data->current_entry->type;
                 }
         }
-
+			  LogFullDebug(COMPONENT_NFS_V4, "a10");	
         return NFS4_OK;
 }                               /* nfs4_op_putfh */
 

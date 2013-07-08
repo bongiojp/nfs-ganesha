@@ -82,7 +82,7 @@ int nfs4_op_close(struct nfs_argop4 *op,
         LogDebug(COMPONENT_STATE,
                  "Entering NFS v4 CLOSE handler ----------------------------");
 
-        memset(res_CLOSE4, 0, sizeof(CLOSE4res));
+        memset(res_CLOSE4, 0, sizeof(res_CLOSE4));
         resp->resop = NFS4_OP_CLOSE;
         res_CLOSE4->status = NFS4_OK;
 
@@ -98,21 +98,13 @@ int nfs4_op_close(struct nfs_argop4 *op,
                           data->current_entry,
                           &state_found,
                           data,
-                          data->minorversion == 0 ?
-                            STATEID_SPECIAL_CLOSE_40 :
-                            STATEID_SPECIAL_CLOSE_41,
+                          STATEID_SPECIAL_FOR_LOCK,
                           0,
                           FALSE,                  /* do not check owner seqid */
                           close_tag);
 
-        if(nfs_status != NFS4_OK) {
-                res_CLOSE4->status = nfs_status;
-                LogDebug(COMPONENT_STATE,
-                         "CLOSE failed nfs4_Check_Stateid");
-                return res_CLOSE4->status;
-        }
-
-        if(state_found == NULL) {
+        if(nfs_status == NFS4ERR_BAD_STATEID)
+        {
             /* Assume this is a replayed close */
             res_CLOSE4->status = NFS4_OK;
             memcpy(res_CLOSE4->CLOSE4res_u.open_stateid.other,
@@ -122,9 +114,17 @@ int nfs4_op_close(struct nfs_argop4 *op,
             if(res_CLOSE4->CLOSE4res_u.open_stateid.seqid == 0)
                res_CLOSE4->CLOSE4res_u.open_stateid.seqid = 1;
             LogDebug(COMPONENT_STATE,
-                     "CLOSE failed nfs4_Check_Stateid must have already been closed."
-                     " But treating it as replayed close and returning NFS4_OK");
+                     "CLOSE failed nfs4_Check_Stateid with NFS4ERR_BAD_STATEID."
+                     "But treating it as replayed close and returning NFS4_OK");
             return res_CLOSE4->status;
+        }
+
+        if(nfs_status != NFS4_OK)
+        {
+                res_CLOSE4->status = nfs_status;
+                LogDebug(COMPONENT_STATE,
+                         "CLOSE failed nfs4_Check_Stateid");
+                return res_CLOSE4->status;
         }
 
         open_owner = state_found->state_owner;
@@ -134,8 +134,7 @@ int nfs4_op_close(struct nfs_argop4 *op,
         /* Check seqid */
         if (data->minorversion == 0) {
                 if (!Check_nfs4_seqid(open_owner, arg_CLOSE4->seqid,
-                                      op, data->current_entry, resp,
-                                      close_tag)) {
+                                      op, data, resp, close_tag)) {
                         /* Response is all setup for us and LogDebug
                            told what was wrong */
                         pthread_mutex_unlock(&open_owner->so_mutex);
@@ -316,7 +315,7 @@ out:
         /* Save the response in the open owner */
         if (data->minorversion == 0) {
                 Copy_nfs4_state_req(open_owner, arg_CLOSE4->seqid,
-                                    op, data->current_entry, resp, close_tag);
+                                    op, data, resp, close_tag);
         }
 
         dec_state_owner_ref(open_owner);

@@ -81,6 +81,12 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
   if(res_SAVEFH.status != NFS4_OK)
     return res_SAVEFH.status;
 
+  if(data->current_entry == NULL) {
+    LogFullDebug(COMPONENT_NFS_V4, "ccccccccccccccccccccccc");
+  } else {
+    LogFullDebug(COMPONENT_NFS_V4, "ddddddddddddddddddddddd");
+  }
+
   /* If the savefh is not allocated, do it now */
   if(data->savedFH.nfs_fh4_len == 0)
     {
@@ -88,39 +94,41 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
       if(res_SAVEFH.status != NFS4_OK)
         return res_SAVEFH.status;
     }
-
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "eeeeeeeeeee");}
   /* Copy the data from current FH to saved FH */
   memcpy(data->savedFH.nfs_fh4_val,
          data->currentFH.nfs_fh4_val,
          data->currentFH.nfs_fh4_len);
   data->savedFH.nfs_fh4_len = data->currentFH.nfs_fh4_len;
-
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "fffffffffffffff");}
   if(data->saved_export != NULL) {
       put_gsh_export(data->saved_export);
   }
   /* Save the export information by taking a reference since
    * currentFH is still active.  Assert this just to be sure...
    */
-  data->saved_export = get_gsh_export(data->req_ctx->export->export.id,
-				      true);
-  assert(data->saved_export != NULL);
-  data->saved_export_perms = data->export_perms;
+  if (data->req_ctx->export != NULL)
+    data->saved_export = get_gsh_export(data->req_ctx->export->export.id, true);
 
+  assert((data->saved_export != NULL) || nfs4_Is_Fh_Pseudo(&data->currentFH) );
+  data->saved_export_perms = data->export_perms;
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "ggggggggggggggggggggg");}
   /* If saved and current entry are equal, skip the following. */
 
   if (data->saved_entry == data->current_entry) {
       goto out;
   }
-
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "hhhhhhhhhhhhhhhhhhhhhh");}
   if (data->saved_entry) {
       cache_inode_put(data->saved_entry);
       data->saved_entry = NULL;
   }
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "iiiiiiiiiiiiiiii");}
   if (data->saved_ds) {
       data->saved_ds->ops->put(data->saved_ds);
       data->saved_ds = NULL;
   }
-
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "jjjjjjjjjjjjjjjj");}
   data->saved_entry = data->current_entry;
   data->saved_filetype = data->current_filetype;
 
@@ -130,7 +138,7 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
 
   if (data->saved_entry)
       cache_inode_lru_ref(data->saved_entry, LRU_FLAG_NONE);
-
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "kkkkkkkkkkkkkkkkkkkk");}
  out:
 
   if(isFullDebug(COMPONENT_NFS_V4))
@@ -139,7 +147,7 @@ int nfs4_op_savefh(struct nfs_argop4 *op,
       sprint_fhandle4(str, &data->savedFH);
       LogFullDebug(COMPONENT_NFS_V4, "SAVE FH: Saved FH %s", str);
     }
-
+  if(data->current_entry == NULL) {LogFullDebug(COMPONENT_NFS_V4, "lllllllllllllllll");}
   return NFS4_OK;
 } /* nfs4_op_savefh */
 
