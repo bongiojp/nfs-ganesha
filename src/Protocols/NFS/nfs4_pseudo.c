@@ -346,6 +346,7 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
     LogCrit(COMPONENT_NFS_V4_PSEUDO,
             "Failed to add ROOT pseudofs path %s due to hashtable error: %s",
             PseudoFs->root.name, hash_table_err_to_str(hrc));
+    free_pseudo_handle_key(key);
     return -1;
   }
  
@@ -467,6 +468,8 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
                 LogCrit(COMPONENT_NFS_V4_PSEUDO,
                         "Failed to add pseudofs path %s due to hashtable error: %s",
                         newPseudoFsEntry->name, hash_table_err_to_str(hrc));
+                free_pseudo_handle_key(key);
+                gsh_free(newPseudoFsEntry);
                 return -1;
               }
               if (hrc == HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
@@ -479,10 +482,12 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
                                          FALSE, &latch);
                 if ((hrc != HASHTABLE_SUCCESS))
                   {
-                    /* This should not happened */
+                    /* This should not happen */
                     LogCrit(COMPONENT_NFS_V4_PSEUDO, "Can't add/get key for %s"
                             " hashtable error: %s",
                             newPseudoFsEntry->name, hash_table_err_to_str(hrc));
+                    free_pseudo_handle_key(key);
+                    gsh_free(newPseudoFsEntry);
                     return -1;
                   } else
                   {
