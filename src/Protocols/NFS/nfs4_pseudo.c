@@ -905,7 +905,7 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
   if(thefsentry->junction_export == NULL)
     {
       /* The entry is not a junction, we stay within the pseudo fs */
-      nfs4_PseudoToFhandle(&(data->currentFH), thefsentry);
+      if (!nfs4_PseudoToFhandle(&(data->currentFH), thefsentry))
         {
           res_LOOKUP4.status = NFS4ERR_SERVERFAULT;
 	  goto out;
@@ -999,7 +999,7 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
     cache_inode_lru_unref(entry, LRU_FLAG_NONE);
   if (name)
     gsh_free(name);
-  return NFS4_OK;
+  return res_LOOKUP4.status;
 }
 
 /**
