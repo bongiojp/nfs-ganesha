@@ -64,7 +64,7 @@
 
 static pseudofs_t gPseudoFs;
 hash_table_t *ht_nfs4_pseudo;
-#define V4_FH_OPAQUE_SIZE (sizeof(alloc_file_handle_v4 ) - sizeof(file_handle_v4))
+#define V4_FH_OPAQUE_SIZE (sizeof(struct alloc_file_handle_v4 ) - sizeof(struct file_handle_v4))
 
 /**
  * @brief Free the opaque nfsv4 handle used as a key in the pseudofs
@@ -101,7 +101,7 @@ char *package_pseudo_handle(char *pseudopath, ushort len, uint64 hashkey)
 
   /* This is the size of the v4 file handle opaque area used for pseudofs or
    * FSAL file handles. */
-  buff = gsh_malloc(sizeof(V4_FH_OPAQUE_SIZE)); 
+  buff = gsh_malloc(V4_FH_OPAQUE_SIZE); 
   if (buff == NULL) {
     LogCrit(COMPONENT_NFS_V4_PSEUDO,
             "Failed to malloc space for pseudofs handle.");
@@ -119,15 +119,15 @@ char *package_pseudo_handle(char *pseudopath, ushort len, uint64 hashkey)
   /* Either the nfsv4 fh opaque size or the length of the pseudopath. Ideally
    * we can include entire pseudofs pathname for guaranteed uniqueness of
    * pseudofs handles. */
-  pathlen = min(sizeof(V4_FH_OPAQUE_SIZE) - opaque_bytes_used, len);
+  pathlen = min(V4_FH_OPAQUE_SIZE - opaque_bytes_used, len);
   memcpy(buff + opaque_bytes_used, pseudopath, pathlen);
   opaque_bytes_used += pathlen;
 
   /* If there is more space in the opaque handle due to a short pseudofs path
    * ... zero it. */
-  if (opaque_bytes_used < sizeof(V4_FH_OPAQUE_SIZE)) {
+  if (opaque_bytes_used < V4_FH_OPAQUE_SIZE) {
     memset(buff + opaque_bytes_used, 0,
-           sizeof(V4_FH_OPAQUE_SIZE) - opaque_bytes_used);
+           V4_FH_OPAQUE_SIZE - opaque_bytes_used);
   }
 
   return buff;
@@ -151,7 +151,7 @@ struct gsh_buffdesc create_pseudo_handle_key(char *pseudopath, ushort len)
 
   hashkey = CityHash64(pseudopath, len);
   key.addr = package_pseudo_handle(pseudopath, len, hashkey);
-  key.len = sizeof(V4_FH_OPAQUE_SIZE);
+  key.len = V4_FH_OPAQUE_SIZE;
 
   return key;
 }
@@ -657,17 +657,17 @@ int nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
   fhandle4 = (file_handle_v4_t *)fh4p->nfs_fh4_val;
   fhandle4->fhversion = GANESHA_FH_VERSION;
   fhandle4->exportid = 0;
-  memcpy(fhandle4->fsopaque, psfsentry->fsopaque, sizeof(V4_FH_OPAQUE_SIZE));
-  fhandle4->fs_len = sizeof(V4_FH_OPAQUE_SIZE);
+  memcpy(fhandle4->fsopaque, psfsentry->fsopaque, V4_FH_OPAQUE_SIZE);
+  fhandle4->fs_len = V4_FH_OPAQUE_SIZE;
 
   /* fh4p->nfs_fh4_val is now ready, now just set the length. */
-  fh4p->nfs_fh4_len = sizeof(fhandle4) + sizeof(V4_FH_OPAQUE_SIZE);
+  fh4p->nfs_fh4_len = sizeof(fhandle4) + V4_FH_OPAQUE_SIZE;
 
   if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
     {
       char str[256];
       memset(str, 0, sizeof(str));
-      sprint_mem(str, psfsentry->fsopaque, sizeof(V4_FH_OPAQUE_SIZE));
+      sprint_mem(str, psfsentry->fsopaque, V4_FH_OPAQUE_SIZE);
       LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle name:%s handle:%s",
                    psfsentry->name,str);
     }
