@@ -37,7 +37,7 @@ class Ganesha15:
     WRLOCK_FUNC = "pthread_rwlock_wrlock"
     RDLOCK_FUNC = "pthread_rwlock_rdlock"
 
-    WORKERTHREAD_FUNC = "worker_run"
+    WORKERTHREAD_FUNC = "worker_thread"
 class PrintLockOwners(gdb.Command):
     """print owner of locks
 
