@@ -88,9 +88,7 @@ void sprint_mem(char *str, char *buff, int len)
  * Gets the root of the pseudo file system. This is only a wrapper to static variable gPseudoFs. 
  *
  * @return the pseudo fs root 
- * 
  */
-
 pseudofs_t *nfs4_GetPseudoFs(void)
 {
   return &gPseudoFs;
@@ -155,7 +153,7 @@ char *package_pseudo_handle(char *pseudopath, ushort len, uint64 hashkey) {
    * ... zero it. */
   if (opaque_bytes_used < V4_FH_OPAQUE_SIZE) {
     memset(buff + opaque_bytes_used, 0,
-n           V4_FH_OPAQUE_SIZE - opaque_bytes_used);
+           V4_FH_OPAQUE_SIZE - opaque_bytes_used);
   }
 
   return buff;
@@ -175,7 +173,6 @@ hash_buffer_t create_pseudo_handle_key(char *pseudopath, int len) {
   hash_buffer_t key;
   ushort smalllen = len;
   uint64 hashkey;
-
 
   hashkey = CityHash64(pseudopath, len);
   key.pdata = package_pseudo_handle(pseudopath, smalllen, hashkey);
@@ -197,7 +194,6 @@ hash_buffer_t create_pseudo_handle_key(char *pseudopath, int len) {
  *                                                                          
  * @return -1 if rhs is bigger, 1 if lhs is bigger, 0 if they are the same. 
  */
-/* avltree nodes are compared by name and name length */
 static inline int avl_pseudo_name_cmp(const struct avltree_node *lhs,
                                       const struct avltree_node *rhs) {
   pseudofs_entry_t *lk, *rk;
@@ -237,9 +233,6 @@ static inline int avl_pseudo_name_cmp(const struct avltree_node *lhs,
  *                                                                           
  * @return -1 if rhs is bigger, 1 if lhs is bigger, 0 if they are the same.  
  */
-
-/* Compare pseudofs ids. There is a chance of a collision. We will
- * not have the node name to avoid the collision */
 static inline int avl_pseudo_id_cmp(const struct avltree_node *lhs,
                                     const struct avltree_node *rhs) {
   pseudofs_entry_t *lk, *rk;
@@ -274,7 +267,7 @@ void fullpath(char *fullpseudopath, char **PathTok, int tok, int maxlen) {
   for(currtok=0; currtok<=tok&&currlen<maxlen; currtok++) {
     if (currlen + strlen(PathTok[currtok]) > maxlen) {
       LogWarn(COMPONENT_NFS_V4_PSEUDO,"Pseudopath length is too long, can't "
-	      "create pseudofs node.");
+              "create pseudofs node.");
       break;
     }
     strncpy(fullpseudopath+currlen, PathTok[currtok], strlen(PathTok[currtok]));
@@ -1400,7 +1393,7 @@ int nfs4_PseudoToFattr(pseudofs_entry_t * psfsp,
 #endif
 
         default:
-	  LogWarn(COMPONENT_NFS_V4_PSEUDO, "Bad file attributes %d queried",
+          LogWarn(COMPONENT_NFS_V4_PSEUDO, "Bad file attributes %d queried",
                   attribute_to_set);
           /* BUGAZOMEU : un traitement special ici */
           break;
@@ -1743,7 +1736,7 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
         {
           cache_status = cache_inode_error_convert(fsal_status);
           res_LOOKUP4.status = nfs4_Errno(cache_status);
-	  LogMajor(COMPONENT_NFS_V4_PSEUDO,
+          LogMajor(COMPONENT_NFS_V4_PSEUDO,
                    "PSEUDO FS JUNCTION TRAVERSAL: Failed to lookup for %s, id=%d",
                    data->pexport->fullpath, data->pexport->id);
           LogMajor(COMPONENT_NFS_V4_PSEUDO,
