@@ -220,6 +220,16 @@ nfs_parameter_t nfs_param =
   .nfs4_owner_param.val_to_str = display_nfs4_owner_val,
   .nfs4_owner_param.flags = HT_FLAG_CACHE,
 
+  .nfs4_pseudofs_param.index_size = PRIME_STATE,
+  .nfs4_pseudofs_param.hash_func_key = nfs4_pseudo_value_hash_func,
+  .nfs4_pseudofs_param.hash_func_rbt = nfs4_pseudo_rbt_hash_func,
+  .nfs4_pseudofs_param.compare_key = compare_nfs4_pseudo_key,
+  .nfs4_pseudofs_param.key_to_str = display_pseudo_key,
+  .nfs4_pseudofs_param.val_to_str = display_pseudo_val,
+  .nfs4_pseudofs_param.ht_name = "NFS4 PseudoFS nodeid",
+  .nfs4_pseudofs_param.flags = HT_FLAG_CACHE,
+  .nfs4_pseudofs_param.ht_log_component = COMPONENT_NFS_V4_PSEUDO,
+
   /* NSM Client hash */
   .nsm_client_hash_param.index_size = PRIME_STATE,
   .nsm_client_hash_param.hash_func_key = nsm_client_value_hash_func,
@@ -997,15 +1007,6 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
   LogInfo(COMPONENT_INIT,
           "NFSv4 clientid cache successfully initialized");
 
-  /* Creates the pseudo fs */
-  LogDebug(COMPONENT_INIT, "Now building pseudo fs");
-  if((rc = nfs4_ExportToPseudoFS(nfs_param.pexportlist)) != 0)
-    LogFatal(COMPONENT_INIT,
-             "Error %d while initializing NFSv4 pseudo file system", rc);
-
-  LogInfo(COMPONENT_INIT,
-          "NFSv4 pseudo file system successfully initialized");
-
   /* Init duplicate request cache */
   dupreq2_pkginit();
   LogInfo(COMPONENT_INIT,
@@ -1097,6 +1098,12 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
   LogInfo(COMPONENT_INIT,
           "9P resources successfully initialized");
 #endif /* _USE_9P */
+
+  if(Init_nfs4_pseudo(&nfs_param.nfs4_pseudofs_param) != 0)
+    {
+      LogFatal(COMPONENT_INIT, "Error while initializing NFSv4 Pseudofs cache");
+    }
+  LogInfo(COMPONENT_INIT, "NFSv4 Pseudofs cache successfully initialized");
 
   /* Creates the pseudo fs */
   LogDebug(COMPONENT_INIT, "Now building pseudo fs");
