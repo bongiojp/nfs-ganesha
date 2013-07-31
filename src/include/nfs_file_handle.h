@@ -171,11 +171,11 @@ bool nfs3_FSALToFhandle(nfs_fh3 *, const struct fsal_obj_handle *);
 bool nfs2_FSALToFhandle(fhandle2 *, const struct fsal_obj_handle *);
 
 /* Extraction of export id from a file handle */
-short nfs2_FhandleToExportId(fhandle2 *);
-short nfs4_FhandleToExportId(nfs_fh4 *);
-short nfs3_FhandleToExportId(nfs_fh3 *);
+unsigned short nfs2_FhandleToExportId(fhandle2 *);
+unsigned short nfs4_FhandleToExportId(nfs_fh4 *);
+unsigned short nfs3_FhandleToExportId(nfs_fh3 *);
 
-short nlm4_FhandleToExportId(netobj *);
+unsigned short nlm4_FhandleToExportId(netobj *);
 
 /* nfs3 validation */
 int nfs3_Is_Fh_Invalid(nfs_fh3 *);
