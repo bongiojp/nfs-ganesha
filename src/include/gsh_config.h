@@ -672,6 +672,8 @@ typedef struct nfs_param {
 	hash_parameter_t nsm_client_hash_param;
 	/** NLM client cache parameters  */
 	hash_parameter_t nlm_client_hash_param;
+        /** Pseudofs cache parameters */
+        hash_parameter_t nfs4_pseudofs_param;
 	/** NLM owner cache parameters  */
 	hash_parameter_t nlm_owner_hash_param;
 #ifdef _USE_9P
