@@ -63,11 +63,6 @@
 
 #define NB_TOK_PATH 128
 
-#define min(a,b)                        \
-  ({ typeof (a) _a = (a);               \
-    typeof (b) _b = (b);                \
-    _a < _b ? _a : _b; })
-
 static pseudofs_t gPseudoFs;
 hash_table_t *ht_nfs4_pseudo;
 #define V4_FH_OPAQUE_SIZE (sizeof(struct alloc_file_handle_v4 ) - sizeof(struct file_handle_v4))
