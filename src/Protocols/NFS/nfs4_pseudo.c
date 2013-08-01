@@ -72,16 +72,6 @@ static pseudofs_t gPseudoFs;
 hash_table_t *ht_nfs4_pseudo;
 #define V4_FH_OPAQUE_SIZE (sizeof(struct alloc_file_handle_v4 ) - sizeof(struct file_handle_v4))
 
-void sprint_mem(char *str, char *buff, int len)
-{
-  int i;
-
-  if(buff == NULL)
-    sprintf(str, "<null>");
-  else for(i = 0; i < len; i++)
-         sprintf(str + i * 2, "%02x", (unsigned char)buff[i]);
-}
-
 /**
  * nfs4_GetPseudoFs: Gets the root of the pseudo file system.
  * 
