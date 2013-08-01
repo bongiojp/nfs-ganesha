@@ -156,11 +156,10 @@ char *package_pseudo_handle(char *pseudopath, ushort len, uint64 hashkey) {
  */
 hash_buffer_t create_pseudo_handle_key(char *pseudopath, int len) {
   hash_buffer_t key;
-  ushort smalllen = len;
   uint64 hashkey;
 
   hashkey = CityHash64(pseudopath, len);
-  key.pdata = package_pseudo_handle(pseudopath, smalllen, hashkey);
+  key.pdata = package_pseudo_handle(pseudopath, (ushort)len, hashkey);
   key.len = V4_FH_OPAQUE_SIZE;
 
   /* key.pdata == NULL upon error */
