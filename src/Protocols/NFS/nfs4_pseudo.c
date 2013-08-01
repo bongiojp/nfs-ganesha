@@ -187,18 +187,18 @@ static inline int avl_pseudo_name_cmp(const struct avltree_node *lhs,
 
   llen = strlen(lk->name);
   rlen = strlen(rk->name);
-  minlen = min(llen, rlen);
 
-  /* Compare strings*/
-  res = strncmp(lk->name, rk->name, minlen);
-  if (res != 0)
-    return res;
-
-  /* Same characters so far, now compare length of string. */
   if (llen < rlen)
     return (-1);
   if (llen > rlen)
     return (1);
+
+  /* Compare strings*/
+  res = strncmp(lk->name, rk->name, llen);
+  if (res < 0) /* lk->name is bigger */
+    return 1;
+  if (res > 0) /* rk->name is bigger */
+    return -1;
 
   /* Exact same name */
   return 0;
