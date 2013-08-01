@@ -23,6 +23,9 @@
  * ---------------------------------------
  */
 
+/* WARNING: This code does not currently work! Look for TODO messages to see
+ * what previously was removed due to nfsv4 file handle changes. */
+
 /**
  * \file    nfs4_xattr.c
  * \author  $Author$
@@ -182,11 +185,10 @@ int nfs4_XattrToFattr(fattr4 * Fattr,
 
           op_attr_success = 1;
 
-          // TODO: FIX
-          if (1)//          if(pfile_handle->xattr_pos == 1)
-            file_type = htonl(NF4DIR);  /* There are only directories in the pseudo fs */
-          else
-            file_type = htonl(NF4REG);
+          /* TODO: If xattrs is to be supported in 1.5, then we need to replace the xattr_pos
+           * variable (which no longer exists) with an FSAL function and FSAL specific
+           * solution. See history of this message to see what code was removed when
+           * xattr_pos was removed. */
 
           memcpy((char *)(attrvalsBuffer + LastOffset), &file_type, sizeof(fattr4_type));
           LastOffset += fattr4tab[attribute_to_set].size_fattr4;
@@ -421,10 +423,7 @@ int nfs4_XattrToFattr(fattr4 * Fattr,
           break;
 
         case FATTR4_FILEID:
-          // TODO: FIX
-          LogFullDebug(COMPONENT_NFS_V4_XATTR,
-                       "-----> Wanting FATTR4_FILEID  xattr_pos=%u",
-                       1);//                 pfile_handle->xattr_pos + 1);
+          // TODO: See todo message above that relates to xattr_pos variable
 
           /* The analog to the inode number. RFC3530 says "a number uniquely identifying the file within the filesystem" 
            * In the case of a pseudofs entry, the entry's unique id is used */
@@ -439,8 +438,7 @@ int nfs4_XattrToFattr(fattr4 * Fattr,
 #ifndef _XATTR_D_USE_SAME_INUM  /* I wrapped off this part of the code... Not sure it would be useful */
 
           file_id = nfs_htonl64(~(fsalattr.fileid));
-          //TODO: FIX
-          //          file_id = nfs_htonl64(~(fsalattr.fileid)) - pfile_handle->xattr_pos;
+          // TODO: See todo message above that relates to xattr_pos variable
 #else
           file_id = nfs_htonl64(fsalattr.fileid);
 #endif
@@ -588,11 +586,7 @@ int nfs4_XattrToFattr(fattr4 * Fattr,
           LogFullDebug(COMPONENT_NFS_V4_XATTR,
                        "-----> Wanting FATTR4_MODE");
 
-          //TODO: FIX
-          if(1)//          if(pfile_handle->xattr_pos == 1)
-            file_mode = htonl(0555);    /* Every pseudo fs object is dr-xr-xr-x */
-          else
-            file_mode = htonl(0644);    /* -rw-r--r-- */
+          // TODO: See todo message above that relates to xattr_pos variable
 
           memcpy((char *)(attrvalsBuffer + LastOffset), &file_mode, sizeof(fattr4_mode));
           LastOffset += fattr4tab[attribute_to_set].size_fattr4;
@@ -920,8 +914,7 @@ int nfs4_XattrToFattr(fattr4 * Fattr,
 
 #ifndef _XATTR_D_USE_SAME_INUM  /* I wrapped off this part of the code... Not sure it would be useful */
           file_id = nfs_htonl64(~(fsalattr.fileid));
-          //TODO: FIX
-          //          file_id = nfs_htonl64(~(fsalattr.fileid)) - pfile_handle->xattr_pos;
+          // TODO: See todo message above that relates to xattr_pos variable
 #else
           file_id = nfs_htonl64(fsalattr.fileid);
 #endif
@@ -987,8 +980,7 @@ nfsstat4 nfs4_fh_to_xattrfh(nfs_fh4 * pfhin, nfs_fh4 * pfhout)
    * - a value greater than 1 if the fh is related to a ghost file in ghost xattr directory that represents a xattr. The value is then equal 
    *   to the xattr_id + 1 (see how FSAL manages xattrs for meaning of this field). This limits the number of xattrs per object to 254. 
    */
-          //TODO: FIX
-  //pfile_handle->xattr_pos = 1;  /**< 1 = xattr ghost directory */
+  // TODO: See todo message above that relates to xattr_pos variable
 
   return NFS4_OK;
 }                               /* nfs4_fh_to_xattrfh */
@@ -1009,8 +1001,7 @@ nfsstat4 nfs4_xattrfh_to_fh(nfs_fh4 * pfhin, nfs_fh4 * pfhout)
   memcpy(pfhout->nfs_fh4_val, pfhin->nfs_fh4_val, pfhin->nfs_fh4_len);
 
   pfile_handle = (file_handle_v4_t *) (pfhout->nfs_fh4_val);
-          //TODO: FIX
-  //pfile_handle->xattr_pos = 0;  /**< 0 = real filehandle */
+  // TODO: See todo message above that relates to xattr_pos variable
 
   return NFS4_OK;
 }                               /* nfs4_fh_to_xattrfh */
@@ -1143,8 +1134,7 @@ int nfs4_op_lookup_xattr(struct nfs_argop4 *op,
    * xattr_pos = 0 ==> the FH is the one of the actual FS object
    * xattr_pos = 1 ==> the FH is the one of the xattr ghost directory 
    * xattr_pos > 1 ==> The FH is the one for the xattr ghost file whose xattr_id = xattr_pos -2 */
-          //TODO: FIX
-  //  pfile_handle->xattr_pos = xattr_id + 2;
+  // TODO: See todo message above that relates to xattr_pos variable
 
   return NFS4_OK;
 }                               /* nfs4_op_lookup_xattr */
@@ -1370,8 +1360,8 @@ int nfs4_op_readdir_xattr(struct nfs_argop4 *op,
 
           /* Set the cookie value */
           entry_nfs_array[i].cookie = cookie + i + 3;   /* 0, 1 and 2 are reserved */
-          //TODO: FIX
-          //          file_handle->xattr_pos = xattrs_tab[i].xattr_id + 2;
+          // TODO: See todo message above that relates to xattr_pos variable
+
           if(nfs4_XattrToFattr(&(entry_nfs_array[i].attrs),
                                data, &nfsfh, &(arg_READDIR4.attr_request)) != 0)
             {
@@ -1481,8 +1471,7 @@ int nfs4_op_open_xattr(struct nfs_argop4 *op,
        * xattr_pos = 0 ==> the FH is the one of the actual FS object
        * xattr_pos = 1 ==> the FH is the one of the xattr ghost directory 
        * xattr_pos > 1 ==> The FH is the one for the xattr ghost file whose xattr_id = xattr_pos -2 */
-          //TODO: FIX
-      //      pfile_handle->xattr_pos = xattr_id + 2;
+      // TODO: See todo message above that relates to xattr_pos variable
 
       res_OPEN4.status = NFS4_OK;
       return NFS4_OK;
@@ -1506,8 +1495,7 @@ int nfs4_op_open_xattr(struct nfs_argop4 *op,
        * xattr_pos = 0 ==> the FH is the one of the actual FS object
        * xattr_pos = 1 ==> the FH is the one of the xattr ghost directory 
        * xattr_pos > 1 ==> The FH is the one for the xattr ghost file whose xattr_id = xattr_pos -2 */
-          //TODO: FIX
-      //      pfile_handle->xattr_pos = xattr_id + 2;
+      // TODO: See todo message above that relates to xattr_pos variable
 
       res_OPEN4.status = NFS4_OK;
       return NFS4_OK;
@@ -1553,8 +1541,7 @@ int nfs4_op_read_xattr(struct nfs_argop4 *op,
    * xattr_pos = 0 ==> the FH is the one of the actual FS object
    * xattr_pos = 1 ==> the FH is the one of the xattr ghost directory
    * xattr_pos > 1 ==> The FH is the one for the xattr ghost file whose xattr_id = xattr_pos -2 */
-          //TODO: FIX
-  //  xattr_id = pfile_handle->xattr_pos - 2;
+  // TODO: See todo message above that relates to xattr_pos variable
 
   /* Get the xattr related to this xattr_id */
   if((buffer = gsh_calloc(1, XATTR_BUFFERSIZE)) == NULL)
@@ -1617,8 +1604,7 @@ int nfs4_op_write_xattr(struct nfs_argop4 *op,
    * xattr_pos = 0 ==> the FH is the one of the actual FS object
    * xattr_pos = 1 ==> the FH is the one of the xattr ghost directory 
    * xattr_pos > 1 ==> The FH is the one for the xattr ghost file whose xattr_id = xattr_pos -2 */
-          //TODO: FIX
-  //  xattr_id = pfile_handle->xattr_pos - 2;
+  // TODO: See todo message above that relates to xattr_pos variable
 
   fsal_status = FSAL_SetXAttrValueById(pfsal_handle,
                                        xattr_id,
