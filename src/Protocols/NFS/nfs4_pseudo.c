@@ -2490,11 +2490,8 @@ uint32_t nfs4_pseudo_value_hash_func(hash_parameter_t * p_hparam,
                                     hash_buffer_t    * buffclef)
 {
   uint32_t res = 0;
-  uint64_t ch64_hash = 0;
 
-  memcpy(&ch64_hash, buffclef->pdata, sizeof(ch64_hash));
-  /* 64 bit modulo 32 bit ... is that ok? */
-  res = ch64_hash % (uint32_t) p_hparam->index_size;
+  res = *((uint64_t *)buffclef->pdata) % (uint32_t) p_hparam->index_size;
   if(isDebug(COMPONENT_HASHTABLE))
     LogFullDebug(p_hparam->ht_log_component, "%s: value = %"PRIu32,
                  p_hparam->ht_name, res);
@@ -2514,11 +2511,9 @@ uint32_t nfs4_pseudo_value_hash_func(hash_parameter_t * p_hparam,
 uint64_t nfs4_pseudo_rbt_hash_func(hash_parameter_t * p_hparam,
                                   hash_buffer_t    * buffclef)
 {
-  uint64_t res = 0;
-  memcpy(&res, buffclef->pdata, sizeof(res));
   if(isDebug(COMPONENT_HASHTABLE))
-    LogFullDebug(p_hparam->ht_log_component, "rbt = %"PRIu64, res);
-  return res;
+    LogFullDebug(p_hparam->ht_log_component, "rbt = %"PRIu64, *(uint64_t *)buffclef->pdata);
+  return *(uint64_t *)buffclef->pdata;
 }                               /* state_id_rbt_hash_func */
 
 /**                                                                    
@@ -2556,12 +2551,16 @@ int display_pseudo_key(struct display_buffer * dspbuf, hash_buffer_t * pbuff)
   uint64_t ch64_hash = 0;
   int len;
   char pseudopath[MAXPATHLEN+2];
+  char str[17]; // 64 bits will be 16 chars printed in hexadecimal
 
+  memset(str, 0, sizeof(str));
   ch64_hash = *(uint64_t *)pbuff->pdata;
+  sprint_mem(str, (char *)&ch64_hash, sizeof(ch64_hash));
+
   len = *(ushort *)(pbuff->pdata+sizeof(ch64_hash));
   strncpy(pseudopath, pbuff->pdata + sizeof(ch64_hash) + sizeof(ushort),
          len);
-  return display_printf(dspbuf, "len=%d path=%s", len, pseudopath);
+  return display_printf(dspbuf, "cityhash64=%s len=%d path=%s", str, len, pseudopath);
 }
 
 /**
