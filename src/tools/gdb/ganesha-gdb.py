@@ -38,6 +38,7 @@ class Ganesha15:
     RDLOCK_FUNC = "pthread_rwlock_rdlock"
 
     WORKERTHREAD_FUNC = "worker_thread"
+
 class PrintLockOwners(gdb.Command):
     """print owner of locks
 
@@ -111,7 +112,7 @@ inode entry info and lock and the lock owner."""
                 if currsymtab.pc != 0:
                     out += "0x%x " % currsymtab.pc
                 if sys.version_info[0] == 2 and sys.version_info[2] > 4:
-                    out += "to %lx" % currsymtab.lastfg
+                    out += "to %lx" % currsymtab.last
                 out += "%s () " % currframe.name()
                 if currsymtab.symtab != None:
                     out += "at %s" % currsymtab.symtab.filename
@@ -241,38 +242,94 @@ inode entry info and lock and the lock owner."""
                 if currframe != None:
                     currframe = currframe.older()
         
-        print("total threads: ", totalthreads)
-        print("total worker threads: ", totalworkerthreads)
-        print("total waiting to read with a readlock: ", totalwaitstoreadonread)
-        print("total waiting to read with a writelock: ", totalwaitstoreadonwrite)
-        print("total waiting to write: ", totalwaitstowrite)
-        print("total threads reading: ", totalreading)
-        print("total threads writing: ", totalwriting)
-        print("total num of locks: ", len(dictoflocks.keys())) # how many locks is the contention over?
+        print("total threads: %d" % totalthreads)
+        print("total worker threads: %d" % totalworkerthreads)
+        print("total waiting to read with a readlock: %d" % totalwaitstoreadonread)
+        print("total waiting to read with a writelock: %d" % totalwaitstoreadonwrite)
+        print("total waiting to write: %d" % totalwaitstowrite)
+        print("total threads reading: %d" % totalreading)
+        print("total threads writing: %d" % totalwriting)
+        print("total num of locks: %d" % len(dictoflocks.keys())) # how many locks is the contention over?
         for lock_str in dictoflocks.keys():
-            print("threads waiting on lock ", lock_str, ": ", dictoflocks[lock_str])
+            print("threads waiting on lock %s: %d" % (lock_str, dictoflocks[lock_str]))
             (nr_readers, readers_wakeup, writers_wakeup,
              nr_readers_queued, nr_writers_queued,
              writer, shared) = dictoflockdata[lock_str]
-            print("    nr_readers: ",nr_readers)
-            print("    nr_readers_wakeup: ",readers_wakeup)
-            print("    writers_wakeup: ",writers_wakeup)
-            print("    nr_readers_queued: ",nr_readers_queued)
-            print("    nr_writers_queued: ",nr_writers_queued)
-            print("    writer: ",writer)
-            print("    shared: ",shared)
+            print("    nr_readers: %d" % nr_readers)
+            print("    nr_readers_wakeup: %d" % readers_wakeup)
+            print("    writers_wakeup: %d" % writers_wakeup)
+            print("    nr_readers_queued: %d" % nr_readers_queued)
+            print("    nr_writers_queued: %d" % nr_writers_queued)
+            print("    writer: %d" % writer)
+            print("    shared: %d" % shared)
         for owned_lock in dictofowners.keys():
-            print("Lock ", owned_lock, " owned by:")
+            print("Lock %s owned by:" % owned_lock)
             for threadnum in dictofowners[owned_lock]:
-                print("    thread ", threadnum)
+                print("    thread %d" % threadnum)
         return
     
     def functionnotfound(self):
         print("Invalid argument. Supported args are CI_RW or BACK.")
         return
 
+class PrintThreadTrace(gdb.Command):
+    """Print backtrace of thread by tpid."""
+    commname = "tpid2bt"
+    def __init__(self):
+        # This is where we register the new function with GDB
+        super (PrintThreadTrace, self).__init__ (self.commname,
+                                                gdb.COMMAND_SUPPORT,
+                                                gdb.COMPLETE_NONE, True)
+#        gdb.Command.__init__(self, "print_lock_owners", gdb.COMMAND_DATA, gdb.COMPLETE_SYMBOL, True)
+    def invoke(self, arg, from_tty):
+        if sys.version_info[0] == 2 and sys.version_info[2] > 4:
+            arg_list = gdb.string_to_argv(arg)
+        else: # python version <= 2.4 
+            arg_list = [arg]
+
+        if len(arg_list) != 1:
+            # CI = Cache Inode
+            print("usage: %s <tpid of thread>" % self.commname)
+            return
+
+        ganesha_process = gdb.inferiors()[0] # there should only be one inferior process
+        tpid = int(arg_list[0])
+        for thread in ganesha_process.threads():
+#            print("Thread ", thread.num, "tpid: ", thread.ptid[1], "compare to", tpid)
+            if thread.ptid[1] != tpid:
+                continue
+#            if sys.version_info[0] == 2 and sys.version_info[2] > 4:
+#                print(" name:", thread.name)
+            print ("Thread:%d tpid:%d" % (thread.num, thread.ptid[1]))
+#            thread.switch() # switch to this thread so we can explore further
+            currframe = gdb.selected_frame()
+            framenum = 0
+            while currframe != None:
+                currsal = currframe.find_sal()
+                out = ""
+                out += "#%d" % framenum + "  "
+                framenum += 1
+                if currsal.pc != 0:
+                    # pad to 16 bytes
+                    out += "0x%0.16x " % currsal.pc
+#              if sys.version_info[0] == 2 and sys.version_info[2] > 4:
+                if currsal.symtab != None:
+                    out += "to %lx" % currsal.symtab.last
+                out += "in %s () " % currframe.name()
+                if currsal.symtab != None:
+                    out += "at %s" % currsal.symtab.filename
+                    out += ":%lu " % currsal.line
+                if currsal.symtab != None and currsal.symtab.objfile != None:
+                    out += "from %s" % currsal.symtab.objfile.filename
+                print(out)
+#                print( currframe.name(), "\n")
+                if currframe != None:
+                    currframe = currframe.older()
+        return
+
+
 # Now register the commands:
 PrintLockOwners()
-
+PrintThreadTrace()
 
         
