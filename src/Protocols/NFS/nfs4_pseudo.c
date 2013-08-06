@@ -297,8 +297,7 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
   key = create_pseudo_handle_key(PseudoFs->root.name, strlen(PseudoFs->root.name));
   if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
     char str[256];
-    memset(str, 0, sizeof(str));
-    sprint_mem(str, value.pdata, value.len);
+    sprint_mem(str, key.pdata, key.len);
     LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for path:%s handle:%s",
                  PseudoFs->root.name,str);
   }
@@ -379,7 +378,6 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
 
               if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
                 char str[256];
-                memset(str, 0, sizeof(str));
                 sprint_mem(str, key.pdata, key.len);
                 LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"created key for path:%s handle:%s",
                              fullpseudopath,str);
@@ -391,21 +389,9 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
                          "Insufficient memory to create pseudo fs node");
                 return ENOMEM;
               }
-              /* Creating the new pseudofs entry */
-              strncpy(newPseudoFsEntry->name, PathTok[j], strlen(PathTok[j]));
-              newPseudoFsEntry->name[strlen(PathTok[j])] = '\0';
-              newPseudoFsEntry->fsopaque = (uint8_t *)key.pdata;
-              memcpy(&newPseudoFsEntry->pseudo_id, key.pdata,
-                     sizeof(newPseudoFsEntry->pseudo_id));
-              newPseudoFsEntry->junction_export = NULL;
-              newPseudoFsEntry->parent = PseudoFsCurrent;
-              avltree_init(&newPseudoFsEntry->child_tree_byname,avl_pseudo_name_cmp, 0);
-              avltree_init(&newPseudoFsEntry->child_tree_byid,avl_pseudo_id_cmp, 0);
 
-              LogMidDebug(COMPONENT_NFS_V4_PSEUDO,
-                          "Creating pseudo fs entry for %s, pseudo_id %"PRIu64,
-                          newPseudoFsEntry->name, newPseudoFsEntry->pseudo_id);
-
+              /* We will fill in the newPseudoFsEntry after we know it doesn't
+               * already exist. */
               value.pdata = newPseudoFsEntry;
               value.len = sizeof(newPseudoFsEntry);
 
@@ -441,6 +427,7 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
                   /* Release the lock ... we should be calling this funciton
                    * in a serial fashion before Ganesha is operational. No
                    * chance of contention. */
+                  free_pseudo_handle_key(key);
                   HashTable_ReleaseLatched(ht_nfs4_pseudo, &latch);
                 }
                 /* Free the key and value that we weren't able to add. */
@@ -448,14 +435,27 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
                 gsh_free(newPseudoFsEntry);
                 continue;
               }
+
+              /* Creating the new pseudofs entry */
+              strncpy(newPseudoFsEntry->name, PathTok[j], strlen(PathTok[j]));
+              newPseudoFsEntry->name[strlen(PathTok[j])] = '\0';
+              newPseudoFsEntry->fsopaque = (uint8_t *)key.pdata;
+              memcpy(&newPseudoFsEntry->pseudo_id, key.pdata,
+                     sizeof(newPseudoFsEntry->pseudo_id));
+              newPseudoFsEntry->junction_export = NULL;
+              newPseudoFsEntry->parent = PseudoFsCurrent;
+              avltree_init(&newPseudoFsEntry->child_tree_byname,avl_pseudo_name_cmp, 0);
+              avltree_init(&newPseudoFsEntry->child_tree_byid,avl_pseudo_id_cmp, 0);
+
+              LogMidDebug(COMPONENT_NFS_V4_PSEUDO,
+                          "Creating pseudo fs entry for %s, pseudo_id %"PRIu64,
+                          newPseudoFsEntry->name, newPseudoFsEntry->pseudo_id);
+
               /* Insert new pseudofs entry into tree */
               node = avltree_insert(&newPseudoFsEntry->nameavlnode,
                                     &PseudoFsCurrent->child_tree_byname);
-              assert(!node);
               node = avltree_insert(&newPseudoFsEntry->idavlnode,
                                     &PseudoFsCurrent->child_tree_byid);
-              assert(!node);
-
               PseudoFsCurrent = newPseudoFsEntry;
             } /* for j */
 
@@ -1449,7 +1449,6 @@ int nfs4_CurrentFHToPseudo(compound_data_t   * data,
 
   if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
     char str[256];
-    memset(str, 0, sizeof(str));
     sprint_mem(str, key.pdata, key.len);
     LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"looking up pseudofs node for handle:%s",
                  str);
@@ -1504,7 +1503,6 @@ void nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
 
   if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
     char str[256];
-    memset(str, 0, sizeof(str));
     sprint_mem(str, psfsentry->fsopaque, V4_FH_OPAQUE_SIZE);
     LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle for name:%s handle:%s",
                  psfsentry->name,str);
@@ -2553,7 +2551,6 @@ int display_pseudo_key(struct display_buffer * dspbuf, hash_buffer_t * pbuff)
   char pseudopath[MAXPATHLEN+2];
   char str[17]; // 64 bits will be 16 chars printed in hexadecimal
 
-  memset(str, 0, sizeof(str));
   ch64_hash = *(uint64_t *)pbuff->pdata;
   sprint_mem(str, (char *)&ch64_hash, sizeof(ch64_hash));
 
