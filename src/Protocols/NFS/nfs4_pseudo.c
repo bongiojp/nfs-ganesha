@@ -2445,6 +2445,9 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
   else /* No, there are some more entries */
     res_READDIR4.READDIR4res_u.resok4.reply.eof = FALSE;
 
+  if (fh->nfs_fh4_val != NULL)
+    gsh_free(fh->nfs_fh4_val);
+
   /* Exit properly */
   res_READDIR4.status = NFS4_OK;
 
