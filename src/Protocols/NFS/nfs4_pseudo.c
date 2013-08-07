@@ -398,43 +398,45 @@ int nfs4_ExportToPseudoFS(struct glist_head * pexportlist)
               /* Looking for a matching entry and creating if nonexistent */
               hrc = HashTable_Test_And_Set(ht_nfs4_pseudo, &key, &value,
                                            HASHTABLE_SET_HOW_SET_NO_OVERWRITE);
-              if(hrc != HASHTABLE_SUCCESS && hrc != HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
-                LogCrit(COMPONENT_NFS_V4_PSEUDO,
-                        "Failed to add pseudofs path %s due to hashtable error: %s",
-                        newPseudoFsEntry->name, hash_table_err_to_str(hrc));
-                return -1;
-              }
-              if (hrc == HASHTABLE_ERROR_KEY_ALREADY_EXISTS) {
-                LogDebug(COMPONENT_NFS_V4_PSEUDO,
-                         "Failed to add pseudofs path, path already exists: %s",
-                         newPseudoFsEntry->name);
-
-                /* Now set PseudoFsCurrent to existing entry. */
-                hrc = HashTable_GetLatch(ht_nfs4_pseudo, &key, &value,
-                                         FALSE, &latch);
-                if ((hrc != HASHTABLE_SUCCESS)) {
-                  /* This should not happened */
-                  LogCrit(COMPONENT_NFS_V4_PSEUDO, "Can't add/get key for %s"
-                          " hashtable error: %s",
+              if(hrc != HASHTABLE_SUCCESS && hrc != HASHTABLE_ERROR_KEY_ALREADY_EXISTS)
+                {
+                  LogCrit(COMPONENT_NFS_V4_PSEUDO,
+                          "Failed to add pseudofs path %s due to hashtable error: %s",
                           newPseudoFsEntry->name, hash_table_err_to_str(hrc));
+                  return -1;
+                }
+              if (hrc == HASHTABLE_ERROR_KEY_ALREADY_EXISTS)
+                {
+                  LogDebug(COMPONENT_NFS_V4_PSEUDO,
+                           "Failed to add pseudofs path, path already exists: %s",
+                           newPseudoFsEntry->name);
+
+                  /* Now set PseudoFsCurrent to existing entry. */
+                  hrc = HashTable_GetLatch(ht_nfs4_pseudo, &key, &value,
+                                           FALSE, &latch);
+                  if ((hrc != HASHTABLE_SUCCESS)) {
+                    /* This should not happened */
+                    LogCrit(COMPONENT_NFS_V4_PSEUDO, "Can't add/get key for %s"
+                            " hashtable error: %s",
+                            newPseudoFsEntry->name, hash_table_err_to_str(hrc));
+                    free_pseudo_handle_key(key);
+                    gsh_free(newPseudoFsEntry);
+                    return -1;
+                  } else {
+                    /* Now we have the cached pseudofs entry*/
+                    PseudoFsCurrent = value.pdata;
+
+                    /* Release the lock ... we should be calling this funciton
+                     * in a serial fashion before Ganesha is operational. No
+                     * chance of contention. */
+                    free_pseudo_handle_key(key);
+                    HashTable_ReleaseLatched(ht_nfs4_pseudo, &latch);
+                  }
+                  /* Free the key and value that we weren't able to add. */
                   free_pseudo_handle_key(key);
                   gsh_free(newPseudoFsEntry);
-                  return -1;
-                } else {
-                  /* Now we have the cached pseudofs entry*/
-                  PseudoFsCurrent = value.pdata;
-
-                  /* Release the lock ... we should be calling this funciton
-                   * in a serial fashion before Ganesha is operational. No
-                   * chance of contention. */
-                  free_pseudo_handle_key(key);
-                  HashTable_ReleaseLatched(ht_nfs4_pseudo, &latch);
+                  continue;
                 }
-                /* Free the key and value that we weren't able to add. */
-                free_pseudo_handle_key(key);
-                gsh_free(newPseudoFsEntry);
-                continue;
-              }
 
               /* Creating the new pseudofs entry */
               strncpy(newPseudoFsEntry->name, PathTok[j], strlen(PathTok[j]));
@@ -1447,20 +1449,22 @@ int nfs4_CurrentFHToPseudo(compound_data_t   * data,
   key.pdata = pfhandle4->fsopaque;
   key.len = pfhandle4->fs_len;
 
-  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
-    char str[256];
-    sprint_mem(str, key.pdata, key.len);
-    LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"looking up pseudofs node for handle:%s",
-                 str);
-  }
+  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
+    {
+      char str[256];
+      sprint_mem(str, key.pdata, key.len);
+      LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"looking up pseudofs node for handle:%s",
+                   str);
+    }
 
   hrc = HashTable_GetLatch(ht_nfs4_pseudo, &key, &value, FALSE, &latch);
-  if ((hrc != HASHTABLE_SUCCESS)) {
-    /* This should not happen */
-    LogDebug(COMPONENT_NFS_V4_PSEUDO, "Can't get key for FHToPseudo conversion"
-             ", hashtable error %s", hash_table_err_to_str(hrc));
-    *psfsentry = NULL;
-  } else {
+  if ((hrc != HASHTABLE_SUCCESS))
+    {
+      /* This should not happen */
+      LogDebug(COMPONENT_NFS_V4_PSEUDO, "Can't get key for FHToPseudo conversion"
+               ", hashtable error %s", hash_table_err_to_str(hrc));
+      *psfsentry = NULL;
+    } else {
     *psfsentry = value.pdata;
 
     /* Release the lock ... This is a read-only hashtable and entry.
@@ -1501,12 +1505,13 @@ void nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
   memcpy(fhandle4->fsopaque, psfsentry->fsopaque, V4_FH_OPAQUE_SIZE);
   fhandle4->fs_len = V4_FH_OPAQUE_SIZE;
 
-  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO)) {
-    char str[256];
-    sprint_mem(str, psfsentry->fsopaque, V4_FH_OPAQUE_SIZE);
-    LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle for name:%s handle:%s",
-                 psfsentry->name,str);
-  }
+  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
+    {
+      char str[256];
+      sprint_mem(str, psfsentry->fsopaque, V4_FH_OPAQUE_SIZE);
+      LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"pseudoToFhandle for name:%s handle:%s",
+                   psfsentry->name,str);
+    }
 
   fh4p->nfs_fh4_len = nfs4_sizeof_handle(fhandle4); /* no handle in opaque */
 
@@ -1769,16 +1774,13 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
         }
 
       /* Return the reference to the old current entry */
-      if (data->current_entry) {
-          cache_inode_put(data->current_entry);
-      }
+      if (data->current_entry)
+        cache_inode_put(data->current_entry);
 
       /* Make the cache inode entry the current entry */
       data->current_entry = pentry;
       data->current_filetype = cache_inode_fsal_type_convert(attr.type);
-
     }                           /* else */
-
 
   res_LOOKUP4.status = NFS4_OK;
   return NFS4_OK;
@@ -1858,9 +1860,8 @@ int nfs4_op_lookupp_pseudo(struct nfs_argop4 *op,
   nfs4_PseudoToFhandle(&(data->currentFH), psfsentry->parent);
 
   /* Return the reference to the old current entry */
-  if (data->current_entry) {
+  if (data->current_entry)
       cache_inode_put(data->current_entry);
-  }
 
   /* Fill in compound data */
   res_LOOKUPP4.status = set_compound_data_for_pseudo(data);
@@ -2091,9 +2092,8 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
         }
 
       /* Return the reference to the old current entry */
-      if (data->current_entry) {
-          cache_inode_put(data->current_entry);
-      }
+      if (data->current_entry)
+        cache_inode_put(data->current_entry);
 
       /* Make the cache inode entry the current entry */
       data->current_entry = pentry;
