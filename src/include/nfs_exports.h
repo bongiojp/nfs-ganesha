@@ -308,7 +308,6 @@ typedef struct pseudofs_entry {
                                         to an already gc'd file_handle_v4_t.
                                         his is used for convenience when
                                         converting from entry to handle. */
-  struct pseudofs_entry *parent;
   uint64_t pseudo_id;                 /** ID within the pseudoFS */
   exportlist_t *junction_export;      /** Export list related to the junction,
 					  NULL if entry is no junction */
