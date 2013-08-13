@@ -224,7 +224,6 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
   struct glist_head * glist;
   int NbTokPath, j, found=0, pseudonode_count=0;
   char *PathTok[NB_TOK_PATH], fullpseudopath[MAXPATHLEN+2];
-  pseudofs_entry_t *PseudoFsRoot = NULL;
   pseudofs_entry_t *PseudoFsCurrent = NULL;
   pseudofs_entry_t *newPseudoFsEntry = NULL;
   pseudofs_entry_t *iterPseudoFs = NULL;
@@ -235,7 +234,7 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
 
   gPseudoFs.root.junction_export = NULL;
   gPseudoFs.root.next = NULL;
-  gPseudoFs.root.last = PseudoFsRoot;
+  gPseudoFs.root.last = &gPseudoFs.root;
   gPseudoFs.root.sons = NULL;
   gPseudoFs.root.parent = &(gPseudoFs.root);    /* root is its own parent */
   gPseudoFs.root.fsopaque = (uint8_t *)key.addr;
@@ -244,6 +243,15 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
 
   gPseudoFs.root.fsopaque = (uint8_t *)key.addr;
   gPseudoFs.root.pseudo_id = *(uint64_t *)gPseudoFs.root.fsopaque;
+
+  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
+    {
+      char str[256];
+      sprint_mem(str, gPseudoFs.root.fsopaque, V4_FH_OPAQUE_SIZE);
+      LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"ROOT pseudofs entry name:%s handle:%s",
+		   gPseudoFs.root.name,str);
+    }
+
  
   /* To not forget to init "/" entry */
   gPseudoFs.reverse_tab[pseudonode_count] = &(gPseudoFs.root);
@@ -350,19 +358,25 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
 		   * was checked by nfs_ParseConfLine.
 		   */ 
 		  fullpath(fullpseudopath, PathTok, j, MAXPATHLEN);
-                  key = create_pseudo_handle_key(gPseudoFs.root.name,
-                                                 (ushort) strlen(entry->fullpath));
+                  key = create_pseudo_handle_key(fullpseudopath,
+                                                 (ushort) strlen(fullpseudopath));
                   newPseudoFsEntry->fsopaque = (uint8_t *)key.addr;
 
                   strcpy(newPseudoFsEntry->name, PathTok[j]);
                   newPseudoFsEntry->pseudo_id = *(uint64_t *)newPseudoFsEntry->fsopaque;
-                  gPseudoFs.reverse_tab[pseudonode_count] = newPseudoFsEntry;
+                  gPseudoFs.reverse_tab[pseudonode_count++] = newPseudoFsEntry;
                   newPseudoFsEntry->junction_export = NULL;
                   newPseudoFsEntry->last = newPseudoFsEntry;
                   newPseudoFsEntry->next = NULL;
                   newPseudoFsEntry->sons = NULL;
-                  snprintf(newPseudoFsEntry->fullname, MAXPATHLEN, "%s/%s",
-                           PseudoFsCurrent->fullname, PathTok[j]);
+
+		  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
+		    {
+		      char str[256];
+		      sprint_mem(str, newPseudoFsEntry->fsopaque, V4_FH_OPAQUE_SIZE);
+		      LogFullDebug(COMPONENT_NFS_V4_PSEUDO,"Built pseudofs entry index:%d name:%s handle:%s",
+				   pseudonode_count,fullpseudopath,str);
+		    }
 
                   /* Step into the new entry and attach it to the tree */
                   if(PseudoFsCurrent->sons == NULL)
@@ -384,9 +398,6 @@ int nfs4_ExportToPseudoFS(struct glist_head *pexportlist)
 
           /* And fill in our part of the export root data */
           entry->exp_mounted_on_file_id = PseudoFsCurrent->pseudo_id;
-
-	  pseudonode_count++;
-	  
         }
       /* if( entry->options & EXPORT_OPTION_PSEUDO ) */
     }                           /* glist_for_each */
@@ -489,6 +500,7 @@ static bool nfs4_FhandleToPseudo(nfs_fh4 * fh4p, pseudofs_t * psfstree,
 				 pseudofs_entry_t **psfsentry)
 {
   file_handle_v4_t *pfhandle4;
+  int i;
 
   /* Map the filehandle to the correct structure */
   pfhandle4 = (file_handle_v4_t *) (fh4p->nfs_fh4_val);
@@ -498,15 +510,34 @@ static bool nfs4_FhandleToPseudo(nfs_fh4 * fh4p, pseudofs_t * psfstree,
     return false;
 
   /* Get the object pointer by using the reverse tab in the pseudofs structure */
+  if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
+    {
+      char str[256];
+      sprint_mem(str, pfhandle4->fsopaque, V4_FH_OPAQUE_SIZE);
+      LogFullDebug(COMPONENT_NFS_V4_PSEUDO,
+		   "Looking for pseudo node with handle:%s", str);
+    }
+
+  *psfsentry = NULL;
   for(i = 0; i < psfstree->pseudonode_count; i++)
     {
       if(memcmp(psfstree->reverse_tab[i]->fsopaque,
 		pfhandle4->fsopaque, V4_FH_OPAQUE_SIZE) == 0)
-	*psfsentry = psfstree->reverse_tab[i];
+	{
+	  *psfsentry = psfstree->reverse_tab[i];
+	  return true;
+	}
+      if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
+	{
+	  char str[256];
+	  sprint_mem(str, psfstree->reverse_tab[i]->fsopaque, V4_FH_OPAQUE_SIZE);
+	  LogFullDebug(COMPONENT_NFS_V4_PSEUDO,
+		       "Compared handle:%s", str);
+	}
     }
-  *psfsentry = psfstree->reverse_tab[pfhandle4->pseudofs_id];
-
-  return true;
+  LogFullDebug(COMPONENT_NFS_V4_PSEUDO,
+	       "Could not find a pseudofs node for the filehandle.");
+  return false; /* *psfsentry = NULL */
 }                               /* nfs4_FhandleToPseudo */
 
 /**
@@ -532,7 +563,7 @@ int nfs4_PseudoToFhandle(nfs_fh4 * fh4p, pseudofs_entry_t * psfsentry)
   memcpy(fhandle4->fsopaque, psfsentry->fsopaque, V4_FH_OPAQUE_SIZE);
   fhandle4->fs_len = V4_FH_OPAQUE_SIZE;
 
-  fh4p->nfs_fh4_len = sizeof(file_handle_v4_t); /* no handle in opaque */
+  fh4p->nfs_fh4_len = sizeof(file_handle_v4_t) + fhandle4->fs_len;
 
   if(isFullDebug(COMPONENT_NFS_V4_PSEUDO))
     {
@@ -750,9 +781,10 @@ int nfs4_op_lookup_pseudo(struct nfs_argop4 *op,
     }
 
   /* Search for name in pseudo fs directory */
-  for(iter = psfsentry->sons; iter != NULL; iter = iter->next)
+  for(iter = psfsentry->sons; iter != NULL; iter = iter->next) {
       if(!strcmp(iter->name, name))
           break;
+  }
 
   if(iter == NULL)
     {
@@ -1176,7 +1208,10 @@ int nfs4_op_readdir_pseudo(struct nfs_argop4 *op,
     {
       for(; iter != NULL; iter = iter->next)
         if(iter->pseudo_id == cookie)
-          break;
+	  {
+	    iter = iter->next;
+	    break;
+	  }
     }
 
   /* Here, where are sure that iter is set to the position indicated eventually by the cookie */

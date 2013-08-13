@@ -3348,7 +3348,7 @@ int nfs4_SetCompoundExport(compound_data_t *data)
 	data->req_ctx->export = get_gsh_export(exportid, true);
 	if(data->req_ctx->export == NULL) {
 		data->pexport = NULL;
-                return NFS4ERR_BADHANDLE;
+                return NFS4ERR_NOENT;
         }
 	data->pexport = &data->req_ctx->export->export;
 	return nfs4_MakeCred(data);

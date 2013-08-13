@@ -423,7 +423,6 @@ int nfs4_Is_Fh_Pseudo(nfs_fh4 * pfh)
     return 0;
 
   pfhandle4 = (file_handle_v4_t *) (pfh->nfs_fh4_val);
-
   return (pfhandle4->exportid == 0);
 }                               /* nfs4_Is_Fh_Pseudo */
 
