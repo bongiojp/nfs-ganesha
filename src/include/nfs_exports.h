@@ -318,10 +318,11 @@ typedef struct pseudofs_entry {
   struct pseudofs_entry *last; /*< Last entry in a list of sons */
 } pseudofs_entry_t;
 
-#define MAX_PSEUDO_ENTRY 100
+/* Size of ushort */
+#define MAX_PSEUDO_ENTRY  65535
 typedef struct pseudofs {
 	pseudofs_entry_t root;
-	unsigned int last_pseudo_id;
+        unsigned long pseudonode_count;
 	pseudofs_entry_t *reverse_tab[MAX_PSEUDO_ENTRY];
 } pseudofs_t;
 
