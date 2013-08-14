@@ -69,6 +69,10 @@
 
 #define XATTR_BUFFERSIZE 4096
 
+#define min(a,b)                        \
+  ({ typeof (a) _a = (a);               \
+  typeof (b) _b = (b);                \
+  _a < _b ? _a : _b; })
 
 typedef struct nfs_request_data {
 	SVCXPRT *xprt;
