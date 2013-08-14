@@ -121,32 +121,16 @@ static inline size_t nfs3_sizeof_handle(struct file_handle_v3 *hdl)
   return hsize;
 }
 
-/**
- * @brief An NFSv4 filehandle
- *
- * This may be up to 128 bytes, aligned on 32 bits.
- */
-
+/* This is up to 128 bytes, aligned on 32 bits */
+#define FILE_HANDLE_V4_FLAG_DS 0x0001
 typedef struct file_handle_v4
 {
-  uint8_t fhversion; /*< Set to 0x41 to separate from Linux knfsd */
-  uint8_t xattr_pos; /*< Index for named attribute handles */
-  uint16_t exportid; /*< Must be correlated to exportlist_t::id */
-  uint32_t reserved1; /*< If you want 32 bits for something, use
-			  this.  Alternatively, it can be removed
-			  next time we change the filehandle format.
-			  For now, we require it to be 0. */
-  uint16_t pseudofs_id; /*< Id for the pseudo fs related to this fh */
-  uint16_t reserved2; /*< If you want 16 bits for something, use
-			  this.  Alternatively, it can be removed
-			  next time we change the filehandle format.
-			  For now, we require it to be 0. */
-  uint8_t ds_flag; /*< True if FH is a 'DS file handle'.  Consider
-		       rolling this into a flags byte. */
-  uint8_t pseudofs_flag; /*< True if FH is within pseudofs.  Consider
-			     rolling this into a flags byte. */
-  uint8_t fs_len; /*< Length of opaque handle */
-  uint8_t fsopaque[]; /*< FSAL handle */
+  uint8_t fhversion;   /* set to 0x42 to separate from Linux knfsd */
+  uint16_t exportid;      /* Must be correlated to exportlist_t::id */
+  uint16_t flags;         /* To replace things like ds_flag */
+  uint8_t fs_len;         /* actual length of opaque handle */
+  uint8_t fsopaque[];     /* persistent part of FSAL handle, may be up
+                             to 122 bytes. */
 } file_handle_v4_t;
 
 /**
@@ -157,8 +141,8 @@ typedef struct file_handle_v4
  */
 
 struct alloc_file_handle_v4 {
-	struct file_handle_v4 handle; /*< The real handle */
-	uint8_t pad[112]; /*< Pad to mandatory max 128 bytes */
+	struct file_handle_v4 handle;	/* the real handle, 6 bytes fixed */
+	uint8_t pad[120];		/* pad to mandatory max 128 bytes */
 };
 
 /**
@@ -187,11 +171,11 @@ bool nfs3_FSALToFhandle(nfs_fh3 *, const struct fsal_obj_handle *);
 bool nfs2_FSALToFhandle(fhandle2 *, const struct fsal_obj_handle *);
 
 /* Extraction of export id from a file handle */
-short nfs2_FhandleToExportId(fhandle2 *);
-short nfs4_FhandleToExportId(nfs_fh4 *);
-short nfs3_FhandleToExportId(nfs_fh3 *);
+unsigned short nfs2_FhandleToExportId(fhandle2 *);
+unsigned short nfs4_FhandleToExportId(nfs_fh4 *);
+unsigned short nfs3_FhandleToExportId(nfs_fh3 *);
 
-short nlm4_FhandleToExportId(netobj *);
+unsigned short nlm4_FhandleToExportId(netobj *);
 
 /* nfs3 validation */
 int nfs3_Is_Fh_Invalid(nfs_fh3 *);
