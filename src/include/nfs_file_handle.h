@@ -123,7 +123,7 @@ static inline size_t nfs3_sizeof_handle(struct file_handle_v3 *hdl)
 
 /* This is up to 128 bytes, aligned on 32 bits */
 #define FILE_HANDLE_V4_FLAG_DS 0x0001
-typedef struct file_handle_v4
+typedef struct __attribute__((__packed__)) file_handle_v4
 {
   uint8_t fhversion;   /* set to 0x42 to separate from Linux knfsd */
   uint16_t exportid;      /* Must be correlated to exportlist_t::id */
@@ -140,9 +140,9 @@ typedef struct file_handle_v4
  * where the opaque handle expands into.  Pad is struct aligned.
  */
 
-struct alloc_file_handle_v4 {
+struct __attribute__((__packed__)) alloc_file_handle_v4 {
 	struct file_handle_v4 handle;	/* the real handle, 6 bytes fixed */
-	uint8_t pad[120];		/* pad to mandatory max 128 bytes */
+	uint8_t pad[122];		/* pad to mandatory max 128 bytes */
 };
 
 /**

@@ -317,7 +317,7 @@ typedef struct pseudofs_entry {
 #define MAX_PSEUDO_ENTRY  65535
 typedef struct pseudofs {
 	pseudofs_entry_t root;
-        unsigned long pseudonode_count;
+        unsigned long last_pseudo_id;
 	pseudofs_entry_t *reverse_tab[MAX_PSEUDO_ENTRY];
 } pseudofs_t;
 
