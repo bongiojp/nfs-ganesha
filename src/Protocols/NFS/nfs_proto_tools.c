@@ -3324,7 +3324,7 @@ nfs3_Sattr_To_FSALattr(struct attrlist *FSAL_attr,
 
 int nfs4_SetCompoundExport(compound_data_t *data)
 {
-        short exportid;
+        unsigned short exportid;
 
         /* This routine is not related to pseudo fs file handle, do
            not handle them */
@@ -3348,7 +3348,7 @@ int nfs4_SetCompoundExport(compound_data_t *data)
 	data->req_ctx->export = get_gsh_export(exportid, true);
 	if(data->req_ctx->export == NULL) {
 		data->pexport = NULL;
-                return NFS4ERR_BADHANDLE;
+                return NFS4ERR_NOENT;
         }
 	data->pexport = &data->req_ctx->export->export;
 	return nfs4_MakeCred(data);
@@ -3377,11 +3377,10 @@ nfs4_FhandleToExId(nfs_fh4 *fh4, unsigned short *ExId)
         fhandle4 = (file_handle_v4_t *) (fh4->nfs_fh4_val);
 
         /* The function should not be used on a pseudo fhandle */
-        if(fhandle4->pseudofs_flag) {
-                return false;
-        }
+        if(fhandle4->exportid == 0)
+          return false;
 
-        *ExId = fhandle4->exportid;
+        *ExId = (unsigned short) fhandle4->exportid;
         return true;
 }                               /* nfs4_FhandleToExId */
 
