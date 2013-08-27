@@ -309,8 +309,6 @@ out:
 		export_st = container_of(exp, struct export_stats, export);
 		server_stats_free(&export_st->st);
 		export_st = container_of(exp, struct export_stats, export);
- 
-		gsh_free(exp);
 	}
 	return removed;
 }
