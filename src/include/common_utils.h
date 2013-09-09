@@ -45,6 +45,11 @@ extern int __build_bug_on_failed;
 #endif
 
 
+#define min(a,b)           \
+  ({ typeof (a) _a = (a);  \
+  typeof (b) _b = (b);     \
+  _a < _b ? _a : _b; }) 
+
 /* Most machines scandir callback requires a const. But not all */
 #define SCANDIR_CONST           const
 
