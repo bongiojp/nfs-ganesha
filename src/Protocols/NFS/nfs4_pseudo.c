@@ -158,10 +158,8 @@ pseudofs_t *nfs4_GetPseudoFs(void)
  */
 void fullpath_h(char *fullpseudopath,
               pseudofs_entry_t *this_node, int *currlen, int maxlen) {
-  LogEvent(COMPONENT_NFS_V4_PSEUDO,"now token %s", this_node->name);
   if (this_node != &(gPseudoFs.root))
     fullpath_h(fullpseudopath, this_node->parent, currlen, maxlen);
-  LogEvent(COMPONENT_NFS_V4_PSEUDO,"considering token %s", this_node->name);
     
   if (*currlen >= maxlen)
     return;
