@@ -121,7 +121,13 @@ int nfs4_op_lockt(struct nfs_argop4 *op,
                 break;
         }
 	
-        if(arg_LOCKT4->length != STATE_LOCK_OFFSET_EOF) {
+        if (arg_LOCKT4->offset < STATE_LOCK_OFFSET_EOF) {
+                lock_desc.lock_start = arg_LOCKT4->offset;
+        } else {
+                lock_desc.lock_start = 0;
+        }
+
+        if(arg_LOCKT4->length < (STATE_LOCK_OFFSET_EOF - arg_LOCKT4->offset)) {
                 lock_desc.lock_length = arg_LOCKT4->length;
         } else {
                 lock_desc.lock_length = 0;
