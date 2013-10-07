@@ -286,6 +286,8 @@ nfs_parameter_t nfs_param =
   .cache_param.required_progress = 5,
   .cache_param.futility_count = 8,
 
+  .dbus_param.heartbeat = false,
+  .dbus_param.heartbeat_freq = 1000,
 };
 
 /* ServerEpoch is ServerBootTime unless overriden by -E command line option */
@@ -605,6 +607,13 @@ int nfs_set_param_from_conf(config_file_t config_struct,
               "No export entries found in configuration file !!!");
     }
 
+  rc = nfs_read_dbus_conf(config_struct, &nfs_param.dbus_param);
+  if(rc < 0)
+    {
+      LogCrit(COMPONENT_INIT, "Error while parsing DBUS config");
+      return -1;
+    }
+
   LogEvent(COMPONENT_INIT, "Configuration file successfully parsed");
 
   return 0;
@@ -776,6 +785,18 @@ static void nfs_Start_threads(void)
       LogEvent(COMPONENT_THREAD, "gsh_dbusthread was started successfully");
 #endif
 
+      //#ifdef USE_DBUS_HEARTBEAT
+      /* DBUS event thread */
+      if((rc = pthread_create(&gsh_dbus_thrid, &attr_thr, dbus_heartbeat_thread,
+                              NULL ) ) != 0 )     
+        {
+            LogFatal(COMPONENT_THREAD,
+                     "Could not create dbus_heartbeat_thread, error = %d (%s)",
+                     errno, strerror(errno));
+        }
+      LogEvent(COMPONENT_THREAD, "dbus_heartbeat_thread was started successfully");
+      //#endif
+
   /* Starting the admin thread */
   if((rc = pthread_create(&admin_thrid, &attr_thr, admin_thread, NULL)) != 0)
     {
@@ -833,6 +854,7 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
   dbus_export_init();
   dbus_client_init();
 #endif
+  dbus_heartbeat_init(nfs_param.dbus_param);
 #endif
 
   /* Cache Inode Initialisation */

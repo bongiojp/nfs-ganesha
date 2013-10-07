@@ -941,6 +941,16 @@ nfs_rpc_queue_init(void)
 static uint32_t enqueued_reqs = 0;
 static uint32_t dequeued_reqs = 0;
 
+uint32_t get_enqueue_count()
+{
+  return enqueued_reqs;
+}
+
+uint32_t get_dequeue_count()
+{
+  return dequeued_reqs;
+}
+
 void
 nfs_rpc_enqueue_req(request_data_t *req)
 {

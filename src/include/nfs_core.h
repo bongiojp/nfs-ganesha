@@ -267,6 +267,9 @@ request_data_t *nfs_rpc_get_nfsreq(uint32_t flags);
 void nfs_rpc_enqueue_req(request_data_t *req);
 int stats_snmp(void);
 
+uint32_t get_enqueue_count();
+uint32_t get_dequeue_count();
+
 /*
  * Thread entry functions
  */
@@ -316,6 +319,7 @@ int nfs_read_version4_conf(config_file_t in_config,
 #ifdef _HAVE_GSSAPI
 int nfs_read_krb5_conf(config_file_t in_config, nfs_krb5_parameter_t *pparam);
 #endif
+
 cache_inode_status_t nfs_export_get_root_entry(exportlist_t *export,
 					       cache_entry_t **entryp);
 
