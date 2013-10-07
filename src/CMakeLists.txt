@@ -158,6 +158,7 @@ option(TIRPC_EPOLL "platform supports EPOLL or emulation" ON)
 
 # Build configure options
 option(USE_DBUS "enable DBUS protocol support" OFF)
+option(USE_DBUS_HEARTBEAT "enable DBUS heartbeat" OFF)
 
 # Various DBUS enabled features
 option(USE_CB_SIMULATOR "enable callback simulator thread" OFF)
@@ -286,6 +287,11 @@ if(USE_DBUS_STATS AND NOT USE_DBUS)
   message(WARNING "The DBUS server statistics needs DBUS.  Enabling DBUS")
   set(USE_DBUS ON)
 endif(USE_DBUS_STATS AND NOT USE_DBUS)
+
+if(USE_DBUS_HEARTBEAT AND NOT USE_DBUS)
+  message(WARNING "The DBUS heartbeat needs DBUS.  Enabling DBUS")
+  set(USE_DBUS ON)
+endif(USE_DBUS_HEARTBEAT AND NOT USE_DBUS)
 
 if(USE_9P_RDMA AND NOT USE_9P)
   message(WARNING "The support of 9P/RDMA needs 9P protocol support. Enabling 9P")
@@ -678,6 +684,7 @@ message(STATUS "USE_FSAL_LUSTRE = ${USE_FSAL_LUSTRE}")
 message(STATUS "USE_FSAL_SHOOK = ${USE_FSAL_SHOOK}")
 message(STATUS "USE_FSAL_GLUSTER = ${USE_FSAL_GLUSTER}")
 message(STATUS "USE_DBUS = ${USE_DBUS}")
+message(STATUS "USE_DBUS_HEARTBEAT = ${USE_DBUS_HEARTBEAT}")
 message(STATUS "USE_CB_SIMULATOR = ${USE_CB_SIMULATOR}")
 message(STATUS "USE_DBUS_STATS = ${USE_DBUS_STATS}")
 message(STATUS "USE_NFSIDMAP = ${USE_NFSIDMAP}")
@@ -769,6 +776,11 @@ set(USE_FSAL_GLUSTER ${USE_FSAL_GLUSTER}
 set(USE_DBUS ${USE_DBUS}
   CACHE BOOL
    "enable DBUS protocol support"
+   FORCE)
+
+set(USE_DBUS_HEARTBEAT ${USE_DBUS_HEARTBEAT}
+  CACHE BOOL
+   "enable DBUS heartbeat"
    FORCE)
 
 set(USE_CB_SIMULATOR ${USE_CB_SIMULATOR}

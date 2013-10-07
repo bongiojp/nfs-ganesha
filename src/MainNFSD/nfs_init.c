@@ -776,6 +776,18 @@ static void nfs_Start_threads(void)
       LogEvent(COMPONENT_THREAD, "gsh_dbusthread was started successfully");
 #endif
 
+      //#ifdef USE_DBUS_HEARTBEAT
+      /* DBUS event thread */
+      if((rc = pthread_create(&gsh_dbus_thrid, &attr_thr, dbus_heartbeat_thread,
+                              NULL ) ) != 0 )     
+	{
+            LogFatal(COMPONENT_THREAD,
+                     "Could not create dbus_heartbeat_thread, error = %d (%s)",
+                     errno, strerror(errno));
+	}
+      LogEvent(COMPONENT_THREAD, "dbus_heartbeat_thread was started successfully");
+      //#endif
+
   /* Starting the admin thread */
   if((rc = pthread_create(&admin_thrid, &attr_thr, admin_thread, NULL)) != 0)
     {
@@ -833,6 +845,10 @@ static void nfs_Init(const nfs_start_info_t *p_start_info)
   dbus_export_init();
   dbus_client_init();
 #endif
+  //#ifdef USE_DBUS_HEARTBEAT
+  dbus_heartbeat_init();
+  //#endif
+
 #endif
 
   /* Cache Inode Initialisation */

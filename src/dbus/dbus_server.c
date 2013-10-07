@@ -575,11 +575,12 @@ void *gsh_dbus_thread(void *arg)
 
         /* do stuff */
         if( !dbus_connection_read_write_dispatch(thread_state.dbus_conn,
-						 30*1000)) {
+						 30*10)){
 		LogCrit(COMPONENT_DBUS,
 			"read_write_dispatch, got disconnected signal");
 		break;
 	}
+
 	/* here is where we do other stuff between messages */
     } /* 1 */
 
@@ -587,6 +588,28 @@ out:
     LogCrit(COMPONENT_DBUS, "shutdown");
 
     return (NULL);
+}
+
+int gsh_dbus_broadcast(char *obj_name, char *int_name, char *sig_name,
+			char *message) {
+  static dbus_uint32_t serial = 0;
+  DBusMessage *msg;
+  DBusMessageIter sig_iter;
+
+  msg = dbus_message_new_signal(obj_name, int_name, sig_name);
+  if(msg == NULL) {
+    return EINVAL;
+  }
+
+  dbus_message_iter_init_append(msg, &sig_iter);
+  if (!dbus_message_iter_append_basic(&sig_iter, DBUS_TYPE_STRING, &message)) {
+    return ENOMEM;
+  }
+
+  if (!dbus_connection_send(thread_state.dbus_conn, msg, &serial)) {
+    return ENOMEM;
+  }
+  return 0;
 }
 
 void gsh_dbus_wake_thread(uint32_t flags)
