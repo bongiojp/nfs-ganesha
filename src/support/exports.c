@@ -353,6 +353,10 @@ static void StrExportOptions(export_perms_t *p_perms, char *buffer)
 	if ((p_perms->options & EXPORT_OPTION_USE_UQUOTA) ==
 	    EXPORT_OPTION_USE_UQUOTA)
 		buf += sprintf(buf, ", UQUOTA");
+	if ((p_perms->options & EXPORT_OPTION_USE_DELEG) == 
+            EXPORT_OPTION_USE_DELEG)
+                buf += sprintf(buf, ", DELEG");
+
 
 	buf += sprintf(buf, ", anon_uid=%d", (int)p_perms->anonymous_uid);
 	buf += sprintf(buf, ", anon_gid=%d", (int)p_perms->anonymous_gid);
@@ -2228,7 +2232,18 @@ static int BuildExportEntry(config_item_t block)
 				err_flag = true;
 				continue;
 			}
-		} else {
+		} else if(!STRCMP(var_name, CONF_EXPORT_DELEG)) {
+    		       bool on;
+
+                       if (!parse_bool(var_value,
+                                      &set_options, FLAG_EXPORT_USE_DELEG,
+                                      label, var_name,
+                                      &err_flag,
+                                      &on))
+                          continue;
+                       if(on)
+                         p_perms->options |= EXPORT_OPTION_USE_DELEG;
+                }else {
 			LogWarn(COMPONENT_CONFIG,
 				"NFS READ %s: Unknown option: %s, ignored",
 				label, var_name);
