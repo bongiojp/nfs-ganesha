@@ -286,6 +286,8 @@ nfs_parameter_t nfs_param =
   .cache_param.required_progress = 5,
   .cache_param.futility_count = 8,
 
+  .dbus_param.heartbeat = false,
+  .dbus_param.heartbeat_freq = 1000,
 };
 
 /* ServerEpoch is ServerBootTime unless overriden by -E command line option */
@@ -603,6 +605,13 @@ int nfs_set_param_from_conf(config_file_t config_struct,
     {
       LogWarn(COMPONENT_INIT,
               "No export entries found in configuration file !!!");
+    }
+
+  rc = nfs_read_dbus_conf(config_struct, &nfs_param.dbus_param);
+  if(rc < 0)
+    {
+      LogCrit(COMPONENT_INIT, "Error while parsing DBUS config");
+      return -1;
     }
 
   LogEvent(COMPONENT_INIT, "Configuration file successfully parsed");

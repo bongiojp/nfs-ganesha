@@ -150,6 +150,23 @@ struct gsh_dbus_interface {
 	struct gsh_dbus_signal **signals;
 };
 
+/**
+ * @defgroup config_dbus Structure and defaults for DBUS
+ */
+
+/**
+ * @brief Block label for DBUS
+ */
+
+#define CONF_LABEL_DBUS "DBUS"
+typedef struct dbus_param {
+  bool heartbeat;
+  uint32_t heartbeat_freq; /* milliseconds */
+} dbus_parameter_t;
+
+/* read dbus config */
+int nfs_read_dbus_conf(config_file_t in_config, dbus_parameter_t *pparam);
+
 void gsh_dbus_pkginit(void);
 void gsh_dbus_pkgshutdown(void);
 void *gsh_dbus_thread(void *arg);
@@ -162,6 +179,12 @@ void dbus_status_reply(DBusMessageIter *iter,
 		       char *errormsg);
 int32_t gsh_dbus_register_path(const char *name,
                                struct gsh_dbus_interface **interfaces);
+int gsh_dbus_broadcast(char *obj_name, char *int_name,
+                       char *sig_name, char *message);
+
+/* heartbeat functions */
+void *dbus_heartbeat_thread(void *arg);
+void dbus_heartbeat_init(struct dbus_param pparam);
 
 /* more to come */
 
