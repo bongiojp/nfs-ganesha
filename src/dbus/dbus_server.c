@@ -715,6 +715,7 @@ void *gsh_dbus_thread(void *arg)
   int n,wait_msec = -1;
   unsigned flags = 0;
   DBusDispatchStatus status;
+  pthread_t heartbeat_thrid;
   pthread_attr_t attr_thr;
   SetNameFunction("dbus");
 
@@ -722,6 +723,26 @@ void *gsh_dbus_thread(void *arg)
     LogCrit(COMPONENT_DBUS, "DBUS not initialized, service thread "
             "exiting");
     goto out;
+  }
+
+  /* Check if the heartbeat needs to be started. */
+  if (nfs_param.dbus_param.heartbeat) {
+    if(pthread_attr_init(&attr_thr) != 0)
+      LogDebug(COMPONENT_THREAD, "can't init pthread's attributes");
+
+    if(pthread_attr_setscope(&attr_thr, PTHREAD_SCOPE_SYSTEM) != 0)
+      LogDebug(COMPONENT_THREAD, "can't set pthread's scope");
+
+    if(pthread_attr_setdetachstate(&attr_thr, PTHREAD_CREATE_JOINABLE) != 0)
+      LogDebug(COMPONENT_THREAD, "can't set pthread's join state");
+
+    if(pthread_create(&heartbeat_thrid, &attr_thr, dbus_heartbeat_thread,
+                      NULL) != 0 ) {
+        LogMajor(COMPONENT_THREAD,
+                 "Couldn't create the DBus heartbeat thread, error = %d (%s)",
+                 errno, strerror(errno));
+      }
+    LogEvent(COMPONENT_DBUS, "heartbeat started");
   }
 
   while (1) {
