@@ -150,6 +150,9 @@ struct gsh_dbus_interface {
 	struct gsh_dbus_signal **signals;
 };
 
+/* read dbus config */
+int nfs_read_dbus_conf(config_file_t in_config, dbus_parameter_t *pparam);
+
 void gsh_dbus_pkginit(void);
 void gsh_dbus_pkgshutdown(void);
 void *gsh_dbus_thread(void *arg);
@@ -162,6 +165,8 @@ void dbus_status_reply(DBusMessageIter *iter,
 		       char *errormsg);
 int32_t gsh_dbus_register_path(const char *name,
                                struct gsh_dbus_interface **interfaces);
+int gsh_dbus_broadcast(char *obj_name, char *int_name,
+                       char *sig_name, char *message);
 
 /* more to come */
 
