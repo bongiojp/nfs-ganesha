@@ -502,3 +502,69 @@ int nfs_read_version4_conf(config_file_t in_config,
 
 	return 0;
 }				/* nfs_read_version4_conf */
+
+/**
+ * @brief Read the core configuration
+ *
+ * @param[in]  in_config Configuration file handle
+ * @param[out] pparam    Read parameters
+ *
+ * @return 0 if ok, -1 if failed, 1 is stanza is not there.
+ */
+int nfs_read_dbus_conf(config_file_t in_config, dbus_parameter_t *pparam)
+{
+	int var_max;
+	int var_index;
+	int err;
+	char *key_name;
+	char *key_value;
+	config_item_t block;
+
+	/* Get the config BLOCK */
+	if((block = config_FindItemByName(in_config,
+					  CONF_LABEL_DBUS)) == NULL) {
+		LogDebug(COMPONENT_CONFIG,
+			 "Cannot read item \"%s\" from configuration file",
+			 CONF_LABEL_DBUS);
+		return 1;
+	}
+	else if(config_ItemType(block) != CONFIG_ITEM_BLOCK) {
+		/* Expected to be a block */
+		LogDebug(COMPONENT_CONFIG,
+			 "Item \"%s\" is expected to be a block",
+			 CONF_LABEL_DBUS);
+		return 1;
+	}
+
+	var_max = config_GetNbItems(block);
+
+	for(var_index = 0; var_index < var_max; var_index++) {
+		config_item_t item;
+
+		item = config_GetItemByIndex(block, var_index);
+
+		/* Get key's name */
+		if((err = config_GetKeyValue(item, &key_name,
+					     &key_value)) != 0) {
+			LogCrit(COMPONENT_CONFIG,
+				"Error reading key[%d] from section \"%s\" of"
+				" configuration file.",
+				var_index, CONF_LABEL_NFS_CORE);
+			return CACHE_INODE_INVALID_ARGUMENT;
+		}
+
+		if(!strcasecmp(key_name, "heartbeat")) {
+			pparam->heartbeat = str_to_bool(key_value);
+		}
+		else if(!strcasecmp(key_name, "heartbeat_freq") ||
+			!strcasecmp(key_name, "heartbeat_frequency")) {
+			pparam->heartbeat_freq = (unsigned int)atoi(key_value);
+		}
+		else {
+			LogWarn(COMPONENT_CONFIG,
+				"Unknown or unsettable key: %s (item %s)",
+				key_name, CONF_LABEL_DBUS);
+		}
+	}
+	return 0;
+}

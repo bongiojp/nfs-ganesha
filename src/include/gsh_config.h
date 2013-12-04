@@ -47,6 +47,7 @@
 #include <stdbool.h>
 #include "nfs4.h"
 #include "fsal_types.h"
+#include "ganesha_dbus.h"
 
 struct exportlist;
 
@@ -666,6 +667,7 @@ typedef struct nfs_param {
 	/** 9P owner cache parameters  */
 	hash_parameter_t _9p_owner_hash_param;
 #endif				/* _USE_9P */
+        dbus_parameter_t dbus_param;
 } nfs_parameter_t;
 
 extern nfs_parameter_t nfs_param;

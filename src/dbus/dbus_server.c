@@ -77,19 +77,13 @@ struct ganesha_dbus_handler {
 	char *name;
 	struct avltree_node node_k;
 	DBusObjectPathVTable vtable;
+};
 
 typedef struct GaneshaWatch_t {
 	int fd;
 	int type;
 	DBusWatch *dbus_watch;
 } GaneshaWatch;
-
-struct ganesha_dbus_handler
-{
-	char *name;
-	struct avltree_node node_k;
-	DBusObjectPathVTable vtable;
-};
 
 struct _dbus_thread_state {
 	int initialized;
@@ -100,6 +94,7 @@ struct _dbus_thread_state {
 	uint32_t dbus_serial;
 	struct avltree callouts;
 	int epoll_fd;
+	uint32_t flags;
 };
 
 static struct _dbus_thread_state thread_state;
@@ -697,6 +692,7 @@ void *gsh_dbus_thread(void *arg)
 	GaneshaWatch *watchdata;
 	int n,wait_msec = -1;
 	unsigned flags = 0;
+	pthread_t heartbeat_thrid;
 	DBusDispatchStatus status;
 	pthread_attr_t attr_thr;
 	SetNameFunction("dbus");
@@ -705,6 +701,27 @@ void *gsh_dbus_thread(void *arg)
 		LogCrit(COMPONENT_DBUS, "DBUS not initialized, service thread "
 			"exiting");
 		goto out;
+	}
+
+	/* Check if the heartbeat needs to be started. */
+	/* Check if the heartbeat needs to be started. */
+	if (nfs_param.dbus_param.heartbeat) {
+		if(pthread_attr_init(&attr_thr) != 0)
+			LogDebug(COMPONENT_THREAD,
+				 "can't init pthread's attributes");
+		if(pthread_attr_setscope(&attr_thr, PTHREAD_SCOPE_SYSTEM) != 0)
+			LogDebug(COMPONENT_THREAD, "can't set pthread's scope");
+		if(pthread_attr_setdetachstate(&attr_thr,
+					       PTHREAD_CREATE_JOINABLE) != 0)
+			LogDebug(COMPONENT_THREAD,
+				 "can't set pthread's join state");
+		if(pthread_create(&heartbeat_thrid, &attr_thr,
+				  dbus_heartbeat_thread, NULL) != 0 ) {
+			LogMajor(COMPONENT_THREAD,
+				 "Couldn't create the DBus heartbeat thread, "
+				 "error = %d (%s)", errno, strerror(errno));
+		}
+		LogEvent(COMPONENT_DBUS, "heartbeat started");
 	}
 
 	while (1) {
@@ -771,7 +788,6 @@ void *gsh_dbus_thread(void *arg)
 
  out:
 	LogCrit(COMPONENT_DBUS, "shutdown");
-
 	return (NULL);
 }
 
