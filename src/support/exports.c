@@ -137,6 +137,7 @@
 #define FLAG_EXPORT_CACHE_POLICY    0x080000000
 #define FLAG_EXPORT_USE_UQUOTA      0x100000000
 #define FLAG_EXPORT_USE_COOKIE_VERIFIER 0x400000000
+#define FLAG_EXPORT_USE_DELEG 0x800000000
 
 /* limites for nfs_ParseConfLine */
 /* Used in BuildExportEntry() */
