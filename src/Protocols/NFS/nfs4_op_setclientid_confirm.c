@@ -418,10 +418,10 @@ int nfs4_op_setclientid_confirm(struct nfs_argop4 *op, compound_data_t *data,
 		}
 
 		/* Check and update call back channel state */
-		if(nfs_test_cb_chan(conf) != RPC_SUCCESS)
-			conf->cb_chan_down = TRUE;
+		if(nfs_test_cb_chan(unconf) != RPC_SUCCESS)
+			unconf->cb_chan_down = TRUE;
 		else
-			conf->cb_chan_down = FALSE;
+			unconf->cb_chan_down = FALSE;
 
 		/* Release our reference to the now confirmed record */
 		dec_client_id_ref(unconf);
