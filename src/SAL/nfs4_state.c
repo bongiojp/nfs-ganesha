@@ -98,7 +98,8 @@ bool state_conflict(state_t *state, state_type_t state_type,
 		/** @todo: Not yet implemented for now, answer true to avoid
 		 * weird behavior
 		 */
-		return true;
+          /* lets plan on deleg conflict being managed by the FSAL for now */
+		return false;
 	}
 
 	return true;
