@@ -2515,6 +2515,14 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 	glist_for_each(glist, &entry->object.file.lock_list) {
 		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 
+                /* Delegations owned by a client won't conflict with delegations
+                 * to that same client, but maybe we should just return success. */
+                if (found_entry->sle_type == LEASE_LOCK &&
+                    lock->lock_sle_type == LEASE_LOCK &&
+                    owner->so_owner.so_nfs4_owner.so_clientid ==
+                    found_entry->sle_owner->so_owner.so_nfs4_owner.so_clientid)
+                  continue;
+
 		/* Need to reject lock request if this lock owner already has
 		 * a lock on this file via a different export.
 		 */
@@ -2538,7 +2546,6 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		}
 
 		/* Don't skip blocked locks for fairness */
-
 		found_entry_end = lock_end(&found_entry->sle_lock);
 
 		if ((found_entry_end >= lock->lock_start)
@@ -2629,7 +2636,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		lock_op = FSAL_OP_LOCK;
 	} else {
 		/* Can't do async blocking lock in FSAL and have a conflict.
-		 * Return it.
+		 * Return it. This is true for conflicting delegations as well.
 		 */
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
@@ -2713,6 +2720,10 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		status = STATE_LOCK_BLOCKED;
 
 	if (status == STATE_SUCCESS) {
+          if (sle_type == LEASE_LOCK) { // Delegation
+            update_delegation_stats(entry, state);
+            LogEntry("FSAL delegation acquired for", found_entry);
+          } else { // Lock
 		/* Merge any touching or overlapping locks into this one */
 		LogEntry("FSAL lock acquired, merging locks for", found_entry);
 
@@ -2733,6 +2744,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		/* A lock downgrade could unblock blocked locks */
 		grant_blocked_locks(entry, req_ctx);
 		/* Don't need to unpin, we know there is state on file. */
+          }
 	} else if (status == STATE_LOCK_CONFLICT) {
 		LogEntry("Conflict in FSAL for", found_entry);
 
