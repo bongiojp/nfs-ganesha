@@ -155,6 +155,8 @@ void init_deleg_heuristics(cache_entry_t *entry) {
     statistics->dh_last_del = 0;
     statistics->dh_last_rec = 0;
     statistics->dh_avg_hold = 0;
+    statistics->num_opens = 0;
+    statistics->first_open = 0;
   }
 }
 
@@ -168,7 +170,9 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
   client_deleg_heuristics_t *cl_stats = &client->deleg_heuristics;
   /* specific client, specific file stats */
   //  clientfile_deleg_heuristics_t *clfl_stats;
-  float ACCEPTABLE_FAILS = 0.1;
+  float ACCEPTABLE_FAILS = 0.1; // 10%
+  float ACCEPTABLE_OPEN_FREQUENCY = .01; // per second
+  time_t spread;
 
   if (open_state->state_type != STATE_TYPE_SHARE) {
     LogDebug(COMPONENT_STATE, "should_we_grant_deleg() expects a SHARE open "
@@ -178,6 +182,13 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
 
   if (file_stats->deleg_type == OPEN_DELEGATE_NONE) {
     LogDebug(COMPONENT_STATE, "OPEN_DELEGATE_NONE requests, returning false.");
+    return false;
+  }
+
+  /* Check if this file is opened too frequently to delegate. */
+  spread = time(NULL) - file_stats->first_open;
+  if ((file_stats->num_opens / spread) > ACCEPTABLE_OPEN_FREQUENCY) {
+    LogDebug(COMPONENT_STATE, "This file is opened too frequently to delegate.");
     return false;
   }
 

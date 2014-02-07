@@ -266,6 +266,8 @@ typedef struct {
   time_t dh_avg_hold;     // avg amount of time delegation held
   time_t dh_last_del;
   time_t dh_last_rec;
+  uint32_t num_opens; // total num of opens so far. too many, don't delegate.
+  time_t first_open; // time that we started recording num_opens
 } file_deleg_heuristics_t;
 
 /**

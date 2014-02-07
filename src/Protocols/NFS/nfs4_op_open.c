@@ -1381,10 +1381,18 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 		       data,
 		       open_tag);
 
+	/* Update delegation open stats */
+	if (data->current_entry->type == REGULAR_FILE) {
+	  if (data->current_entry->object.file.deleg_heuristics.num_opens == 0)
+	    data->current_entry->object.file.deleg_heuristics.first_open = time(NULL);
+	  data->current_entry->object.file.deleg_heuristics.num_opens++;
+	}
+
 	pthread_mutex_lock(&clientid->cid_mutex);
 
         /* Decide if we should delegate, then add it. */
-	if (data->export->export_hdl->ops->
+	if (data->current_entry->type != DIRECTORY
+	    && data->export->export_hdl->ops->
 	    fs_supports(data->export->export_hdl, fso_delegations)
 	    && (data->export->export_perms.options & EXPORT_OPTION_USE_DELEG)
 	    && owner->so_owner.so_nfs4_owner.so_confirmed == TRUE
