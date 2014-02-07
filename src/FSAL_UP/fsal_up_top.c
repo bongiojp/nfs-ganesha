@@ -1371,7 +1371,7 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
  * @param[in] entry       File on which the delegation is held
  */
 
-static void delegrecall_one(state_lock_entry_t *found_entry,
+static uint32_t delegrecall_one(state_lock_entry_t *found_entry,
 			    cache_entry_t *entry)
 {
 	char *maxfh;
@@ -1386,7 +1386,7 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 		LogDebug(COMPONENT_FSAL_UP, "FSAL_UP_DELEG: no mem, failed.");
 		/* Not an error. Expecting some nodes will not have it
 		 * in cache in a cluster. */
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	code =
 	    nfs_client_id_get_confirmed(found_entry->sle_owner->so_owner.
@@ -1394,7 +1394,7 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 	if (code != CLIENT_ID_SUCCESS) {
 		LogCrit(COMPONENT_NFS_CB, "No clid record  code %d", code);
 		gsh_free(maxfh);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	/* Attempt a recall only if channel state is UP */
 	pthread_mutex_lock(&clid->cid_mutex);
@@ -1402,7 +1402,7 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 		pthread_mutex_unlock(&clid->cid_mutex);
 		LogCrit(COMPONENT_NFS_CB, "Call back channel down, not issuing a recall");
 		gsh_free(maxfh);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	pthread_mutex_unlock(&clid->cid_mutex);
 
@@ -1414,7 +1414,7 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 		clid->cb_chan_down = TRUE;
 		pthread_mutex_unlock(&clid->cid_mutex);
 		gsh_free(maxfh);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	if (!chan->clnt) {
 		LogCrit(COMPONENT_NFS_CB, "nfs_rpc_get_chan failed (no clnt)");
@@ -1422,7 +1422,7 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 		clid->cb_chan_down = TRUE;
 		pthread_mutex_unlock(&clid->cid_mutex);
 		gsh_free(maxfh);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 	/* allocate a new call--freed in completion hook */
 	call = alloc_rpc_call();
@@ -1449,7 +1449,7 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 	if (!nfs4_FSALToFhandle
 	    (&argop->nfs_cb_argop4_u.opcbrecall.fh, entry->obj_handle)) {
 		gsh_free(call);
-		return;
+		return NFS_CB_CALL_ABORTED;
 	}
 
 	/* add ops, till finished (dont exceed count) */
@@ -1458,11 +1458,75 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
 	/* set completion hook */
 	call->call_hook = delegrecall_completion_func;
 
-	/* call it (here, in current thread context) */
-	code = nfs_rpc_submit_call(call, clid, NFS_RPC_FLAG_NONE);
+	/* call it (here, in current thread context) 
+         * nfs_rpc_submit_call() always returns zero. ignore it. */
+	nfs_rpc_submit_call(call, NULL, NFS_RPC_FLAG_NONE);
+        return call->states;
 
-	return;
 };
+
+state_status_t delegrecall(struct fsal_export *export, cache_entry_t *entry)
+{
+	struct glist_head *glist,*glist_n;
+	state_lock_entry_t *found_entry = NULL;
+	state_status_t rc = 0;
+        clientfile_deleg_heuristics_t *clfl_stats;
+        client_deleg_heuristics_t *cl_stats;
+
+	LogDebug(COMPONENT_FSAL_UP,
+		 "FSAL_UP_DELEG: Invalidate cache found entry %p type %u",
+		 entry, entry->type);
+
+	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
+
+	glist_for_each_safe(glist, glist_n, &entry->object.file.lock_list) {
+          found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
+          
+          if (found_entry->sle_type != LEASE_LOCK)
+            continue;
+          
+          if (found_entry != NULL && found_entry->sle_state != NULL) {
+            LogDebug(COMPONENT_NFS_CB, "found_entry %p",
+                     found_entry);
+
+            clfl_stats = &found_entry->sle_state->state_data.deleg.clfile_stats;
+            cl_stats = &clfl_stats->clientid->deleg_heuristics;
+            clfl_stats->num_recalls++;
+            cl_stats->tot_recalls++;
+
+            switch(delegrecall_one(found_entry, entry)) {
+            case NFS_CB_CALL_FINISHED:
+              free_deleg_locked(found_entry, entry,
+                                export, &synthetic_context);
+              break;
+            case NFS_CB_CALL_NONE:
+              break;
+            case NFS_CB_CALL_QUEUED:
+              break;
+            case NFS_CB_CALL_DISPATCH:
+              break;
+            case NFS_CB_CALL_ABORTED:
+              LogCrit(COMPONENT_NFS_CB, "Failed to recall, aborted!");
+              clfl_stats->num_recall_aborts++;
+              cl_stats->failed_recalls++;
+              break;
+            case NFS_CB_CALL_TIMEDOUT: // network or client trouble
+              LogCrit(COMPONENT_NFS_CB, "Failed to recall due to timeout!");
+              clfl_stats->num_recall_timeouts++;
+              cl_stats->failed_recalls++;
+              break;
+            default:
+              LogCrit(COMPONENT_NFS_CB, "WHAT did delegrecall_one() return?!");
+              break;
+            }
+          }
+	}
+	PTHREAD_RWLOCK_unlock(&entry->state_lock);
+
+	cache_inode_put(entry);
+
+	return rc;
+}
 
 /**
  * @brief Recall a delegation
@@ -1473,12 +1537,10 @@ static void delegrecall_one(state_lock_entry_t *found_entry,
  * @return STATE_SUCCESS or errors.
  */
 
-state_status_t delegrecall(struct fsal_export *export,
-			   const struct gsh_buffdesc *handle)
+state_status_t delegrecall_upcall(struct fsal_export *export,
+                                  const struct gsh_buffdesc *handle)
 {
 	cache_entry_t *entry = NULL;
-	struct glist_head *glist;
-	state_lock_entry_t *found_entry = NULL;
 	state_status_t rc = 0;
 
 	rc = cache_inode_status_to_state_status(up_get(handle, &entry));
@@ -1489,28 +1551,10 @@ state_status_t delegrecall(struct fsal_export *export,
 		 * in cache in a cluster. */
 		return rc;
 	}
-
-	LogDebug(COMPONENT_FSAL_UP,
-		 "FSAL_UP_DELEG: Invalidate cache found entry %p type %u",
-		 entry, entry->type);
-
-	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
-
-	glist_for_each(glist, &entry->object.file.lock_list) {
-		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
-
-		if (found_entry != NULL && found_entry->sle_state != NULL) {
-			LogDebug(COMPONENT_NFS_CB, "found_entry %p",
-				 found_entry);
-			delegrecall_one(found_entry, entry);
-		}
-	}
-	PTHREAD_RWLOCK_unlock(&entry->state_lock);
-
-	cache_inode_put(entry);
-
-	return rc;
+        return delegrecall(export, entry);
 }
+
+
 
 /**
  * @brief The top level vector of operations
@@ -1528,7 +1572,7 @@ struct fsal_up_vector fsal_up_top = {
 	.rename = up_rename,
 	.layoutrecall = layoutrecall,
 	.notify_device = notify_device,
-	.delegrecall = delegrecall
+	.delegrecall = delegrecall_upcall
 };
 
 /** @} */
