@@ -95,11 +95,40 @@ bool state_conflict(state_t *state, state_type_t state_type,
 		return false;
 
 	case STATE_TYPE_DELEG:
-		/** @todo: Not yet implemented for now, answer true to avoid
-		 * weird behavior
-		 */
-          /* lets plan on deleg conflict being managed by the FSAL for now */
-		return false;
+	  /* Should this be managed by the FSAL? */
+	  switch(state->state_type) {
+	  case STATE_TYPE_DELEG:
+	    /* This should not happen, but we'll see. */
+	    if (state->deleg_data.deleg.clfile_stats.clientid->cid_clientid
+		== state_data->deleg.clfile_stats.clientid->cid_clientid) {
+	      LogDebug(COMPONENT_STATE, "Already found a delegation for this"
+		       " client/file!!");
+	      return false;
+	    }
+
+	    /* All read delegations, or none. */
+	    if (state_data->deleg.sd_type == OPEN_DELEGATE_READ
+		&& state->state_data.deleg.sd_type != OPEN_DELEGATE_READ)
+	      return true;
+
+	    /* "There can be only one." */
+	    if (state_data->deleg.sd_type == OPEN_DELEGATE_WRITE)
+	      return true;
+	    break;
+	  case STATE_TYPE_SHARE:
+	    if (state_data->deleg.sd_type == OPEN_DELEGATE_READ
+		&& state_data->share_access & OPEN4_SHARE_ACCESS_WRITE)
+	      return true;
+	    break;
+	  case STATE_TYPE_LOCK:
+	    /* Ugh! Let's let the FSAL handle it. It will have to anyways
+	     * for crossnode coherency.*/
+	    return false;
+	    break;
+	  case STATE_TYPE_LAYOUT:
+	    return false;
+	    break;
+	  }
 	}
 
 	return true;
