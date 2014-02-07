@@ -240,6 +240,27 @@ typedef struct state_share__ {
 } state_share_t;
 
 /**
+ * @brief Stats for client and client-file delegation heuristics
+ */
+
+typedef struct {
+  uint32_t deleg_grants;  // times client has been granted a deleg
+  uint32_t tot_recalls;  // times client was asked to recall
+  uint32_t failed_recalls;  // times client failed to process recall
+} client_deleg_heuristics_t;
+
+typedef struct {
+  struct glist_head glist;
+  struct nfs_client_id_t *clientid; // client for this file.
+  time_t dh_last_del;     // time of successful delegation
+  uint32_t num_recalls;  // times file has been recalled
+  uint32_t num_recall_badhandles; // times recalled had to be resent
+  uint32_t num_recall_races; // 
+  uint32_t num_recall_timeouts; // 
+  uint32_t num_recall_aborts; // 
+} clientfile_deleg_heuristics_t;
+
+/**
  * @brief Data for a set of locks
  */
 
@@ -253,13 +274,15 @@ typedef struct state_lock_t {
 
 /**
  * @brief Data for a delegation
- *
- * @todo We should at least track whether this is a read or write
- * delegation.
  */
 
 typedef struct state_deleg__ {
-	unsigned int nothing;
+  open_delegation_type4 sd_type;
+  stateid4 sd_stateid;
+  state_t *sd_open_state;
+  struct glist_head sd_deleg_list;
+  time_t grant_time;     // time of successful delegation  
+  clientfile_deleg_heuristics_t clfile_stats;
 } state_deleg_t;
 
 /**
@@ -613,6 +636,8 @@ struct nfs_client_id_t {
 					   this clientid from the reaper */
 	uint32_t cid_minorversion;
 	uint32_t cid_stateid_counter;
+
+  client_deleg_heuristics_t deleg_heuristics;
 };
 
 /**

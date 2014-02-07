@@ -254,6 +254,21 @@ cache_inode_free_dirent(cache_inode_dir_entry_t *dirent)
 }
 
 /**
+ * @brief Stats for file-specific and client-file delegation heuristics
+ */
+
+typedef struct {
+  uint32_t curr_delegations; // number of delegations on file
+  open_delegation_type4 deleg_type; // if delegated, is it read or write
+  bool dh_disabled;       // deleg disabled for this file
+  uint32_t dh_del_count;  // times file has been delegated
+  uint32_t dh_rec_count;  // times file has been recalled
+  time_t dh_avg_hold;     // avg amount of time delegation held
+  time_t dh_last_del;
+  time_t dh_last_rec;
+} file_deleg_heuristics_t;
+
+/**
  * @brief Represents a cached inode
  *
  * Information representing a cached file (inode) including metadata,
@@ -360,6 +375,8 @@ struct cache_entry_t {
 			struct glist_head nlm_share_list;
 			/** Share reservation state for this file. */
 			cache_inode_share_t share_state;
+                        /** Delegation statistics */
+                        file_deleg_heuristics_t deleg_heuristics;
 		} file;		/*< REGULAR_FILE data */
 
 		struct {
