@@ -173,10 +173,6 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 	glist_for_each(glist, &data->current_entry->state_list) {
 		state_iterate = glist_entry(glist, state_t, state_list);
 
-		/**
-		 * @todo This will need to be updated when we get
-		 * delegations.
-		 */
 		if (state_iterate->state_type != STATE_TYPE_SHARE)
 			continue;
 
@@ -832,51 +828,108 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
 	return nfs_status;
 }
 
-static void get_delegation(compound_data_t *data, state_t *file_state,
-			   state_owner_t *powner, OPEN4resok *resok)
+/* entry needs to be locked before executing this function! */
+static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
+                           state_t *open_state, state_owner_t *openowner,
+                           nfs_client_id_t *clientid, OPEN4resok *resok)
 {
 	state_status_t state_status;
 	fsal_lock_param_t lock_desc;
+        /* The state to be added */
+        state_data_t deleg_data;
+        open_delegation_type4 deleg_type;
+        state_owner_t *clientowner = &clientid->cid_owner;
+        /* The arguments to the open operation */  
+        OPEN4args *args = &op->nfs_argop4_u.opopen;
+        struct state_refer refer;
 
-	lock_desc.lock_type = FSAL_LOCK_R;
+        /* Record the sequence info */
+        if (data->minorversion > 0) {
+          memcpy(refer.session,
+                 data->session->session_id,
+                 sizeof(sessionid4));
+          refer.sequence = data->sequence;
+          refer.slot = data->slot;
+        }
+
+        if (args->share_access & OPEN4_SHARE_ACCESS_WRITE) {
+          lock_desc.lock_type = FSAL_LOCK_W;
+          deleg_type = OPEN_DELEGATE_WRITE;
+        }
+        else if (args->share_access & OPEN4_SHARE_ACCESS_READ) {
+          lock_desc.lock_type = FSAL_LOCK_R;
+          deleg_type = OPEN_DELEGATE_READ;
+        }
+        else {
+          lock_desc.lock_type = FSAL_NO_LOCK;
+          deleg_type = OPEN_DELEGATE_NONE;
+        }
+
 	lock_desc.lock_start = 0;
 	lock_desc.lock_length = 0;
 	lock_desc.lock_sle_type = FSAL_LEASE_LOCK;
 
-	state_status = state_lock(data->current_entry,
-				  data->export,
-				  data->req_ctx,
-				  powner,
-				  file_state,
-				  STATE_NON_BLOCKING,
-				  NULL,	/* No block data */
-				  &lock_desc,
-				  NULL,
-				  NULL,
-				  LEASE_LOCK);
-
+        init_new_deleg_state(&deleg_data, open_state, deleg_type, clientid);
+        
+        /* Add the delegation state */
+        state_status = state_add(data->current_entry, STATE_TYPE_DELEG,
+                                 &deleg_data,
+                                 clientowner, NULL, /* OUT: The new state */
+                                 data->minorversion > 0 ? &refer : NULL);
 	if (state_status != STATE_SUCCESS) {
-
-		LogDebug(COMPONENT_NFS_V4_LOCK,
-			 "get_delegation call failed with status %s",
-			 state_err_str(state_status));
+          
+          LogDebug(COMPONENT_NFS_V4_LOCK,
+                   "get_delegation call failed to add state with status %s",
+                   state_err_str(state_status));
+          return;
 	} else {
-		resok->delegation.delegation_type = OPEN_DELEGATE_READ;
-		resok->delegation.open_delegation4_u.read.stateid =
-		    resok->stateid;
-		resok->delegation.open_delegation4_u.read.recall = FALSE;
-		resok->delegation.open_delegation4_u.read.permissions.type =
-		    ACE4_ACCESS_ALLOWED_ACE_TYPE;
-		resok->delegation.open_delegation4_u.read.permissions.flag = 0;
-		resok->delegation.open_delegation4_u.read.permissions.
-		    access_mask = 0;
-		resok->delegation.open_delegation4_u.read.permissions.who.
-		    utf8string_len = 0;
-		resok->delegation.open_delegation4_u.read.permissions.who.
-		    utf8string_val = NULL;
+          resok->delegation.delegation_type = deleg_type;
+          if (deleg_type == OPEN_DELEGATE_WRITE) {
+            open_write_delegation4 *writeres =
+              &resok->delegation.open_delegation4_u.write;
+            writeres->space_limit.limitby = NFS_LIMIT_SIZE; // NFS_LIMIT_SIZE or NFS_LIMIT_BLOCKS
+            writeres->space_limit.nfs_space_limit4_u.filesize = 100000;
+            //writeres->space_limit.nfs_space_limit4_u.mod_blocks = 10;
+            writeres->stateid = deleg_data.deleg.sd_stateid;
+            writeres->recall = FALSE;
+            get_deleg_perm(data->current_entry, &writeres->permissions,
+                           deleg_type);
+          } else if (deleg_type == OPEN_DELEGATE_READ) {
+            open_read_delegation4 *readres =
+              &resok->delegation.open_delegation4_u.read;
+            readres->stateid = deleg_data.deleg.sd_stateid;
+            readres->recall = FALSE;
+            get_deleg_perm(data->current_entry, &readres->permissions,
+                           deleg_type);
+          } else { // NONE
+            // open_none_delegation4 *noneres =
+            // &resok->delegation.open_delegation4_u.od_whynone;
+            return;
+          }
+
+          state_status = state_lock(data->current_entry,
+                                    data->export,
+                                    data->req_ctx,
+                                    openowner,
+                                    open_state,
+                                    STATE_NON_BLOCKING,
+                                    NULL,	/* No block data */
+                                    &lock_desc,
+                                    NULL,
+                                    NULL,
+                                    LEASE_LOCK);
+          if (state_status != STATE_SUCCESS) {
+            // TODO: remove delegation state if this fails.
+            LogDebug(COMPONENT_NFS_V4_LOCK,
+                     "get_delegation call added state but failed to lock "
+                     "with status %s", state_err_str(state_status));
+            return;
+          }
 	}
-	LogDebug(COMPONENT_NFS_V4_LOCK, "get_delegation powner %p status %s",
-		 powner, state_err_str(state_status));
+
+        LogDebug(COMPONENT_NFS_V4_LOCK, "get_delegation openowner %p "
+                 "clientowner %p status %s",
+                 openowner, clientowner, state_err_str(state_status));
 }
 
 /**
@@ -1318,30 +1371,37 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	entry_change = NULL;
 	res_OPEN4->OPEN4res_u.resok4.cinfo.atomic = FALSE;
 
-	/* We do not support delegations */
-	res_OPEN4->OPEN4res_u.resok4.delegation.delegation_type =
-	    OPEN_DELEGATE_NONE;
+	/* This will be updated laster if we actually delegate */
+        res_OPEN4->OPEN4res_u.resok4.delegation.delegation_type =
+          OPEN_DELEGATE_NONE;
 
-	/* Handle stateid/seqid for success */
+	/* Handle open stateid/seqid for success */
 	update_stateid(file_state,
 		       &res_OPEN4->OPEN4res_u.resok4.stateid,
 		       data,
 		       open_tag);
+
 	pthread_mutex_lock(&clientid->cid_mutex);
+
+        /* Decide if we should delegate, then add it. */
 	if (data->export->export_hdl->ops->
 	    fs_supports(data->export->export_hdl, fso_delegations)
 	    && (data->export->export_perms.options & EXPORT_OPTION_USE_DELEG)
 	    && owner->so_owner.so_nfs4_owner.so_confirmed == TRUE
 	    && clientid->cb_chan_down == FALSE
-	    && claim != CLAIM_DELEGATE_CUR) {
+	    && claim != CLAIM_DELEGATE_CUR
+            && should_we_grant_deleg(data->current_entry,
+				     data->session->clientid_record,
+				     file_state)) {
 		pthread_mutex_unlock(&clientid->cid_mutex);
-		get_delegation(data, file_state, owner,
-			       &res_OPEN4->OPEN4res_u.resok4);
+                get_delegation(data, op, file_state, owner, clientid, 
+                               &res_OPEN4->OPEN4res_u.resok4);
 	}
 	else {
 		pthread_mutex_unlock(&clientid->cid_mutex);
+                res_OPEN4->OPEN4res_u.resok4.delegation.open_delegation4_u.
+                  od_whynone.ond_why = WND4_NOT_WANTED;
 	}
-
  out:
 
 	if (res_OPEN4->status != NFS4_OK) {
