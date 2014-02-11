@@ -49,7 +49,19 @@
 #include "nlm_util.h"
 #include "cache_inode_lru.h"
 
-/* The caller must hold the state lock exclusively. */
+
+
+/**
+ * @brief Free a delegation while the lock state is locked.
+ *
+ * Free a delegation while the lock state is locked.
+ * The caller must hold the state lock exclusively.
+ * 
+ * @param[in] deleg_lock The delegation lock to remove.
+ * @param[in] entry Inode entry that was delegated.
+ * @param[in] export Export that the delegation and file are in.
+ * @param[in] fake_req_ctx Fake request context when called from fsal_up
+ */
 void free_deleg_locked(state_lock_entry_t *deleg_lock, cache_entry_t *entry,
                        struct fsal_export *export,
                        struct req_op_context *fake_req_ctx) {
@@ -67,16 +79,27 @@ void free_deleg_locked(state_lock_entry_t *deleg_lock, cache_entry_t *entry,
   /* Remove state entry */
   state_del_locked(deleg_lock->sle_state, entry);
 
-  deleg_heuristics_recall(entry, clientid, deleg_lock);
+  deleg_heuristics_recall(entry, clientid);
 }
 
 void init_clientfile_deleg(clientfile_deleg_heuristics_t *clfile_entry) {
 
 }
 
+/**
+ * @brief Initialize new delegation state as argument for state_add()
+ *
+ * Initialize delegation state struct. This is then given as an argument
+ * to state_add()
+ * 
+ * @param[in/out] deleg_state Delegation state struct to be init. Can't be NULL.
+ * @param[in] open_state Open state for the file this delegation is for.
+ * @param[in] sd_type Type of delegation, READ or WRITE.
+ * @param[in] client Client that will own this delegation.
+ */
 void init_new_deleg_state(state_data_t *deleg_state, state_t *open_state,
                           open_delegation_type4 sd_type,
-                          nfs_client_id_t *clientid) {
+                          nfs_client_id_t *client) {
   clientfile_deleg_heuristics_t *clfile_entry =
     &deleg_state->deleg.clfile_stats;
   // deleg_state->deleg.sd_stateid is created uniquely with state_add_impl()
@@ -84,8 +107,8 @@ void init_new_deleg_state(state_data_t *deleg_state, state_t *open_state,
   deleg_state->deleg.sd_type = sd_type;
   deleg_state->deleg.grant_time = time(NULL);
 
-  clfile_entry->clientid = clientid;
-  clfile_entry->dh_last_del = 0;
+  clfile_entry->clientid = client;
+  clfile_entry->last_delegation = 0;
   clfile_entry->num_recalls = 0;
   clfile_entry->num_recall_badhandles = 0;
   clfile_entry->num_recall_races = 0;
@@ -93,75 +116,115 @@ void init_new_deleg_state(state_data_t *deleg_state, state_t *open_state,
   clfile_entry->num_recall_aborts = 0;
 }
 
+/**
+ * @brief Update statistics on successfully granted delegation.
+ *
+ * Update statistics on successfully granted delegation.
+ * Note: This should be called only when a delegation is successfully granted.
+ *       So far this should only be called in state_lock().
+ *
+ * @param[in] entry Inode entry the delegation is for.
+ * @param[in] state Delegation state pertaining to new delegation lock.
+ */
 bool update_delegation_stats(cache_entry_t *entry, state_t *state) {
   clientfile_deleg_heuristics_t *clfile_entry = &state->state_data.deleg.clfile_stats;
 
   /* Update delegation stats for file. */
   file_deleg_heuristics_t *statistics = &entry->object.file.deleg_heuristics;
   statistics->curr_delegations++;
-  statistics->dh_disabled = false;
-  statistics->dh_del_count++;
-  statistics->dh_last_del = time(NULL);
+  statistics->disabled = false;
+  statistics->delegation_count++;
+  statistics->last_delegation = time(NULL);
 
   /* Update delegation stats for client. */
-  clfile_entry->clientid->deleg_heuristics.deleg_grants++;
+  clfile_entry->clientid->deleg_heuristics.curr_deleg_grants++;
 
   /* Update delegation stats for client-file. */
-  clfile_entry->dh_last_del = statistics->dh_last_del;
+  clfile_entry->last_delegation = statistics->last_delegation;
 
   return true;
 }
 
+/* Add a new delegation length to the average length stat. */
 static int advance_avg(time_t prev_avg, time_t new_time,
 		       uint32_t prev_tot, uint32_t curr_tot) {
   return ((prev_tot * prev_avg) + new_time) / curr_tot;
 }
 
-bool deleg_heuristics_recall(cache_entry_t *entry, nfs_client_id_t *clientid,
-                             state_lock_entry_t *deleg_lock) {
+/**
+ * @brief Update statistics on successfully recalled delegation.
+ *
+ * Update statistics on successfully recalled delegation.
+ * Note: This should be called only when a delegation is successfully recalled.
+ *
+ * @param[in] entry Inode entry the delegation is based on.
+ * @param[in] client Client that owned the delegation
+ */
+bool deleg_heuristics_recall(cache_entry_t *entry, nfs_client_id_t *client) {
   //  clientfile_deleg_heuristics_t *clfile_entry;
 
   /* Update delegation stats for file. */
   file_deleg_heuristics_t *statistics = &entry->object.file.deleg_heuristics;
   statistics->curr_delegations--;
-  statistics->dh_disabled = false;
-  statistics->dh_rec_count++;
+  statistics->disabled = false;
+  statistics->recall_count++;
 
   /* Update delegation stats for client. */
-  clientid->deleg_heuristics.deleg_grants++;
+  client->deleg_heuristics.curr_deleg_grants--;
 
   /* Update delegation stats for client-file. */
-  statistics->dh_avg_hold = advance_avg(statistics->dh_avg_hold,
-                                        time(NULL) - statistics->dh_last_del,
-                                        statistics->dh_rec_count - 1,
-                                        statistics->dh_rec_count);
+  statistics->avg_hold = advance_avg(statistics->avg_hold,
+                                        time(NULL) - statistics->last_delegation,
+                                        statistics->recall_count - 1,
+                                        statistics->recall_count);
   return true;
 }
 
-void init_deleg_heuristics(cache_entry_t *entry) {
+/**
+ * @brief Initialize the file-specific delegation statistics
+ *
+ * Initialize the file-specific delegation statistics used later for deciding
+ * if a delegation should be granted on this file based on heuristics.
+ *
+ * @param[in] entry Inode entry the delegation will be on.
+ */
+bool init_deleg_heuristics(cache_entry_t *entry) {
   file_deleg_heuristics_t *statistics; 
-  if (entry->type == REGULAR_FILE ||
-      entry->type == CHARACTER_FILE ||
-      entry->type == BLOCK_FILE ||
-      entry->type == SOCKET_FILE ||
-      entry->type == FIFO_FILE) {
-    statistics = &entry->object.file.deleg_heuristics;
 
-    statistics->curr_delegations = 0;
-    statistics->deleg_type = OPEN_DELEGATE_NONE;
-    statistics->dh_disabled = false;
-    statistics->dh_del_count = 0;
-    statistics->dh_rec_count = 0;
-    statistics->dh_last_del = 0;
-    statistics->dh_last_rec = 0;
-    statistics->dh_avg_hold = 0;
-    statistics->num_opens = 0;
-    statistics->first_open = 0;
+  if (entry->type != REGULAR_FILE) {
+    LogCrit(COMPONENT_STATE, "Initialization of delegation stats for an entry "
+            "that is NOT a regular file!");
+    return false;
   }
+
+  statistics = &entry->object.file.deleg_heuristics;
+  statistics->curr_delegations = 0;
+  statistics->deleg_type = OPEN_DELEGATE_NONE;
+  statistics->disabled = false;
+  statistics->delegation_count = 0;
+  statistics->recall_count = 0;
+  statistics->last_delegation = 0;
+  statistics->last_recall = 0;
+  statistics->avg_hold = 0;
+  statistics->num_opens = 0;
+  statistics->first_open = 0;
+
+  return true;
 }
 
-/* Whether the export supports delegations should be checked before calling
- * this function. */
+/**
+ * @brief Decide if a delegation should be granted based on heuristics.
+ *
+ * Decide if a delegation should be granted based on heuristics.
+ * Note: Whether the export supports delegations should be checked before calling
+ * this function.
+ * The open_state->state_type will decide whether we attempt to get a READ or
+ * WRITE delegation.
+ *
+ * @param[in] entry Inode entry the delegation will be on.
+ * @param[in] client Client that would own the delegation.
+ * @param[in] open_state The open state for the inode to be delegated.
+ */
 bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
                            state_t *open_state) {
   /* specific file, all clients, stats */
@@ -175,8 +238,7 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
   time_t spread;
 
   if (open_state->state_type != STATE_TYPE_SHARE) {
-    LogDebug(COMPONENT_STATE, "should_we_grant_deleg() expects a SHARE open "
-             "state and no other.");
+    LogDebug(COMPONENT_STATE, "expects a SHARE open state and no other.");
     return false;
   }
 
@@ -222,7 +284,7 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
              ACCEPTABLE_FAILS);
     return false;
   }
-  //cl_stats->deleg_grants;
+  //cl_stats->curr_deleg_grants;
 
   /* Check if the historical access of this file makes a delegation
    * intelligent. */
@@ -230,30 +292,26 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
   // minimum average milliseconds that delegations should be held on a file.
   // if less, then this is not a good file for delegations.
 #define MIN_AVG_HOLD 15000
-  if (file_stats->dh_avg_hold < MIN_AVG_HOLD) {
+  if (file_stats->avg_hold < MIN_AVG_HOLD) {
     LogDebug(COMPONENT_STATE, "Average length of delegation (%lld) is less than "
-             "minimum avg (%lld). Denying delegation.", (long long) file_stats->dh_avg_hold,
+             "minimum avg (%lld). Denying delegation.", (long long) file_stats->avg_hold,
 	     (long long) MIN_AVG_HOLD);
     return false;
   }
 
-  /* Check this client's behavior with this file. */
-  //  glist_for_each(glist, &entry->object.file.deleg_heuristic_list) {
-  //    found_entry = glist_entry(glist, clientfile_deleg_heuristics_t, glist);
-
-    /* Look for our client */
-  //    if (found_entry->clientid->cid_clientid != client->cid_clientid)
-  //      continue;
-
-  //    LogFullDebug(COMPONENT_STATE, "Found a delegation heuristic for this "
-  //                 "file-client pair!");
-    //found_entry->clientfile_deleg_heuristics_t,dh_last_del;
-    //found_entry->dh_last_rec;     // most recent recall
-  //  }
   LogDebug(COMPONENT_STATE, "Let's delegate!!");
   return true;
 }
 
+/**
+ * @brief Form the ACE mask for the delegated file.
+ *
+ * Form the ACE mask for the delegated file.
+ *
+ * @param[in] entry Inode entry the delegation will be on.
+ * @param[in/out] permissions ACE mask for delegated inode.
+ * @param[in] type Type of delegation. Either READ or WRITE.
+ */
 void get_deleg_perm(cache_entry_t *entry, nfsace4 *permissions,
                     open_delegation_type4 type) {
   /* We need to create an access_mask that shows who

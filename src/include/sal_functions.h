@@ -566,15 +566,14 @@ void release_lockstate(state_owner_t *lock_owner);
 void release_openstate(state_owner_t *open_owner);
 
 /* Specifically for delegations */
-void init_deleg_heuristics(cache_entry_t *entry);
+bool init_deleg_heuristics(cache_entry_t *entry);
 bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
                            state_t *open_state);
 void init_new_deleg_state(state_data_t *deleg_state, state_t *open_state,
                           open_delegation_type4 sd_type,
                           nfs_client_id_t *clientid);
 //bool deleg_heuristics_grant(cache_entry_t *entry, nfs_client_id_t *clientid);
-bool deleg_heuristics_recall(cache_entry_t *entry, nfs_client_id_t *clientid,
-                             state_lock_entry_t *deleg_lock);
+bool deleg_heuristics_recall(cache_entry_t *entry, nfs_client_id_t *client);
 void get_deleg_perm(cache_entry_t *entry, nfsace4 *permissions,
                     open_delegation_type4 type);
 void free_deleg_locked(state_lock_entry_t *deleg_lock, cache_entry_t *entry,

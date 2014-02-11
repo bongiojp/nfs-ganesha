@@ -1460,7 +1460,7 @@ static uint32_t delegrecall_one(state_lock_entry_t *found_entry,
 
 	/* call it (here, in current thread context) 
          * nfs_rpc_submit_call() always returns zero. ignore it. */
-	nfs_rpc_submit_call(call, NULL, NFS_RPC_FLAG_NONE);
+	nfs_rpc_submit_call(call, clid, NFS_RPC_FLAG_NONE);
         return call->states;
 
 };
@@ -1496,8 +1496,6 @@ state_status_t delegrecall(struct fsal_export *export, cache_entry_t *entry)
 
             switch(delegrecall_one(found_entry, entry)) {
             case NFS_CB_CALL_FINISHED:
-              free_deleg_locked(found_entry, entry,
-                                export, &synthetic_context);
               break;
             case NFS_CB_CALL_NONE:
               break;

@@ -258,16 +258,17 @@ cache_inode_free_dirent(cache_inode_dir_entry_t *dirent)
  */
 
 typedef struct {
-  uint32_t curr_delegations; // number of delegations on file
+  uint32_t curr_delegations;        // number of delegations on file
   open_delegation_type4 deleg_type; // if delegated, is it read or write
-  bool dh_disabled;       // deleg disabled for this file
-  uint32_t dh_del_count;  // times file has been delegated
-  uint32_t dh_rec_count;  // times file has been recalled
-  time_t dh_avg_hold;     // avg amount of time delegation held
-  time_t dh_last_del;
-  time_t dh_last_rec;
-  uint32_t num_opens; // total num of opens so far. too many, don't delegate.
-  time_t first_open; // time that we started recording num_opens
+  bool disabled;                    // deleg disabled for this file
+  uint32_t delegation_count;        // times file has been delegated
+  uint32_t recall_count;            // times file has been recalled
+  time_t avg_hold;                  // avg amount of time delegation held
+  time_t last_delegation;
+  time_t last_recall;
+  uint32_t num_opens;               // total num of opens so far. too many,
+                                    // don't delegate.
+  time_t first_open;                // time that we started recording num_opens
 } file_deleg_heuristics_t;
 
 /**

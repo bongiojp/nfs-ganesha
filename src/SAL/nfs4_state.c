@@ -67,9 +67,9 @@ pthread_mutex_t all_state_v4_mutex = PTHREAD_MUTEX_INITIALIZER;
  * @retval false if no conflict has been found
  */
 bool state_conflict(state_t *state, state_type_t state_type,
-		    state_data_t *state_data)
+		    state_data_t *candidate_state)
 {
-	if (state == NULL || state_data == NULL)
+	if (state == NULL || candidate_state == NULL)
 		return true;
 
 	switch (state_type) {
@@ -78,10 +78,10 @@ bool state_conflict(state_t *state, state_type_t state_type,
 
 	case STATE_TYPE_SHARE:
 		if (state->state_type == STATE_TYPE_SHARE) {
-			if ((state->state_data.share.share_access & state_data->
+			if ((state->state_data.share.share_access & candidate_state->
 			     share.share_deny)
 			    || (state->state_data.share.
-				share_deny & state_data->share.share_access))
+				share_deny & candidate_state->share.share_access))
 				return true;
 		}
 		return false;
@@ -99,32 +99,29 @@ bool state_conflict(state_t *state, state_type_t state_type,
 	  switch(state->state_type) {
 	  case STATE_TYPE_DELEG:
 	    /* This should not happen, but we'll see. */
-	    if (state->deleg_data.deleg.clfile_stats.clientid->cid_clientid
-		== state_data->deleg.clfile_stats.clientid->cid_clientid) {
+	    if (state->state_data.deleg.clfile_stats.clientid->cid_clientid
+		== candidate_state->deleg.clfile_stats.clientid->cid_clientid) {
 	      LogDebug(COMPONENT_STATE, "Already found a delegation for this"
 		       " client/file!!");
 	      return false;
 	    }
 
 	    /* All read delegations, or none. */
-	    if (state_data->deleg.sd_type == OPEN_DELEGATE_READ
+	    if (candidate_state->deleg.sd_type == OPEN_DELEGATE_READ
 		&& state->state_data.deleg.sd_type != OPEN_DELEGATE_READ)
 	      return true;
 
 	    /* "There can be only one." */
-	    if (state_data->deleg.sd_type == OPEN_DELEGATE_WRITE)
+	    if (candidate_state->deleg.sd_type == OPEN_DELEGATE_WRITE)
 	      return true;
 	    break;
 	  case STATE_TYPE_SHARE:
-	    if (state_data->deleg.sd_type == OPEN_DELEGATE_READ
-		&& state_data->share_access & OPEN4_SHARE_ACCESS_WRITE)
+	    if (candidate_state->deleg.sd_type == OPEN_DELEGATE_READ
+		&& state->state_data.share.share_access & OPEN4_SHARE_ACCESS_WRITE)
 	      return true;
 	    break;
 	  case STATE_TYPE_LOCK:
-	    /* Ugh! Let's let the FSAL handle it. It will have to anyways
-	     * for crossnode coherency.*/
-	    return false;
-	    break;
+          case STATE_TYPE_NONE:
 	  case STATE_TYPE_LAYOUT:
 	    return false;
 	    break;

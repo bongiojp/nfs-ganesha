@@ -828,20 +828,36 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
 	return nfs_status;
 }
 
-/* entry needs to be locked before executing this function! */
+
+/**
+ * @brief Create a new delegation state then get the delegation.
+ *
+ * Create a new delegation state for this client and file.
+ * Then attempt to get a LEASE lock to delegate the file
+ * according to whether the client opened READ or READ/WRITE.
+ * Note: Entry needs to be locked before executing this function!
+ * 
+ * @param[in] data Compound data for this request
+ * @param[in] op NFS arguments for the request
+ * @param[in] open_state Open state for the inode to be delegated.
+ * @param[in] openowner Open owner of the open state.
+ * @param[in] client Client that will own the delegation.
+ * @param[in/out] resok Delegation attempt result to be returned to client.
+ */
 static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
                            state_t *open_state, state_owner_t *openowner,
-                           nfs_client_id_t *clientid, OPEN4resok *resok)
+                           nfs_client_id_t *client, OPEN4resok *resok)
 {
 	state_status_t state_status;
 	fsal_lock_param_t lock_desc;
         /* The state to be added */
         state_data_t deleg_data;
         open_delegation_type4 deleg_type;
-        state_owner_t *clientowner = &clientid->cid_owner;
+        state_owner_t *clientowner = &client->cid_owner;
         /* The arguments to the open operation */  
         OPEN4args *args = &op->nfs_argop4_u.opopen;
         struct state_refer refer;
+        state_t *new_state;
 
         /* Record the sequence info */
         if (data->minorversion > 0) {
@@ -863,18 +879,19 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
         else {
           lock_desc.lock_type = FSAL_NO_LOCK;
           deleg_type = OPEN_DELEGATE_NONE;
+          return;
         }
 
 	lock_desc.lock_start = 0;
 	lock_desc.lock_length = 0;
 	lock_desc.lock_sle_type = FSAL_LEASE_LOCK;
 
-        init_new_deleg_state(&deleg_data, open_state, deleg_type, clientid);
+        init_new_deleg_state(&deleg_data, open_state, deleg_type, client);
         
         /* Add the delegation state */
         state_status = state_add(data->current_entry, STATE_TYPE_DELEG,
                                  &deleg_data,
-                                 clientowner, NULL, /* OUT: The new state */
+                                 clientowner, &new_state,
                                  data->minorversion > 0 ? &refer : NULL);
 	if (state_status != STATE_SUCCESS) {
           
@@ -923,6 +940,8 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
             LogDebug(COMPONENT_NFS_V4_LOCK,
                      "get_delegation call added state but failed to lock "
                      "with status %s", state_err_str(state_status));
+            // free delegation state
+            state_del(new_state, false);
             return;
           }
 	}

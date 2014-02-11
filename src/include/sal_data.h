@@ -244,20 +244,22 @@ typedef struct state_share__ {
  */
 
 typedef struct {
-  uint32_t deleg_grants;  // times client has been granted a deleg
-  uint32_t tot_recalls;  // times client was asked to recall
-  uint32_t failed_recalls;  // times client failed to process recall
+  uint32_t curr_deleg_grants; // current num of delegations owned by this client
+  uint32_t tot_recalls;       // total num of times client was asked to recall
+  uint32_t failed_recalls;    // times client failed to process recall
 } client_deleg_heuristics_t;
 
 typedef struct {
-  struct glist_head glist;
   struct nfs_client_id_t *clientid; // client for this file.
-  time_t dh_last_del;     // time of successful delegation
-  uint32_t num_recalls;  // times file has been recalled
-  uint32_t num_recall_badhandles; // times recalled had to be resent
-  uint32_t num_recall_races; // 
-  uint32_t num_recall_timeouts; // 
-  uint32_t num_recall_aborts; // 
+  time_t last_delegation;           // time of successful delegation
+  uint32_t num_recalls;             // total number of recalls on this file from
+                                    // this client
+                                    // badhandles + races + timeouts +
+                                    // aborts = total number of failed recalls.
+  uint32_t num_recall_badhandles;   // num of badhandle replies
+  uint32_t num_recall_races;        // num of races detected
+  uint32_t num_recall_timeouts;     // num of recalls that timed out
+  uint32_t num_recall_aborts;       // num of recalls aborted
 } clientfile_deleg_heuristics_t;
 
 /**
