@@ -49,8 +49,6 @@
 #include "nlm_util.h"
 #include "cache_inode_lru.h"
 
-
-
 /**
  * @brief Free a delegation while the lock state is locked.
  *
@@ -63,10 +61,10 @@
  * @param[in] fake_req_ctx Fake request context when called from fsal_up
  */
 void free_deleg_locked(state_lock_entry_t *deleg_lock, cache_entry_t *entry,
-                       struct fsal_export *export,
-                       struct req_op_context *fake_req_ctx) {
+		      struct fsal_export *export,
+		      struct req_op_context *fake_req_ctx) {
   nfs_client_id_t *clientid =
-    deleg_lock->sle_owner->so_owner.so_nfs4_owner.so_clientrec;
+	  deleg_lock->sle_owner->so_owner.so_nfs4_owner.so_clientrec;
 
   /* Decrement state lock entry reference, which will eventually remove it. */
   state_unlock(entry, export->exp_entry,
