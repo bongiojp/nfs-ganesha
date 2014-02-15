@@ -557,10 +557,9 @@ static state_lock_entry_t *create_state_lock_entry(cache_entry_t *entry,
 
 		pthread_mutex_lock(&owner->so_owner.so_nlm_owner.so_client
 				   ->slc_nsm_client->ssc_mutex);
-
-		glist_add_tail(&owner->so_owner.so_nlm_owner.so_client->
-			       slc_nsm_client->ssc_lock_list,
-			       &new_entry->sle_client_locks);
+                glist_add_tail(&owner->so_owner.so_nlm_owner.so_client->
+                               slc_nsm_client->ssc_lock_list,
+                               &new_entry->sle_client_locks);
 
 		pthread_mutex_unlock(&owner->so_owner.so_nlm_owner.so_client
 				     ->slc_nsm_client->ssc_mutex);
@@ -2721,7 +2720,11 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 
 	if (status == STATE_SUCCESS) {
           if (sle_type == LEASE_LOCK) { // Delegation
+            /* Insert entry into delegation list */
+            LogEntry("New delegation", found_entry);
             update_delegation_stats(entry, state);
+            glist_add_tail(&entry->object.file.deleg_list,
+                           &found_entry->sle_list);
             LogEntry("FSAL delegation acquired for", found_entry);
           } else { // Lock
 		/* Merge any touching or overlapping locks into this one */
@@ -2730,7 +2733,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		merge_lock_entry(entry, found_entry);
 
 		/* Insert entry into lock list */
-		LogEntry("New", found_entry);
+		LogEntry("New lock", found_entry);
 
 		/* if the list is empty to start with; increment the pin ref
 		 * count before adding it to the list

@@ -1465,7 +1465,7 @@ static uint32_t delegrecall_one(state_lock_entry_t *found_entry,
 
 };
 
-state_status_t delegrecall(struct fsal_export *export, cache_entry_t *entry)
+state_status_t delegrecall(cache_entry_t *entry)
 {
 	struct glist_head *glist,*glist_n;
 	state_lock_entry_t *found_entry = NULL;
@@ -1479,7 +1479,7 @@ state_status_t delegrecall(struct fsal_export *export, cache_entry_t *entry)
 
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
-	glist_for_each_safe(glist, glist_n, &entry->object.file.lock_list) {
+	glist_for_each_safe(glist, glist_n, &entry->object.file.deleg_list) {
           found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
           
           if (found_entry->sle_type != LEASE_LOCK)
@@ -1549,7 +1549,7 @@ state_status_t delegrecall_upcall(struct fsal_export *export,
 		 * in cache in a cluster. */
 		return rc;
 	}
-        return delegrecall(export, entry);
+        return delegrecall(entry);
 }
 
 

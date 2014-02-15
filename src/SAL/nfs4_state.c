@@ -57,6 +57,128 @@ pthread_mutex_t all_state_v4_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 /**
+ * @brief Checks for a conflict between an existing delegation state and a
+ * candidate state.
+ *
+ * @param[in] state      Existing state
+ * @param[in] state_type Type of candidate state
+ * @param[in] state_data Data for the candidate state
+ *
+ * @retval true if there is a conflict.
+ * @retval false if no conflict has been found
+ */
+static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
+				 state_data_t *candidate_data)
+{
+	struct glist_head *glist;
+	clientid4 candidate_clientid, deleg_clientid;
+	state_lock_entry_t *found_lock;
+
+	if (state == NULL || candidate_data == NULL)
+		return true;
+
+	deleg_clientid =
+		state->state_data.deleg.clfile_stats.clientid->cid_clientid;
+	candidate_clientid =
+		candidate_data->deleg.clfile_stats.clientid->cid_clientid;
+
+	if (state->state_type != STATE_TYPE_DELEG) {
+		LogDebug(COMPONENT_STATE, "ERROR: Non-delegation state found in"
+			 " delegation list!");
+		return false;
+	}
+
+	/* We are getting a new share, checking if delegations conflict. */
+	switch(candidate_type) {
+	case STATE_TYPE_DELEG:
+		/* This should not happen, but we'll see. */
+		if (deleg_clientid == candidate_clientid) {
+			LogDebug(COMPONENT_STATE, "Requesting delegation for"
+				 " client that has a delegation on this file."
+				 " no conflict");
+			return false;
+		}
+
+		/* "There can be only one." */
+		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
+			LogDebug(COMPONENT_STATE, "Getting a delegation when "
+				 "write delegation exists on different client"
+				 " conflict");
+			return true;
+		}
+		if (candidate_data->deleg.sd_type
+		    == OPEN_DELEGATE_WRITE) {
+			LogDebug(COMPONENT_STATE, "Getting a write delegation "
+				 "when delegation exists on different client"
+				 " conflict");
+			return true;
+		}
+		break;
+	case STATE_TYPE_SHARE:
+		if (deleg_clientid == candidate_clientid) {
+			LogDebug(COMPONENT_STATE, "New share state is for same "
+				 " client that owns delegation. no conflict.");
+			return false;
+		}
+
+		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_READ
+		    && candidate_data->share.share_access
+		    & OPEN4_SHARE_ACCESS_WRITE) {
+			LogDebug(COMPONENT_STATE, "Read delegation exists. "
+				 "New share is WRITE on different client. "
+				 " conflict");
+			return true;
+		}
+		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
+			LogDebug(COMPONENT_STATE, "Write delegation exists. "
+				 " New share is with diff client. conflict.");
+			return true;
+		}
+		break;
+	case STATE_TYPE_LOCK:
+		if (deleg_clientid == candidate_clientid) {
+			LogDebug(COMPONENT_STATE, "Creating lock for client "
+				 "that owns the delegation. no conflict.");
+			return false;
+		}
+
+		// Search for a posix lock that conflicts with delegation
+		glist_for_each(glist, &candidate_data->lock.state_locklist) {
+			found_lock = glist_entry(glist, state_lock_entry_t,
+						 sle_state_locks);
+			if (found_lock->sle_type != POSIX_LOCK) {
+				LogDebug(COMPONENT_STATE, "non posix lock in "
+					 "lock list");
+				continue;
+			}
+			if (found_lock->sle_lock.lock_type == FSAL_LOCK_R
+			    && state->state_data.deleg.sd_type
+			    == OPEN_DELEGATE_WRITE) {
+				LogDebug(COMPONENT_STATE, "Trying to get"
+					 "read lock. write delegation exists."
+					 " conflict");
+				return true; //recall delegation
+			}
+			if (found_lock->sle_lock.lock_type == FSAL_LOCK_W) {
+				LogDebug(COMPONENT_STATE, "Trying to get"
+					 "write lock. delegation exists."
+					 " conflict");
+				return true;
+			}
+		}
+	case STATE_TYPE_LAYOUT:
+		return false;
+		break;
+	case STATE_TYPE_NONE:
+	default:
+		LogDebug(COMPONENT_STATE, "What???");
+		break;
+	}
+
+	return false;
+}
+
+/**
  * @brief Checks for a conflict between an existing state and a candidate state.
  *
  * @param[in] state      Existing state
@@ -67,9 +189,9 @@ pthread_mutex_t all_state_v4_mutex = PTHREAD_MUTEX_INITIALIZER;
  * @retval false if no conflict has been found
  */
 bool state_conflict(state_t *state, state_type_t state_type,
-		    state_data_t *candidate_state)
+		    state_data_t *candidate_data)
 {
-	if (state == NULL || candidate_state == NULL)
+	if (state == NULL || candidate_data == NULL)
 		return true;
 
 	switch (state_type) {
@@ -78,10 +200,10 @@ bool state_conflict(state_t *state, state_type_t state_type,
 
 	case STATE_TYPE_SHARE:
 		if (state->state_type == STATE_TYPE_SHARE) {
-			if ((state->state_data.share.share_access & candidate_state->
+			if ((state->state_data.share.share_access & candidate_data->
 			     share.share_deny)
 			    || (state->state_data.share.
-				share_deny & candidate_state->share.share_access))
+				share_deny & candidate_data->share.share_access))
 				return true;
 		}
 		return false;
@@ -95,40 +217,32 @@ bool state_conflict(state_t *state, state_type_t state_type,
 		return false;
 
 	case STATE_TYPE_DELEG:
-	  /* Should this be managed by the FSAL? */
-	  switch(state->state_type) {
-	  case STATE_TYPE_DELEG:
-	    /* This should not happen, but we'll see. */
-	    if (state->state_data.deleg.clfile_stats.clientid->cid_clientid
-		== candidate_state->deleg.clfile_stats.clientid->cid_clientid) {
-	      LogDebug(COMPONENT_STATE, "Already found a delegation for this"
-		       " client/file!!");
-	      return false;
-	    }
-
-	    /* All read delegations, or none. */
-	    if (candidate_state->deleg.sd_type == OPEN_DELEGATE_READ
-		&& state->state_data.deleg.sd_type != OPEN_DELEGATE_READ)
-	      return true;
-
-	    /* "There can be only one." */
-	    if (candidate_state->deleg.sd_type == OPEN_DELEGATE_WRITE)
-	      return true;
-	    break;
-	  case STATE_TYPE_SHARE:
-	    if (candidate_state->deleg.sd_type == OPEN_DELEGATE_READ
-		&& state->state_data.share.share_access & OPEN4_SHARE_ACCESS_WRITE)
-	      return true;
-	    break;
-	  case STATE_TYPE_LOCK:
-          case STATE_TYPE_NONE:
-	  case STATE_TYPE_LAYOUT:
-	    return false;
-	    break;
-	  }
+		/* This will appear during new OPEN share state
+		 * We are getting a delegation and found a diff share entry. */
+		if (state->state_type == STATE_TYPE_SHARE) {
+			/* */
+			if (candidate_data->deleg.sd_type
+			    == OPEN_DELEGATE_READ
+			    && state->state_data.share.share_access
+			    & OPEN4_SHARE_ACCESS_WRITE)
+				return true;
+			if (candidate_data->deleg.sd_type
+			    == OPEN_DELEGATE_WRITE
+			    && state->state_data.share.share_access
+			    & OPEN4_SHARE_ACCESS_READ)
+				return true;
+			if (candidate_data->deleg.sd_type
+			    == OPEN_DELEGATE_WRITE
+			    && state->state_data.share.share_access
+			    & OPEN4_SHARE_ACCESS_READ)
+				return true;
+		}
+		if (state->state_type == STATE_TYPE_LOCK) {
+		}
+		if (state->state_type == STATE_TYPE_LAYOUT) {
+		}
 	}
-
-	return true;
+	return false;
 }
 
 /**
@@ -155,7 +269,7 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 	state_t *pnew_state = NULL;
 	state_t *piter_state = NULL;
 	char debug_str[OTHERSIZE * 2 + 1];
-	struct glist_head *glist;
+	struct glist_head *glist=NULL, *glistn=NULL;
 	cache_inode_status_t cache_status;
 	bool got_pinned = false;
 	state_status_t status = 0;
@@ -187,6 +301,24 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 
 		return status;
 	}
+
+	/* Check conflicting delegations and recall if necessary */
+	if (! glist_empty(&entry->object.file.deleg_list))
+		glist_for_each_safe(glist, glistn,
+				    &entry->object.file.deleg_list) {
+			piter_state = glist_entry(glist, state_t, state_list);
+			if (check_deleg_conflict(piter_state, state_type,
+						 state_data)) {
+				status = delegrecall(entry);
+				if (status != STATE_SUCCESS) {
+					LogDebug(COMPONENT_STATE,
+						 "Failed to recall delegation");
+					//at some point it's time to revoke!
+					//shouldn't this delegrecall() func
+					//handle that?
+				}
+			}
+		}
 
 	/* Browse the state's list */
 	glist_for_each(glist, &entry->state_list) {

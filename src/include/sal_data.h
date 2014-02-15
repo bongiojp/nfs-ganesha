@@ -279,12 +279,12 @@ typedef struct state_lock_t {
  */
 
 typedef struct state_deleg__ {
-  open_delegation_type4 sd_type;
-  stateid4 sd_stateid;
-  state_t *sd_open_state;
-  struct glist_head sd_deleg_list;
-  time_t grant_time;     // time of successful delegation  
-  clientfile_deleg_heuristics_t clfile_stats;
+  open_delegation_type4 sd_type;   // either READ,WRITE delegation or NONE
+  stateid4 sd_stateid;             // unique delegation stateid
+  state_t *sd_open_state;          // not needed?
+  struct glist_head sd_deleg_list; // not needed?
+  time_t grant_time;               // time of successful delegation  
+  clientfile_deleg_heuristics_t clfile_stats;  // client specific info
 } state_deleg_t;
 
 /**

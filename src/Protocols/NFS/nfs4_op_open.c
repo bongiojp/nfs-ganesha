@@ -835,7 +835,7 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
  * Create a new delegation state for this client and file.
  * Then attempt to get a LEASE lock to delegate the file
  * according to whether the client opened READ or READ/WRITE.
- * Note: Entry needs to be locked before executing this function!
+ * Note: Entry state needs to be locked before executing this function!
  * 
  * @param[in] data Compound data for this request
  * @param[in] op NFS arguments for the request
@@ -851,7 +851,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 	state_status_t state_status;
 	fsal_lock_param_t lock_desc;
         /* The state to be added */
-        state_data_t deleg_data;
+        state_data_t deleg_data, candidate_data;
         open_delegation_type4 deleg_type;
         state_owner_t *clientowner = &client->cid_owner;
         /* The arguments to the open operation */  
@@ -887,12 +887,24 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 	lock_desc.lock_sle_type = FSAL_LEASE_LOCK;
 
         init_new_deleg_state(&deleg_data, open_state, deleg_type, client);
+
+        /* Check for conflict. */
+	candidate_data.share.share_access =
+	    args->share_access & ~OPEN4_SHARE_ACCESS_WANT_DELEG_MASK;
+	candidate_data.share.share_deny = args->share_deny;
+	candidate_data.share.share_access_prev = 0;
+	candidate_data.share.share_deny_prev = 0;
+
+	state_status =
+	    state_share_check_conflict(data->current_entry,
+				       candidate_data.share.share_access,
+				       candidate_data.share.share_deny);
         
         /* Add the delegation state */
-        state_status = state_add(data->current_entry, STATE_TYPE_DELEG,
-                                 &deleg_data,
-                                 clientowner, &new_state,
-                                 data->minorversion > 0 ? &refer : NULL);
+        state_status = state_add_impl(data->current_entry, STATE_TYPE_DELEG,
+                                      &deleg_data,
+                                      clientowner, &new_state,
+                                      data->minorversion > 0 ? &refer : NULL);
 	if (state_status != STATE_SUCCESS) {
           
           LogDebug(COMPONENT_NFS_V4_LOCK,
@@ -924,6 +936,9 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
             return;
           }
 
+	  /* state_lock() locks the state_lock before adding the lock entry
+	   * Not sure of a way around unlocking beforehand */
+	  PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
           state_status = state_lock(data->current_entry,
                                     data->export,
                                     data->req_ctx,
@@ -1408,7 +1423,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	pthread_mutex_lock(&clientid->cid_mutex);
-
+        PTHREAD_RWLOCK_wrlock(&data->current_entry->state_lock); // could this be a race???
         /* Decide if we should delegate, then add it. */
 	if (data->current_entry->type != DIRECTORY
 	    && data->export->export_hdl->ops->
@@ -1425,6 +1440,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
                                &res_OPEN4->OPEN4res_u.resok4);
 	}
 	else {
+                PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
 		pthread_mutex_unlock(&clientid->cid_mutex);
                 res_OPEN4->OPEN4res_u.resok4.delegation.open_delegation4_u.
                   od_whynone.ond_why = WND4_NOT_WANTED;
