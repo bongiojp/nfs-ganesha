@@ -1425,20 +1425,28 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	pthread_mutex_lock(&clientid->cid_mutex);
         PTHREAD_RWLOCK_wrlock(&data->current_entry->state_lock); // could this be a race???
         /* Decide if we should delegate, then add it. */
-	if (data->current_entry->type != DIRECTORY
-	    && data->export->export_hdl->ops->
-	    fs_supports(data->export->export_hdl, fso_delegations)
-	    && (data->export->export_perms.options & EXPORT_OPTION_USE_DELEG)
-	    && owner->so_owner.so_nfs4_owner.so_confirmed == TRUE
-	    && clientid->cb_chan_down == FALSE
-	    && claim != CLAIM_DELEGATE_CUR
-            && should_we_grant_deleg(data->current_entry,
+	if (data->current_entry->type != DIRECTORY) {
+		LogDebug(COMPONENT_STATE, "1");
+		if(data->export->export_hdl->ops->
+		   fs_supports(data->export->export_hdl, fso_delegations)) {
+		LogDebug(COMPONENT_STATE, "2");
+		if (data->export->export_perms.options & EXPORT_OPTION_USE_DELEG) {
+		LogDebug(COMPONENT_STATE, "3");
+			if( owner->so_owner.so_nfs4_owner.so_confirmed == TRUE) {
+		LogDebug(COMPONENT_STATE, "4");
+				if( clientid->cb_chan_down == FALSE) {
+		LogDebug(COMPONENT_STATE, "5");
+					if(claim != CLAIM_DELEGATE_CUR) {
+		LogDebug(COMPONENT_STATE, "6");
+							if (should_we_grant_deleg(data->current_entry,
 				     data->session->clientid_record,
-				     file_state)) {
+										  file_state)) {
+		LogDebug(COMPONENT_STATE, "7");
 		pthread_mutex_unlock(&clientid->cid_mutex);
                 get_delegation(data, op, file_state, owner, clientid, 
                                &res_OPEN4->OPEN4res_u.resok4);
-	}
+							}
+					}}}}}}
 	else {
                 PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
 		pthread_mutex_unlock(&clientid->cid_mutex);

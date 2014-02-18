@@ -235,6 +235,8 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
   float ACCEPTABLE_OPEN_FREQUENCY = .01; // per second
   time_t spread;
 
+  LogDebug(COMPONENT_STATE, "Checking if we should grant delegation.");
+
   if (open_state->state_type != STATE_TYPE_SHARE) {
     LogDebug(COMPONENT_STATE, "expects a SHARE open state and no other.");
     return false;

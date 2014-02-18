@@ -2517,7 +2517,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
                 /* Delegations owned by a client won't conflict with delegations
                  * to that same client, but maybe we should just return success. */
                 if (found_entry->sle_type == LEASE_LOCK &&
-                    lock->lock_sle_type == LEASE_LOCK &&
+                    lock->lock_sle_type == FSAL_LEASE_LOCK &&
                     owner->so_owner.so_nfs4_owner.so_clientid ==
                     found_entry->sle_owner->so_owner.so_nfs4_owner.so_clientid)
                   continue;
