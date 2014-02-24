@@ -1309,6 +1309,12 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 
 			PTHREAD_RWLOCK_unlock(&entry_lookup->state_lock);
 
+
+			if (entry_lookup == NULL) {
+				res_OPEN4->status = nfs4_Errno(cache_status);
+				//res_OPEN4->status = NFS4ERR_DIRDELEG_UNAVAIL;
+				goto out;
+			}
 			res_OPEN4->OPEN4res_u.resok4.stateid.seqid =
 			    file_state->state_seqid;
 			memcpy(res_OPEN4->OPEN4res_u.resok4.stateid.other,
