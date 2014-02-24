@@ -1432,14 +1432,14 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 		LogDebug(COMPONENT_STATE, "2");
 		if (data->export->export_perms.options & EXPORT_OPTION_USE_DELEG) {
 		LogDebug(COMPONENT_STATE, "3");
-			if( owner->so_owner.so_nfs4_owner.so_confirmed == TRUE) {
+		if (1) {		//			if( owner->so_owner.so_nfs4_owner.so_confirmed == TRUE) {
 		LogDebug(COMPONENT_STATE, "4");
 				if( clientid->cb_chan_down == FALSE) {
 		LogDebug(COMPONENT_STATE, "5");
 					if(claim != CLAIM_DELEGATE_CUR) {
 		LogDebug(COMPONENT_STATE, "6");
 							if (should_we_grant_deleg(data->current_entry,
-				     data->session->clientid_record,
+										  clientid,
 										  file_state)) {
 		LogDebug(COMPONENT_STATE, "7");
 		pthread_mutex_unlock(&clientid->cid_mutex);
