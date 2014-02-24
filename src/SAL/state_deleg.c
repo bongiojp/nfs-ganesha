@@ -242,10 +242,10 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
     return false;
   }
 
-  if (file_stats->deleg_type == OPEN_DELEGATE_NONE) {
-    LogDebug(COMPONENT_STATE, "OPEN_DELEGATE_NONE requests, returning false.");
-    return false;
-  }
+  //  if (file_stats->deleg_type == OPEN_DELEGATE_NONE) {
+  //    LogDebug(COMPONENT_STATE, "OPEN_DELEGATE_NONE requests, returning false.");
+  //    return false;
+  //  }
 
   /* Check if this file is opened too frequently to delegate. */
   spread = time(NULL) - file_stats->first_open;
