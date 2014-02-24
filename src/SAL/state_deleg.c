@@ -249,7 +249,8 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
 
   /* Check if this file is opened too frequently to delegate. */
   spread = time(NULL) - file_stats->first_open;
-  if ((file_stats->num_opens / spread) > ACCEPTABLE_OPEN_FREQUENCY) {
+  if ( spread != 0 &&
+       (file_stats->num_opens / spread) > ACCEPTABLE_OPEN_FREQUENCY) {
     LogDebug(COMPONENT_STATE, "This file is opened too frequently to delegate.");
     return false;
   }

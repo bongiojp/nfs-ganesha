@@ -912,6 +912,13 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
                    state_err_str(state_status));
           return;
 	} else {
+		/* Attach this open to an export */
+		new_state->state_export = data->export;
+		pthread_mutex_lock(&data->export->exp_state_mutex);
+		glist_add_tail(&data->export->exp_state_list,
+			       &new_state->state_export_list);
+		pthread_mutex_unlock(&data->export->exp_state_mutex);
+
           resok->delegation.delegation_type = deleg_type;
           if (deleg_type == OPEN_DELEGATE_WRITE) {
             open_write_delegation4 *writeres =
