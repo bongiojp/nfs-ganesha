@@ -292,8 +292,9 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
 
   // minimum average milliseconds that delegations should be held on a file.
   // if less, then this is not a good file for delegations.
-#define MIN_AVG_HOLD 15000
-  if (file_stats->avg_hold < MIN_AVG_HOLD) {
+#define MIN_AVG_HOLD 1500
+  if (file_stats->avg_hold < MIN_AVG_HOLD
+      && file_stats->avg_hold != 0) {
     LogDebug(COMPONENT_STATE, "Average length of delegation (%lld) is less than "
              "minimum avg (%lld). Denying delegation.", (long long) file_stats->avg_hold,
 	     (long long) MIN_AVG_HOLD);
