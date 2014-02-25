@@ -868,6 +868,8 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
           refer.slot = data->slot;
         }
 
+	LogDebug(COMPONENT_STATE,"Attempting to get delegation!");
+	
         if (args->share_access & OPEN4_SHARE_ACCESS_WRITE) {
           lock_desc.lock_type = FSAL_LOCK_W;
           deleg_type = OPEN_DELEGATE_WRITE;
@@ -912,6 +914,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
                    state_err_str(state_status));
           return;
 	} else {
+		LogDebug(COMPONENT_STATE,"delegation state added");
 		/* Attach this open to an export */
 		new_state->state_export = data->export;
 		pthread_mutex_lock(&data->export->exp_state_mutex);
@@ -945,7 +948,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 
 	  /* state_lock() locks the state_lock before adding the lock entry
 	   * Not sure of a way around unlocking beforehand */
-	  PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
+	  //	  PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
           state_status = state_lock(data->current_entry,
                                     data->export,
                                     data->req_ctx,
@@ -1435,9 +1438,10 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	  data->current_entry->object.file.deleg_heuristics.num_opens++;
 	}
 
-	pthread_mutex_lock(&clientid->cid_mutex);
-        PTHREAD_RWLOCK_wrlock(&data->current_entry->state_lock); // could this be a race???
+	//	pthread_mutex_lock(&clientid->cid_mutex);
+	//        PTHREAD_RWLOCK_wrlock(&data->current_entry->state_lock); // could this be a race???
         /* Decide if we should delegate, then add it. */
+		LogDebug(COMPONENT_STATE, "should_we_grant_deleg()??");
 	if (data->current_entry->type != DIRECTORY) {
 		LogDebug(COMPONENT_STATE, "1");
 		if(data->export->export_hdl->ops->
@@ -1455,14 +1459,14 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 										  clientid,
 										  file_state)) {
 		LogDebug(COMPONENT_STATE, "7");
-		pthread_mutex_unlock(&clientid->cid_mutex);
+		//		pthread_mutex_unlock(&clientid->cid_mutex);
                 get_delegation(data, op, file_state, owner, clientid, 
                                &res_OPEN4->OPEN4res_u.resok4);
 							}
 					}}}}}}
 	else {
-                PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
-		pthread_mutex_unlock(&clientid->cid_mutex);
+		//                PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
+		//		pthread_mutex_unlock(&clientid->cid_mutex);
                 res_OPEN4->OPEN4res_u.resok4.delegation.open_delegation4_u.
                   od_whynone.ond_why = WND4_NOT_WANTED;
 	}
