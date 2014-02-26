@@ -305,7 +305,8 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 	}
 
 	/* Check conflicting delegations and recall if necessary */
-	if (! glist_empty(&entry->object.file.deleg_list))
+	if (entry->type == REGULAR_FILE
+	    && (! glist_empty(&entry->object.file.deleg_list)))
 		glist_for_each_safe(glist, glistn,
 				    &entry->object.file.deleg_list) {
 			piter_state = glist_entry(glist, state_t, state_list);
