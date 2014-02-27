@@ -2838,26 +2838,28 @@ state_status_t state_unlock(cache_entry_t *entry, exportlist_t *export,
 	 * nlm_lock implies remove all entries
 	 */
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
+	/*
+	if (sle_type == LEASE_LOCK) {
+		if(glist_empty(&entry->object.file.deleg_list)) {
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
+			cache_inode_dec_pin_ref(entry, FALSE);
+			LogDebug(COMPONENT_STATE,
+				 "Unlock success on file with no delegations");
+			status = STATE_SUCCESS;
+			return status;
+		}
+		delegrecall(entry);
+		return status;
+	}
+	*/
 
 	/* If lock list is empty, there really isn't any work for us to do. */
-	if (sle_type == POSIX_LOCK &&
-	    glist_empty(&entry->object.file.lock_list)) {
+	if (glist_empty(&entry->object.file.lock_list)) {
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
 		cache_inode_dec_pin_ref(entry, FALSE);
 		LogDebug(COMPONENT_STATE,
 			 "Unlock success on file with no locks");
-
-		status = STATE_SUCCESS;
-		return status;
-	}
-	if (sle_type == LEASE_LOCK &&
-	    glist_empty(&entry->object.file.deleg_list)) {
-		PTHREAD_RWLOCK_unlock(&entry->state_lock);
-
-		cache_inode_dec_pin_ref(entry, FALSE);
-		LogDebug(COMPONENT_STATE,
-			 "Unlock success on file with no delegations");
 
 		status = STATE_SUCCESS;
 		return status;

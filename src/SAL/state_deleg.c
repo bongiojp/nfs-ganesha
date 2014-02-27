@@ -68,11 +68,11 @@ void free_deleg_locked(state_lock_entry_t *deleg_lock, cache_entry_t *entry,
 
   /* Decrement state lock entry reference, which will eventually remove it. */
   state_unlock(entry, export->exp_entry,
-               fake_req_ctx,
-               deleg_lock->sle_owner,
-               deleg_lock->sle_state,
-               &deleg_lock->sle_lock,
-               deleg_lock->sle_type);
+	       fake_req_ctx,
+	       deleg_lock->sle_owner,
+	       deleg_lock->sle_state,
+	       &deleg_lock->sle_lock,
+	       deleg_lock->sle_type);
 
   /* Remove state entry */
   state_del_locked(deleg_lock->sle_state, entry);

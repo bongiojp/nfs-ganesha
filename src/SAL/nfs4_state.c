@@ -268,8 +268,8 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 			      state_owner_t *owner_input, state_t **state,
 			      struct state_refer *refer)
 {
-	state_t *pnew_state = NULL;
-	state_t *piter_state = NULL;
+	state_t *pnew_state, *piter_state = NULL;
+	state_lock_entry_t *piter_lock;
 	char debug_str[OTHERSIZE * 2 + 1];
 	struct glist_head *glist=NULL, *glistn=NULL;
 	cache_inode_status_t cache_status;
@@ -308,8 +308,17 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 	if (entry->type == REGULAR_FILE
 	    && (! glist_empty(&entry->object.file.deleg_list)))
 		glist_for_each_safe(glist, glistn,
-				    &entry->object.file.deleg_list) {
-			piter_state = glist_entry(glist, state_t, state_list);
+				    &entry->object.file.deleg_list) {	
+		piter_lock = glist_entry(glist, state_lock_entry_t, sle_list);
+			piter_state = piter_lock->sle_state;
+			if (piter_lock->sle_type != LEASE_LOCK) {
+				LogDebug(COMPONENT_STATE, "Why is that not a delegation lock?!?!!?!?!?!");
+				continue;
+			}
+			if (piter_state->state_type != STATE_TYPE_DELEG) {
+				LogDebug(COMPONENT_STATE, "Why is that not a delegaiton state?!?!!?!?!?!");
+				continue;
+			}
 			if (check_deleg_conflict(piter_state, state_type,
 						 state_data)) {
 				status = delegrecall(entry);

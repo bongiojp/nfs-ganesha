@@ -134,7 +134,8 @@ int nfs4_op_close(struct nfs_argop4 *op, compound_data_t *data,
 	struct glist_head *glist = NULL;
 	/* Secondary safe iterator to continue traversal on delete */
 	struct glist_head *glistn = NULL;
-	state_t *piter_state = NULL;
+	//	state_lock_entry_t *piter_lock = NULL;
+	//	state_t *sle_state = NULL;
 
 	LogDebug(COMPONENT_STATE,
 		 "Entering NFS v4 CLOSE handler ----------------------------");
@@ -259,25 +260,27 @@ int nfs4_op_close(struct nfs_argop4 *op, compound_data_t *data,
 	}
 
 	/* Is this the right place to remove delegations due to a read??? 
-	 * the client probably would already have returned the delegations. */
-	if (data->current_entry->type == REGULAR_FILE
+	 * The client probably would already have returned the delegations. */
+	/*	if (open_owner->so_type == STATE_OPEN_OWNER_NFSV4 &&
+	    data->current_entry->type == REGULAR_FILE
 	    && data->current_entry->object.file.deleg_heuristics.curr_delegations) {
 		if (! glist_empty(&data->current_entry->object.file.deleg_list)) {
 		}
 		glist_for_each_safe(glist, glistn,
 				    &data->current_entry->object.file.deleg_list) {
-			piter_state = glist_entry(glist, state_t, state_list);
-			/* Recall the delegation then update stats*/
-			if (piter_state->state_data.deleg.clfile_stats.clientid->cid_clientid ==
-			    data->session->clientid) {
+			piter_lock = glist_entry(glist, state_lock_entry_t, sle_list);
+			sle_state = piter_lock->sle_state;
+			// Recall the delegation then update stats
+			if (sle_state->state_data.deleg.clfile_stats.clientid->cid_clientid ==
+			    open_owner->so_owner.so_nfs4_owner.so_clientid) {
 				LogEvent(COMPONENT_STATE, "Recalling delegation due to CLOSE request!!");
 				delegrecall(data->current_entry);
 				deleg_heuristics_recall(data->current_entry,
-							piter_state->state_data.deleg.clfile_stats.clientid);
+							sle_state->state_data.deleg.clfile_stats.clientid);
 			}
 		}
-		//		data->current_entry->object.file.deleg_heuristics.curr_delegations
-	}
+		}
+	*/
 
 	/* File is closed, release the share state */
 	if (state_found->state_type == STATE_TYPE_SHARE) {

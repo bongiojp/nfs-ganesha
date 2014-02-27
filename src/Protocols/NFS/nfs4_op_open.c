@@ -953,7 +953,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
                                     data->export,
                                     data->req_ctx,
                                     openowner,
-                                    open_state,
+                                    new_state,
                                     STATE_NON_BLOCKING,
                                     NULL,	/* No block data */
                                     &lock_desc,
