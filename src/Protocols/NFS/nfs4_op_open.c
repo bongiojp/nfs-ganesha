@@ -2,7 +2,21 @@
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright CEA/DAM/DIF  (2008)
- * contributeur : Philippe DENIEL   philippe.deniel@cea.fr
+ * contributeur :06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[decoder_thr] thr_decode_rpc_requests :DISP :DEBUG :exiting, stat=XPRT_IDLE
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[work-12] cache_inode_open :RW LOCK :F_DBG :Unlocked 0x7fd3a0017440 (&entry->content_lock) at /root/nfs-ganesha/src/cache_inode/cache_inod\
+e_open_close.c:227
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[work-12] state_lock :RW LOCK :F_DBG :Got write lock on 0x7fd3a00173e8 (&entry->state_lock) at /root/nfs-ganesha/src/SAL/state_lock.c:2458
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[decoder_thr] gsh_xprt_unref :RPC :F_DBG :xprt 0x7fd37c016e00 prerelease req_cnt=2 xp_refcnt=5 tag=thr_decode_rpc_requests line=1646
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[work-12] create_state_lock_entry :STATE :F_DBG :new_entry = 0x7fd36c017ee0 owner 0x7fd36c0178b0
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[decoder_thr] gsh_xprt_unref :RPC :F_DBG :xprt 0x7fd37c016e00 postrelease req_cnt=2 xp_refcnt=4 tag=thr_decode_rpc_requests line=1646
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[work-12] inc_state_owner_ref :STATE :F_DBG :Increment refcount now=3 {STATE_OPEN_OWNER_NFSV4 0x7fd36c0178b0: clientid={0x7fd3640177a0 Cli\
+entID=5318a61a00000001 CONFIRMED Client={0x7fd3640176b0 name=(37:9.114.219.114/9.56.115.201 tcp UNIX 0) refcount=1} cb_prog=1073741824 r_addr=9.114.219.114.195.65 r_netid=tcp t_delta=0 reservations=1 refcount=3} \
+owner=(24:0x6f70656e2069643a0000001f0000000000000021e9224fd9) confirmed=0 seqid=0 refcount=2}
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[work-12] LogLock :STATE :F_DBG :FSAL_OP_LOCK   Lock: entry=0x7fd3a0017320, fileid=37889, type=READ , start=0x0, end=0xffffffffffffffff, o\
+wner={STATE_OPEN_OWNER_NFSV4 0x7fd36c0178b0: clientid={0x7fd3640177a0 ClientID=5318a61a00000001 CONFIRMED Client={0x7fd3640176b0 name=(37:9.114.219.114/9.56.115.201 tcp UNIX 0) refcount=1} cb_prog=1073741824 r_ad\
+dr=9.114.219.114.195.65 r_netid=tcp t_delta=0 reservations=1 refcount=3} owner=(24:0x6f70656e2069643a0000001f0000000000000021e9224fd9) confirmed=0 seqid=0 refcount=3}
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[work-12] gpfs_lock_op :FSAL :F_DBG :Locking: op:1 type:0 start:0 length:0
+06/03/2014 11:48:53 : epoch 5318a61a : ibm-delegations : ganesha.nfsd-8344[work-14] worker_run :DISP :DEBUG :NFS protocol request, nfsreq=0x7 Philippe DENIEL   philippe.deniel@cea.fr
  *                Thomas LEIBOVICI  thomas.leibovici@cea.fr
  *
  *
@@ -858,6 +872,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
         OPEN4args *args = &op->nfs_argop4_u.opopen;
         struct state_refer refer;
         state_t *new_state;
+	char debug_str[OTHERSIZE * 2 + 1];
 
         /* Record the sequence info */
         if (data->minorversion > 0) {
@@ -914,7 +929,9 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
                    state_err_str(state_status));
           return;
 	} else {
-		LogDebug(COMPONENT_STATE,"delegation state added");
+		sprint_mem(debug_str, (char *)new_state->stateid_other, OTHERSIZE);
+		LogDebug(COMPONENT_STATE,"delegation state added with deleg stateid: %s", debug_str);
+
 		/* Attach this open to an export */
 		new_state->state_export = data->export;
 		pthread_mutex_lock(&data->export->exp_state_mutex);
@@ -930,6 +947,10 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
             writeres->space_limit.nfs_space_limit4_u.filesize = 100000;
             //writeres->space_limit.nfs_space_limit4_u.mod_blocks = 10;
             writeres->stateid = deleg_data.deleg.sd_stateid;
+
+	    sprint_mem(debug_str, (char *)new_state->sd_stateid, OTHERSIZE);
+	    LogDebug(COMPONENT_STATE,"setting WRITE open reply to delegation sd_stateid: %s", debug_str);
+
             writeres->recall = FALSE;
             get_deleg_perm(data->current_entry, &writeres->permissions,
                            deleg_type);
@@ -937,6 +958,10 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
             open_read_delegation4 *readres =
               &resok->delegation.open_delegation4_u.read;
             readres->stateid = deleg_data.deleg.sd_stateid;
+
+	    sprint_mem(debug_str, (char *)new_state->sd_stateid, OTHERSIZE);
+	    LogDebug(COMPONENT_STATE,"setting READ open reply to delegation sd_stateid: %s", debug_str);
+
             readres->recall = FALSE;
             get_deleg_perm(data->current_entry, &readres->permissions,
                            deleg_type);
@@ -970,6 +995,9 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
             return;
           }
 	}
+
+	sprint_mem(debug_str, (char *)new_state->stateid_other, OTHERSIZE);
+	LogDebug(COMPONENT_STATE,"deleg stateid: %s", debug_str);
 
         LogDebug(COMPONENT_NFS_V4_LOCK, "get_delegation openowner %p "
                  "clientowner %p status %s",
