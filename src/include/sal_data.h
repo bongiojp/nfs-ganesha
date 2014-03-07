@@ -286,7 +286,7 @@ typedef struct state_deleg__ {
 	state_t *sd_open_state;          /*  */
 	struct glist_head sd_deleg_list; /*  */
 	time_t grant_time;               /* time of successful delegation */
-	clientfile_deleg_heuristics_t clfile_stats;  /* client specific info */
+	struct clientfile_deleg_heuristics clfile_stats;  /* client specific info */
 } state_deleg_t;
 
 /**
@@ -641,7 +641,7 @@ struct nfs_client_id_t {
 	uint32_t cid_minorversion;
 	uint32_t cid_stateid_counter;
 
-	client_deleg_heuristics_t deleg_heuristics;
+	struct client_deleg_heuristics deleg_heuristics;
 };
 
 /**
