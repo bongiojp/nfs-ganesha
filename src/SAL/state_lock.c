@@ -363,7 +363,8 @@ static bool LogList(const char *reason, cache_entry_t *entry,
 
 		glist_for_each(glist, list) {
 			found_entry =
-			    glist_entry(glist, state_lock_entry_t, sle_list);
+				glist_entry(glist, state_lock_entry_t,
+					    sle_list);
 			LogEntry(reason, found_entry);
 			if (found_entry->sle_entry == NULL)
 				break;
@@ -557,7 +558,6 @@ static state_lock_entry_t *create_state_lock_entry(cache_entry_t *entry,
 
 		pthread_mutex_lock(&owner->so_owner.so_nlm_owner.so_client
 				   ->slc_nsm_client->ssc_mutex);
-
 		glist_add_tail(&owner->so_owner.so_nlm_owner.so_client->
 			       slc_nsm_client->ssc_lock_list,
 			       &new_entry->sle_client_locks);
@@ -2356,7 +2356,7 @@ state_status_t state_test(cache_entry_t *entry, exportlist_t *export,
 		return status;
 	}
 
-	cache_status = cache_inode_open(entry, FSAL_O_RDWR, req_ctx, 0);
+	cache_status = cache_inode_open(entry, FSAL_O_READ, req_ctx, 0);
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		status = cache_inode_status_to_state_status(cache_status);
 		LogFullDebug(COMPONENT_STATE, "Could not open file");
@@ -2447,7 +2447,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		return status;
 	}
 
-	cache_status = cache_inode_open(entry, FSAL_O_RDWR, req_ctx, 0);
+	cache_status = cache_inode_open(entry, FSAL_O_READ, req_ctx, 0);
 
 	if (cache_status != CACHE_INODE_SUCCESS) {
 		cache_inode_dec_pin_ref(entry, FALSE);
@@ -2515,6 +2515,15 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 	glist_for_each(glist, &entry->object.file.lock_list) {
 		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 
+		/* Delegations owned by a client won't conflict with delegations
+		   to that same client, but maybe we should just return
+		   success. */
+		if (found_entry->sle_type == LEASE_LOCK &&
+		    lock->lock_sle_type == FSAL_LEASE_LOCK &&
+		    owner->so_owner.so_nfs4_owner.so_clientid ==
+		    found_entry->sle_owner->so_owner.so_nfs4_owner.so_clientid)
+			continue;
+
 		/* Need to reject lock request if this lock owner already has
 		 * a lock on this file via a different export.
 		 */
@@ -2538,7 +2547,6 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		}
 
 		/* Don't skip blocked locks for fairness */
-
 		found_entry_end = lock_end(&found_entry->sle_lock);
 
 		if ((found_entry_end >= lock->lock_start)
@@ -2629,7 +2637,7 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 		lock_op = FSAL_OP_LOCK;
 	} else {
 		/* Can't do async blocking lock in FSAL and have a conflict.
-		 * Return it.
+		 * Return it. This is true for conflicting delegations as well.
 		 */
 		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
@@ -2712,14 +2720,21 @@ state_status_t state_lock(cache_entry_t *entry, exportlist_t *export,
 	} else
 		status = STATE_LOCK_BLOCKED;
 
-	if (status == STATE_SUCCESS) {
+	if (status == STATE_SUCCESS && sle_type == LEASE_LOCK) {
+		/* Insert entry into delegation list */
+		LogEntry("New delegation", found_entry);
+		update_delegation_stats(entry, state);
+		glist_add_tail(&entry->object.file.deleg_list,
+			       &found_entry->sle_list);
+	} else if (status == STATE_SUCCESS && sle_type == POSIX_LOCK) {
 		/* Merge any touching or overlapping locks into this one */
-		LogEntry("FSAL lock acquired, merging locks for", found_entry);
+		LogEntry("FSAL lock acquired, merging locks for",
+			 found_entry);
 
 		merge_lock_entry(entry, found_entry);
 
 		/* Insert entry into lock list */
-		LogEntry("New", found_entry);
+		LogEntry("New lock", found_entry);
 
 		/* if the list is empty to start with; increment the pin ref
 		 * count before adding it to the list
