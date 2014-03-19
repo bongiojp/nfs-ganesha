@@ -70,6 +70,7 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 
 	state_status_t state_status;
 	state_t *pstate_found = NULL;
+	state_deleg_t *deleg_found = NULL;
 	state_owner_t *plock_owner;
 	fsal_lock_param_t lock_desc;
 	unsigned int rc = 0;
@@ -134,41 +135,39 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 	pentry = data->current_entry;
 
 	PTHREAD_RWLOCK_wrlock(&pentry->state_lock);
-
 	glist_for_each_safe(glist, glistn, &pentry->object.file.deleg_list) {
 		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
-
-		if (found_entry != NULL) {
-			LogDebug(COMPONENT_NFS_V4_LOCK, "found_entry %p",
-				 found_entry);
-		} else {
-			LogDebug(COMPONENT_NFS_V4_LOCK, "list is empty %p",
-				 found_entry);
-			PTHREAD_RWLOCK_unlock(&pentry->state_lock);
-			res_DELEGRETURN4->status = NFS4ERR_BAD_STATEID;
-			return res_DELEGRETURN4->status;
+		if (found_entry == NULL)
+			continue;
+		LogDebug(COMPONENT_NFS_V4_LOCK, "found_entry %p", found_entry);
+		if (found_entry->sle_state->state_type != STATE_TYPE_DELEG) {
+			found_entry = NULL;
+			continue;
+		}
+		deleg_found = found_entry->sle_state->state_data.deleg;
+		if (memcmp(&deleg_found->sd_stateid.other,
+			   &arg_DELEGRETURN4->deleg_stateid.other,
+			   sizeof(deleg_found->sd_stateid.other)) != 0) {
+			found_entry = NULL;
+			continue;
+		}
+		if (deleg_found->sd_stateid.seqid !=
+		    arg_DELEGRETURN4->deleg_stateid.seqid) {
+			found_entry = NULL;
+			continue;
 		}
 		break;
 	}
-
 	PTHREAD_RWLOCK_unlock(&pentry->state_lock);
 
+	if (found_entry == NULL) {
+		LogDebug(COMPONENT_NFS_V4_LOCK, "We did not find a delegation"
+			 " in the delegation lock list.");
+		res_DELEGRETURN4->status = NFS4ERR_BAD_STATEID;
+		return res_DELEGRETURN4->status;
+	}
+		
 	plock_owner = found_entry->sle_owner;
-
-	/* Check seqid (lock_seqid or open_seqid) */
-	//	if (!Check_nfs4_seqid(plock_owner,
-	//			      arg_DELEGRETURN4->deleg_stateid.seqid,
-	//			      op,
-	//			      data->current_entry,
-	//			      resp,
-	//			      tag)) {
-#if 0				/** @todo: temp fix */
-		/* Response is all setup for us and LogDebug
-		 * told what was wrong
-		 */
-	//		return res_DELEGRETURN4.status;
-#endif
-	//	}
 
 	LogLock(COMPONENT_NFS_V4_LOCK, NIV_FULL_DEBUG, tag, data->current_entry,
 		plock_owner, &lock_desc);
