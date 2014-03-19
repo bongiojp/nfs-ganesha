@@ -151,10 +151,11 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 			found_entry = NULL;
 			continue;
 		}
+		LogDebug(COMPONENT_NFS_V4_LOCK, "Matching state found!");
 		if (deleg_found->sd_stateid.seqid !=
 		    arg_DELEGRETURN4->deleg_stateid.seqid) {
-			found_entry = NULL;
-			continue;
+			res_DELEGRETURN4->status = NFS4ERR_BAD_SEQID;
+			return res_DELEGRETURN4->status;
 		}
 		break;
 	}
