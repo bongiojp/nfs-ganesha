@@ -156,19 +156,19 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 	plock_owner = found_entry->sle_owner;
 
 	/* Check seqid (lock_seqid or open_seqid) */
-	if (!Check_nfs4_seqid(plock_owner,
-			      arg_DELEGRETURN4->deleg_stateid.seqid,
-			      op,
-			      data->current_entry,
-			      resp,
-			      tag)) {
+	//	if (!Check_nfs4_seqid(plock_owner,
+	//			      arg_DELEGRETURN4->deleg_stateid.seqid,
+	//			      op,
+	//			      data->current_entry,
+	//			      resp,
+	//			      tag)) {
 #if 0				/** @todo: temp fix */
 		/* Response is all setup for us and LogDebug
 		 * told what was wrong
 		 */
-		return res_DELEGRETURN4.status;
+	//		return res_DELEGRETURN4.status;
 #endif
-	}
+	//	}
 
 	LogLock(COMPONENT_NFS_V4_LOCK, NIV_FULL_DEBUG, tag, data->current_entry,
 		plock_owner, &lock_desc);
@@ -201,7 +201,7 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 	/* Remove state entry and update stats */
 	deleg_heuristics_recall(data->current_entry,
 				pstate_found->state_data.deleg.clfile_stats.clientid);
-	state_del(pstate_found, data->current_entry);
+	state_del(pstate_found, false);
 
 	/* Successful exit */
 	res_DELEGRETURN4->status = NFS4_OK;

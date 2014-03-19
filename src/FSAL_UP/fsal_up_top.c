@@ -1104,6 +1104,7 @@ static void return_one_async(void *arg)
 				      LAYOUTRETURN4_FILE, circumstance_revoke,
 				      s, cb_data->segment, 0, NULL, &deleted,
 				      false);
+		PTHREAD_RWLOCK_unlock(&s->state_entry->state_lock);
 	}
 	gsh_free(cb_data);
 }

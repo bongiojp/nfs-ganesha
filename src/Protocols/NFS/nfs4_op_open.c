@@ -846,7 +846,8 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
  */
 static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 			   state_t *open_state, state_owner_t *openowner,
-			   nfs_client_id_t *client, OPEN4resok *resok)
+			   nfs_client_id_t *client, OPEN4resok *resok,
+			   state_t *deleg_state)
 {
 	state_status_t state_status;
 	fsal_lock_param_t lock_desc;
@@ -855,7 +856,6 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 	state_owner_t *clientowner = &client->cid_owner;
 	OPEN4args *args = &op->nfs_argop4_u.opopen;
 	struct state_refer refer;
-	state_t *new_state;
 
 	/* Record the sequence info */
 	if (data->minorversion > 0) {
@@ -899,7 +899,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 	/* Add the delegation state */
 	state_status = state_add_impl(data->current_entry, STATE_TYPE_DELEG,
 				      &deleg_data,
-				      clientowner, &new_state,
+				      clientowner, &deleg_state,
 				      data->minorversion > 0 ? &refer : NULL);
 	if (state_status != STATE_SUCCESS) {
 		LogDebug(COMPONENT_NFS_V4_LOCK,
@@ -908,11 +908,16 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 		return;
 	} else {
 		LogDebug(COMPONENT_STATE, "delegation state added");
+
+		deleg_data.deleg.sd_stateid.seqid = ++deleg_state->state_seqid;
+		memcpy(deleg_data.deleg.sd_stateid.other, deleg_state->stateid_other,
+		       sizeof(deleg_data.deleg.sd_stateid.other)) ;
+
 		/* Attach this open to an export */
-		new_state->state_export = data->export;
+		deleg_state->state_export = data->export;
 		pthread_mutex_lock(&data->export->exp_state_mutex);
 		glist_add_tail(&data->export->exp_state_list,
-			       &new_state->state_export_list);
+			       &deleg_state->state_export_list);
 		pthread_mutex_unlock(&data->export->exp_state_mutex);
 
 		resok->delegation.delegation_type = deleg_type;
@@ -940,8 +945,8 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 		state_status = state_lock(data->current_entry,
 					  data->export,
 					  data->req_ctx,
-					  openowner,
-					  new_state,
+					  clientowner,//openowner,
+					  deleg_state,
 					  STATE_NON_BLOCKING,
 					  NULL,	/* No block data */
 					  &lock_desc,
@@ -953,7 +958,8 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 				 "get_delegation call added state but failed to"
 				 " lock with status %s",
 				 state_err_str(state_status));
-			state_del(new_state, false);
+			state_del(deleg_state, false);			
+			resok->delegation.delegation_type = OPEN_DELEGATE_NONE;
 			return;
 		}
 	}
@@ -1014,6 +1020,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	cache_entry_t *entry_lookup = NULL;
 	struct glist_head *glist;
 	state_lock_entry_t *found_entry = NULL;
+	state_t *deleg_state = NULL;
 	int retval;
 
 	LogDebug(COMPONENT_STATE,
@@ -1406,11 +1413,8 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 	entry_change = NULL;
 	res_OPEN4->OPEN4res_u.resok4.cinfo.atomic = FALSE;
 
-	/* This will be updated laster if we actually delegate */
 	res_OPEN4->OPEN4res_u.resok4.delegation.delegation_type =
-		OPEN_DELEGATE_NONE;
-
-	/* Handle open stateid/seqid for success */
+	  OPEN_DELEGATE_NONE;
 	update_stateid(file_state,
 		       &res_OPEN4->OPEN4res_u.resok4.stateid,
 		       data,
@@ -1440,15 +1444,14 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 		LogDebug(COMPONENT_STATE, "Attempting to grant delegation");
 		/*		pthread_mutex_unlock(&clientid->cid_mutex); */
 		get_delegation(data, op, file_state, owner, clientid,
-			       &res_OPEN4->OPEN4res_u.resok4);
-	}
-
-	else {
+			       &res_OPEN4->OPEN4res_u.resok4, deleg_state);
+	} else {
 		/* PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
 		   pthread_mutex_unlock(&clientid->cid_mutex); */
 		res_OPEN4->OPEN4res_u.resok4.delegation.open_delegation4_u.
 			od_whynone.ond_why = WND4_NOT_WANTED;
 	}
+
  out:
 
 	if (res_OPEN4->status != NFS4_OK) {
