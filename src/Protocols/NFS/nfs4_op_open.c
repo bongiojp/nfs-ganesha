@@ -908,6 +908,11 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 		return;
 	} else {
 		LogDebug(COMPONENT_STATE, "delegation state added");
+
+		deleg_data.deleg.sd_stateid.seqid = ++new_state->state_seqid;
+		memcpy(deleg_data.deleg.sd_stateid.other, new_state->stateid_other,
+		       sizeof(deleg_data.deleg.sd_stateid.other)) ;
+
 		/* Attach this open to an export */
 		new_state->state_export = data->export;
 		pthread_mutex_lock(&data->export->exp_state_mutex);
@@ -940,7 +945,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 		state_status = state_lock(data->current_entry,
 					  data->export,
 					  data->req_ctx,
-					  openowner,
+					  clientowner,
 					  new_state,
 					  STATE_NON_BLOCKING,
 					  NULL,	/* No block data */
@@ -1441,9 +1446,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 		/*		pthread_mutex_unlock(&clientid->cid_mutex); */
 		get_delegation(data, op, file_state, owner, clientid,
 			       &res_OPEN4->OPEN4res_u.resok4);
-	}
-
-	else {
+	} else {
 		/* PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
 		   pthread_mutex_unlock(&clientid->cid_mutex); */
 		res_OPEN4->OPEN4res_u.resok4.delegation.open_delegation4_u.
