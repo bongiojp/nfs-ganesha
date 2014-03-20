@@ -66,6 +66,9 @@ static inline bool gpfs_unopenable_type(object_file_type_t type)
 fsal_status_t gpfs_open(struct fsal_obj_handle *obj_hdl,
 			const struct req_op_context *opctx,
 			fsal_openflags_t openflags);
+fsal_status_t gpfs_reopen(struct fsal_obj_handle *obj_hdl,
+			  const struct req_op_context *opctx,
+			  fsal_openflags_t openflags);
 fsal_openflags_t gpfs_status(struct fsal_obj_handle *obj_hdl);
 fsal_status_t gpfs_read(struct fsal_obj_handle *obj_hdl,
 			const struct req_op_context *opctx, uint64_t offset,

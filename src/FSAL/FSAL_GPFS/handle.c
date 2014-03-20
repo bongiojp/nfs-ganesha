@@ -491,7 +491,7 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 	mntfd = gpfs_get_root_fd(opctx->fsal_export);
 	status =
 	    fsal_internal_handle2fd_at(mntfd, myself->handle, &dirfd,
-				       (O_RDONLY | O_DIRECTORY));
+				       (O_RDONLY | O_DIRECTORY), 0);
 	if (dirfd < 0)
 		return status;
 
@@ -776,6 +776,7 @@ void gpfs_handle_ops_init(struct fsal_obj_ops *ops)
 	ops->rename = renamefile;
 	ops->unlink = file_unlink;
 	ops->open = gpfs_open;
+	ops->reopen = gpfs_reopen;
 	ops->status = gpfs_status;
 	ops->read = gpfs_read;
 	ops->read_plus = gpfs_read_plus;

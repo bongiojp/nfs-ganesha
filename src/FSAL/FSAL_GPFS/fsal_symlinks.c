@@ -177,7 +177,7 @@ fsal_status_t GPFSFSAL_symlink(struct fsal_obj_handle *dir_hdl,	/* IN */
 
 	status =
 	    fsal_internal_handle2fd(mount_fd, gpfs_hdl->handle, &fd,
-				    O_RDONLY | O_DIRECTORY);
+				    O_RDONLY | O_DIRECTORY, 0);
 
 	if (FSAL_IS_ERROR(status))
 		return status;
