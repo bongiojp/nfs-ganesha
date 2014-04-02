@@ -69,7 +69,8 @@ pthread_mutex_t all_state_v4_mutex = PTHREAD_MUTEX_INITIALIZER;
  * @retval false if no conflict has been found
  */
 static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
-				 state_data_t *candidate_data)
+				 state_data_t *candidate_data,
+				 state_owner_t *candidate_owner)
 {
 	struct glist_head *glist;
 	clientid4 candidate_clientid, deleg_clientid;
@@ -83,7 +84,7 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 	deleg_clientid =
 		state->state_data.deleg.clfile_stats.clientid->cid_clientid;
 	candidate_clientid =
-		candidate_data->deleg.clfile_stats.clientid->cid_clientid;
+		candidate_owner.so_owner.so_nfs4_owner.so_clientid;
 
 	if (state->state_type != STATE_TYPE_DELEG) {
 		LogDebug(COMPONENT_STATE, "ERROR: Non-delegation state found in"
@@ -319,7 +320,7 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 				continue;
 			}
 			if (check_deleg_conflict(piter_state, state_type,
-						 state_data)) {
+						 state_data, owner_input)) {
 			  status = delegrecall(entry, true);
 				if (status != STATE_SUCCESS) {
 					LogDebug(COMPONENT_STATE,
