@@ -166,6 +166,10 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 		res_DELEGRETURN4->status = NFS4ERR_BAD_STATEID;
 		return res_DELEGRETURN4->status;
 	}
+
+	pthread_mutex_lock(&found_entry->sle_mutex);
+	found_entry->sle_state->state_data.deleg.deleg_state = DELEG_RETURNED;
+	pthread_mutex_unlock(&found_entry->sle_mutex);
 		
 	plock_owner = found_entry->sle_owner;
 
