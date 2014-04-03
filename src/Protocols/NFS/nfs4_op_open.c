@@ -946,7 +946,6 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 			       &new_state->state_export_list);
 		pthread_mutex_unlock(&data->export->exp_state_mutex);
 
-
 		/* PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock); */
 		state_status = state_lock(data->current_entry,
 					  data->export,
@@ -975,7 +974,7 @@ static void get_delegation(compound_data_t *data, struct nfs_argop4 *op,
 					space_limit.limitby = NFS_LIMIT_SIZE;
 				writeres->
 				space_limit.nfs_space_limit4_u.filesize =
-									100000;
+						DELEG_SPACE_LIMIT_FILESZ;
 				writeres->stateid =
 						saved_data->deleg.sd_stateid;
 				writeres->recall = FALSE;
