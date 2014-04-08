@@ -1300,7 +1300,7 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 			PTHREAD_RWLOCK_wrlock(&entry_lookup->state_lock);
 
 			glist_for_each(glist,
-				       &entry_lookup->object.file.lock_list) {
+				       &entry_lookup->object.file.deleg_list) {
 				found_entry = glist_entry(glist,
 							  state_lock_entry_t,
 							  sle_list);

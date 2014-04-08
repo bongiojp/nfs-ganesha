@@ -72,9 +72,7 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 				 state_data_t *candidate_data,
 				 state_owner_t *candidate_owner)
 {
-	struct glist_head *glist;
 	clientid4 candidate_clientid, deleg_clientid;
-	state_lock_entry_t *found_lock;
 
 	LogDebug(COMPONENT_STATE, "Checking for conflict!!");
 
@@ -95,13 +93,6 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 	/* We are getting a new share, checking if delegations conflict. */
 	switch (candidate_type) {
 	case STATE_TYPE_DELEG:
-		/* This should not happen, but we'll see. */
-		if (deleg_clientid == candidate_clientid) {
-			LogDebug(COMPONENT_STATE, "Requesting delegation for"
-				 " client that has a delegation on this file."
-				 " no conflict");
-			return false;
-		}
 		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
 			LogDebug(COMPONENT_STATE, "Getting a delegation when "
 				 "write delegation exists on different client"
@@ -117,12 +108,6 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 		}
 		break;
 	case STATE_TYPE_SHARE:
-		if (deleg_clientid == candidate_clientid) {
-			LogDebug(COMPONENT_STATE, "New share state is for same "
-				 " client that owns delegation. no conflict.");
-			return false;
-		}
-
 		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_READ
 		    && candidate_data->share.share_access
 		    & OPEN4_SHARE_ACCESS_WRITE) {
@@ -138,36 +123,7 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 		}
 		break;
 	case STATE_TYPE_LOCK:
-		if (deleg_clientid == candidate_clientid) {
-			LogDebug(COMPONENT_STATE, "Creating lock for client "
-				 "that owns the delegation. no conflict.");
-			return false;
-		}
-
-		/* Search for a posix lock that conflicts with delegation */
-		glist_for_each(glist, &candidate_data->lock.state_locklist) {
-			found_lock = glist_entry(glist, state_lock_entry_t,
-						 sle_state_locks);
-			if (found_lock->sle_type != POSIX_LOCK) {
-				LogDebug(COMPONENT_STATE, "non posix lock in "
-					 "lock list");
-				continue;
-			}
-			if (found_lock->sle_lock.lock_type == FSAL_LOCK_R
-			    && state->state_data.deleg.sd_type
-			    == OPEN_DELEGATE_WRITE) {
-				LogDebug(COMPONENT_STATE, "Trying to get"
-					 "read lock. write delegation exists."
-					 " conflict");
-				return true; /*recall delegation*/
-			}
-			if (found_lock->sle_lock.lock_type == FSAL_LOCK_W) {
-				LogDebug(COMPONENT_STATE, "Trying to get"
-					 "write lock. delegation exists."
-					 " conflict");
-				return true;
-			}
-		}
+		/* The FSAL layer will have to pick this up. */
 	case STATE_TYPE_LAYOUT:
 		return false;
 		break;
