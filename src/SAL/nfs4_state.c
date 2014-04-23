@@ -49,6 +49,7 @@
 #include "sal_functions.h"
 #include "cache_inode_lru.h"
 #include "export_mgr.h"
+#include "fsal_up.h"
 
 pool_t *state_v4_pool;		/*< Pool for NFSv4 files's states */
 
@@ -79,16 +80,11 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 	if (state == NULL || candidate_data == NULL)
 		return true;
 
+	assert(state->state_type != STATE_TYPE_DELEG);
 	deleg_clientid =
 		state->state_data.deleg.clfile_stats.clientid->cid_clientid;
 	candidate_clientid =
 		candidate_owner->so_owner.so_nfs4_owner.so_clientid;
-
-	if (state->state_type != STATE_TYPE_DELEG) {
-		LogDebug(COMPONENT_STATE, "ERROR: Non-delegation state found in"
-			 " delegation list!");
-		return false;
-	}
 
 	/* We are getting a new share, checking if delegations conflict. */
 	switch (candidate_type) {
@@ -231,6 +227,8 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 	cache_inode_status_t cache_status;
 	bool got_pinned = false;
 	state_status_t status = 0;
+	struct gsh_export *export_entry = NULL;
+	exportlist_t *export = NULL;
 
 	if (glist_empty(&entry->state_list)) {
 		cache_status = cache_inode_inc_pin_ref(entry);
@@ -261,7 +259,13 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 	}
 
 	/* Check conflicting delegations and recall if necessary */
+	export_entry = atomic_fetch_voidptr(&entry->first_export);
+	export = &export_entry->export;
+	
 	if (entry->type == REGULAR_FILE
+	    && (export->export_perms.options & EXPORT_OPTION_DELEGATIONS)
+	    && export->export_hdl->ops->fs_supports(export->export_hdl,
+						    fso_delegations) == false
 	    && (!glist_empty(&entry->object.file.deleg_list))) {
 		glist_for_each_safe(glist, glistn,
 				    &entry->object.file.deleg_list) {
