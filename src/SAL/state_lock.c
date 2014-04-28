@@ -2907,21 +2907,21 @@ state_status_t state_unlock(cache_entry_t *entry,
 	 */
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 
-	if (state && state->state_type == STATE_TYPE_DELEG) {
-		if (glist_empty(&entry->object.file.deleg_list)) {
-			PTHREAD_RWLOCK_unlock(&entry->state_lock);
-			cache_inode_dec_pin_ref(entry, FALSE);
-			LogDebug(COMPONENT_STATE,
-				 "Unlock success on file with no delegations");
-			status = STATE_SUCCESS;
-			return status;
-		} else {
-			LogFullDebug(COMPONENT_STATE,
-				     "Removing delegation from list");
-			status = subtract_deleg_from_list(entry, owner, state,
-					&removed,
-					&entry->object.file.deleg_list);
-		}
+	if (state && (state->state_type == STATE_TYPE_DELEG) &&
+	    glist_empty(&entry->object.file.deleg_list)) {
+		cache_inode_dec_pin_ref(entry, FALSE);
+		PTHREAD_RWLOCK_unlock(&entry->state_lock);
+		LogDebug(COMPONENT_STATE,
+			"Unlock success on file with no delegations");
+		return STATE_SUCCESS;
+	}
+
+	if ((owner->so_type != STATE_LOCK_OWNER_9P) &&
+	    state && (state->state_type == STATE_TYPE_DELEG)) {
+		LogFullDebug(COMPONENT_STATE, "Removing delegation from list");
+		status =
+			subtract_deleg_from_list(entry, owner, state, &removed,
+						&entry->object.file.deleg_list);
 	} else {
 	/* If lock list is empty, there really isn't any work for us to do. */
 		if (glist_empty(&entry->object.file.lock_list)) {
