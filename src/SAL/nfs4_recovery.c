@@ -966,6 +966,19 @@ void nfs4_create_recov_dir(void)
 }
 
 /**
+ * @brief Record revoked filehandle under the client.
+ */
+void nfs4_record_revoke(nfs_client_id_t *delr_clid, nfs_fh4 *delr_handle)
+{
+	/*NULL*/
+}
+
+bool nfs4_can_deleg_reclaim_prev(nfs_client_id_t *clid, nfs_fh4 *handle)
+{
+	return TRUE;
+}
+
+/**
  * @brief Release all NLM state
  */
 static void nfs_release_nlm_state()
