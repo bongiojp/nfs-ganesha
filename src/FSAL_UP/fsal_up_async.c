@@ -472,7 +472,11 @@ struct delegrecall_args {
 static void queue_delegrecall(struct fridgethr_context *ctx)
 {
 	state_status_t status;
-	status = delegrecall((cache_entry_t *)ctx->arg, false);
+	cache_entry_t *entry = ctx->arg;
+
+	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
+	status = delegrecall(entry);
+	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 }
 
 int async_delegrecall(struct fridgethr *fr, cache_entry_t *entry)
