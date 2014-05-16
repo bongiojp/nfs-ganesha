@@ -1083,19 +1083,11 @@ bool eval_revoke(state_lock_entry_t *deleg_entry)
 	time_t recall_success_time, first_recall_time;
 	uint32_t lease_lifetime = nfs_param.nfsv4_param.lease_lifetime;
 
-	if (deleg_entry->sle_type != LEASE_LOCK) {
-		LogDebug(COMPONENT_NFS_V4,
-			"State does not represent a delegation");
-		return FALSE;
-	}
+	assert(deleg_entry->sle_type == LEASE_LOCK);
 
 	open_delegation_type4 sd_type =
 			deleg_entry->sle_state->state_data.deleg.sd_type;
-	if (sd_type != OPEN_DELEGATE_READ && sd_type != OPEN_DELEGATE_WRITE) {
-		LogDebug(COMPONENT_NFS_V4,
-			"State does not represent a READ or WRITE delegation");
-		return FALSE;
-	}
+	assert (sd_type == OPEN_DELEGATE_READ || sd_type == OPEN_DELEGATE_WRITE);
 
 	clfl_stats = &deleg_entry->sle_state->state_data.deleg.clfile_stats;
 	cl_stats = &clfl_stats->clientid->deleg_heuristics;
@@ -1254,9 +1246,6 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 	state_lock_entry_t *deleg_entry = NULL;
 	cache_entry_t *entry = deleg_ctx->entry;
 	struct glist_head *glist, *glist_n;
-	stateid4 ctx_stateid;
-
-	memcpy(&ctx_stateid, &deleg_ctx->sd_stateid, sizeof(stateid4));
 
 	LogDebug(COMPONENT_NFS_CB, "%p %s", call,
 		 (hook ==
@@ -1267,7 +1256,7 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 		deleg_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 		if (deleg_ctx->deleg_entry == deleg_entry &&
 		    deleg_entry->sle_type == LEASE_LOCK &&
-		    !memcmp(&ctx_stateid,
+		    !memcmp(&deleg_ctx->sd_stateid,
 			    &deleg_entry->
 					sle_state->state_data.deleg.sd_stateid,
 			    sizeof(stateid4))) {
@@ -1370,6 +1359,7 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 	nfs_cb_argop4 argop[1];
 	struct gsh_export *exp;
 	bool needs_revoke = FALSE;
+	struct delegrecall_context *p_cargs = NULL;
 	struct clientfile_deleg_heuristics *clfl_stats =
 			&deleg_entry->sle_state->state_data.deleg.clfile_stats;
 	struct client_deleg_heuristics *cl_stats =
@@ -1378,19 +1368,13 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 
 	LogDebug(COMPONENT_FSAL_UP, "Recalling delegation(%p)", deleg_entry);
 
+	/* This doesn't appear to be read anywhere. keep it? */
 	atomic_inc_uint32_t(&clfl_stats->num_recalls);
 	atomic_inc_uint32_t(&cl_stats->tot_recalls);
 
 	exp = container_of(deleg_entry->sle_state->state_export,
 			   struct gsh_export,
 			   export);
-	struct delegrecall_context *p_cargs = NULL;
-
-	maxfh = gsh_malloc(NFS4_FHSIZE); /* free in cb_completion_func() */
-	if (maxfh == NULL) {
-		LogDebug(COMPONENT_FSAL_UP, "FSAL_UP_DELEG: no mem, failed.");
-		code = NFS_CB_CALL_ABORTED;
-	}
 	code =
 	    nfs_client_id_get_confirmed(deleg_entry->sle_owner->so_owner.
 					so_nfs4_owner.so_clientid, &clid);
@@ -1445,6 +1429,7 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 			    clid->cid_cb.v40.cb_callback_ident, "brrring!!!",
 			    10);
 
+	/* is this memset necessary? I don't think it is.*/
 	memset(argop, 0, sizeof(nfs_cb_argop4));
 	argop->argop = NFS4_OP_CB_RECALL;
 	argop->nfs_cb_argop4_u.opcbrecall.stateid.seqid =
@@ -1453,10 +1438,18 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 	       deleg_entry->sle_state->stateid_other, OTHERSIZE);
 	argop->nfs_cb_argop4_u.opcbrecall.truncate = FALSE;
 
+	maxfh = gsh_malloc(NFS4_FHSIZE); /* free in cb_completion_func() */
+	if (maxfh == NULL) {
+		LogDebug(COMPONENT_FSAL_UP, "FSAL_UP_DELEG: no mem, aborting.");
+		code = NFS_CB_CALL_ABORTED;
+		goto out;
+	}
+
 	/* Convert it to a file handle */
 	argop->nfs_cb_argop4_u.opcbrecall.fh.nfs_fh4_len = 0;
 	argop->nfs_cb_argop4_u.opcbrecall.fh.nfs_fh4_val = maxfh;
 
+	/* Is there a way to use the handle sent from GPFS? */
 	/* Building a new fh */
 	if (!nfs4_FSALToFhandle(&argop->nfs_cb_argop4_u.opcbrecall.fh,
 				entry->obj_handle,
@@ -1486,6 +1479,10 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 	maxfh = NULL; /* avoid free */
 	call = NULL;
 out:
+	/* nfs_client_id_get_confirmed() increments a ref to the client id */
+	if (clid != NULL)
+                dec_client_id_ref(clid);
+
 	switch (code) {
 	case NFS_CB_CALL_FINISHED:
 		break;
@@ -1510,6 +1507,7 @@ out:
 		break;
 	default:
 		LogCrit(COMPONENT_NFS_CB, "delegrecall_one() failed.");
+		atomic_inc_uint32_t(&cl_stats->failed_recalls);
 		needs_revoke = TRUE;
 		break;
 	}
@@ -1546,16 +1544,13 @@ static void delegrevoke_check(struct fridgethr_context *ctx)
 	struct delegrecall_context *deleg_ctx = ctx->arg;
 	cache_entry_t *entry = deleg_ctx->entry;
 	state_lock_entry_t *deleg_entry = NULL;
-	stateid4 ctx_stateid;
-
-	memcpy(&ctx_stateid, &deleg_ctx->sd_stateid, sizeof(stateid4));
 
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 	glist_for_each_safe(glist, glist_n, &entry->object.file.deleg_list) {
 		deleg_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 		if (deleg_ctx->deleg_entry == deleg_entry &&
 			deleg_entry->sle_type == LEASE_LOCK &&
-			!memcmp(&ctx_stateid,
+		        !memcmp(deleg_ctx->sd_stateid,
 				&deleg_entry->
 				       sle_state->state_data.deleg.sd_stateid,
 					sizeof(stateid4))) {
@@ -1580,6 +1575,7 @@ static void delegrevoke_check(struct fridgethr_context *ctx)
 				LogFullDebug(COMPONENT_STATE,
 					     "Not revoking the delegation(%p)",
 					     deleg_entry);
+				/* Should there be a pause or a sleep or something before this? */
 				schedule_delegrevoke_check(deleg_entry);
 			}
 			break;
@@ -1589,7 +1585,7 @@ static void delegrevoke_check(struct fridgethr_context *ctx)
 	}
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 	if (!deleg_entry)
-		LogDebug(COMPONENT_NFS_CB, "Delgation is already returned");
+		LogDebug(COMPONENT_NFS_CB, "Delegation is already returned");
 	gsh_free(ctx->arg);
 	return;
 }
@@ -1600,16 +1596,13 @@ static void delegrecall_task(struct fridgethr_context *ctx)
 	struct delegrecall_context *deleg_ctx = ctx->arg;
 	cache_entry_t *entry = deleg_ctx->entry;
 	state_lock_entry_t *deleg_entry = NULL;
-	stateid4 ctx_stateid;
-
-	memcpy(&ctx_stateid, &deleg_ctx->sd_stateid, sizeof(stateid4));
 
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 	glist_for_each_safe(glist, glist_n, &entry->object.file.deleg_list) {
 		deleg_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 		if (deleg_ctx->deleg_entry == deleg_entry &&
 			deleg_entry->sle_type == LEASE_LOCK &&
-			!memcmp(&ctx_stateid,
+		        !memcmp(&deleg_ctx->sd_stateid,
 				&deleg_entry->
 				       sle_state->state_data.deleg.sd_stateid,
 					sizeof(stateid4))) {
@@ -1656,9 +1649,9 @@ static int schedule_delegrevoke_check(state_lock_entry_t *deleg_entry)
 	return rc;
 }
 
-
-
-state_status_t delegrecall(cache_entry_t *entry, bool rwlocked)
+/* entry->state_lock MUST be WRITE locked before calling this function!! 
+ * Is there a way we can limit this to a READ lock? */
+state_status_t delegrecall(cache_entry_t *entry)
 {
 	struct glist_head *glist, *glist_n;
 	state_lock_entry_t *deleg_entry = NULL;
@@ -1670,15 +1663,8 @@ state_status_t delegrecall(cache_entry_t *entry, bool rwlocked)
 		 "FSAL_UP_DELEG: Invalidate cache found entry %p type %u",
 		 entry, entry->type);
 
-	if (!rwlocked)
-		PTHREAD_RWLOCK_wrlock(&entry->state_lock);
-
 	glist_for_each_safe(glist, glist_n, &entry->object.file.deleg_list) {
 		deleg_entry = glist_entry(glist, state_lock_entry_t, sle_list);
-
-		if (deleg_entry->sle_type != LEASE_LOCK || deleg_entry == NULL
-		    || deleg_entry->sle_state == NULL)
-			continue;
 
 		LogDebug(COMPONENT_NFS_CB, "deleg_entry %p", deleg_entry);
 		clfl_stats =
@@ -1701,12 +1687,6 @@ state_status_t delegrecall(cache_entry_t *entry, bool rwlocked)
 							OPEN_DELEGATE_WRITE)
 			break;
 	}
-
-	if (!rwlocked)
-		PTHREAD_RWLOCK_unlock(&entry->state_lock);
-
-	/* cache_inode_put(entry); why are we doing this? */
-
 	return rc;
 }
 
@@ -1731,7 +1711,15 @@ state_status_t delegrecall_upcall(struct fsal_module *fsal,
 		 * in cache in a cluster. */
 		return rc;
 	}
-	return delegrecall(entry, false);
+
+	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
+	rc = delegrecall(entry);
+	PTHREAD_RWLOCK_unlock(&entry->state_lock);
+
+	/* up_get() took a reference on the entry */
+	cache_inode_put(entry);
+
+	return rc;
 }
 
 
