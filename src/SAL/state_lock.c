@@ -1042,7 +1042,7 @@ static state_status_t subtract_deleg_from_list(cache_entry_t *entry,
 	*removed = false;
 	glist_init(&remove_list);
 
-	PTHREAD_RWLOCK_wrlock(entry->state_lock);
+	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 	glist_for_each_safe(glist, glistn, list) {
 		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 		if (owner != NULL
@@ -1057,7 +1057,7 @@ static state_status_t subtract_deleg_from_list(cache_entry_t *entry,
 
 		/* Make a list of all matching delegation locks. Should be
 		 * only one? */
-		glist_add_tail(remove_list, &(found_entry->sle_list));
+		glist_add_tail(&remove_list, &(found_entry->sle_list));
 		*removed = true;
 	}
 	glist_for_each_safe(glist, glistn, &remove_list) {
@@ -1069,7 +1069,7 @@ static state_status_t subtract_deleg_from_list(cache_entry_t *entry,
 		/* Then free the lock entry */
 		lock_entry_dec_ref(found_entry);
 	}
-	PTHREAD_RWLOCK_unlock(entry->state_lock);
+	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 	return status;
 }
 
