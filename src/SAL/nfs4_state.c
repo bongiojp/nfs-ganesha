@@ -82,7 +82,7 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 
 	assert(state->state_type != STATE_TYPE_DELEG);
 	deleg_clientid =
-		state->state_data.deleg.sd_clfile_stats.clientid->cid_clientid;
+		state->state_data.deleg.sd_clfile_stats.cfd_clientid->cid_clientid;
 	candidate_clientid =
 		candidate_owner->so_owner.so_nfs4_owner.so_clientid;
 
