@@ -589,7 +589,7 @@ void free_deleg_locked(state_lock_entry_t *deleg_lock, cache_entry_t *entry,
 		       struct fsal_export *export,
 		       struct req_op_context *fake_req_ctx);
 bool update_delegation_stats(state_lock_entry_t *deleg_entry);
-state_status_t delegrecall(cache_entry_t *entry);
+state_status_t delegrecall_impl(cache_entry_t *entry);
 state_status_t deleg_revoke(state_lock_entry_t *deleg_entry);
 
 #ifdef DEBUG_SAL
