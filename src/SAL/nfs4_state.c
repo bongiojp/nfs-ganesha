@@ -91,7 +91,9 @@ static bool check_deleg_conflict(state_lock_entry_t *deleg_entry,
 	/* We are getting a new share, checking if delegations conflict. */
 	switch (candidate_type) {
 	case STATE_TYPE_DELEG:
-		if (deleg_entry->sle_state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
+		if ((deleg_entry->sle_state->state_data.deleg.sd_type ==
+			OPEN_DELEGATE_WRITE) &&
+		    (deleg_clientid != candidate_clientid)) {
 			LogDebug(COMPONENT_STATE, "Getting a delegation when "
 				 "write delegation exists on different client"
 				 " conflict");
