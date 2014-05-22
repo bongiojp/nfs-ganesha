@@ -475,7 +475,7 @@ static void queue_delegrecall(struct fridgethr_context *ctx)
 	cache_entry_t *entry = ctx->arg;
 
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
-	status = delegrecall(entry);
+	status = delegrecall_impl(entry);
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 }
 
