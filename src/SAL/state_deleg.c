@@ -75,7 +75,7 @@ void free_deleg_locked(state_lock_entry_t *deleg_lock, cache_entry_t *entry,
 		     &deleg_lock->sle_lock,
 		     deleg_lock->sle_type);
 	state_del_locked(deleg_lock->sle_state, entry);
-	deleg_heuristics_recall(entry, clientid);
+	deleg_heuristics_recall(deleg_lock);
 }
 
 /**
@@ -99,7 +99,6 @@ void init_new_deleg_state(state_data_t *deleg_state,
 	deleg_state->deleg.sd_grant_time = time(NULL);
 	deleg_state->deleg.sd_state = DELEG_GRANTED;
 
-	clfile_entry->cfd_clientid = client;
 	clfile_entry->cfd_rs_time = 0;
 	clfile_entry->cfd_r_time = 0;
 }
@@ -111,13 +110,12 @@ void init_new_deleg_state(state_data_t *deleg_state,
  * Note: This should be called only when a delegation is successfully granted.
  *       So far this should only be called in state_lock().
  *
- * @param[in] entry Inode entry the delegation is for.
- * @param[in] state Delegation state pertaining to new delegation lock.
+ * @param[in] Delegation Entry
  */
-bool update_delegation_stats(cache_entry_t *entry, state_t *state)
+bool update_delegation_stats(state_lock_entry_t *deleg_entry)
 {
-	struct cf_deleg_stats *clfile_entry =
-		&state->state_data.deleg.sd_clfile_stats;
+	cache_entry_t *entry = deleg_entry->sle_entry;
+	struct c_deleg_stats *cl_stats = &deleg_entry->sle_owner->so_owner.so_nfs4_owner.so_clientrec->cid_deleg_stats;
 
 	/* Update delegation stats for file. */
 	struct file_deleg_stats *statistics =
@@ -128,7 +126,7 @@ bool update_delegation_stats(cache_entry_t *entry, state_t *state)
 	statistics->fds_last_delegation = time(NULL);
 
 	/* Update delegation stats for client. */
-	clfile_entry->cfd_clientid->cid_deleg_stats.curr_deleg_grants++;
+	cl_stats->curr_deleg_grants++;
 
 	return true;
 }
@@ -146,11 +144,12 @@ static int advance_avg(time_t prev_avg, time_t new_time,
  * Update statistics on successfully recalled delegation.
  * Note: This should be called only when a delegation is successfully recalled.
  *
- * @param[in] entry Inode entry the delegation is based on.
- * @param[in] client Client that owned the delegation
+ * @param[in] Delegation Lock Entry
  */
-bool deleg_heuristics_recall(cache_entry_t *entry, nfs_client_id_t *client)
+bool deleg_heuristics_recall(state_lock_entry_t *deleg_entry)
 {
+	cache_entry_t *entry = deleg_entry->sle_entry;
+        nfs_client_id_t *client = deleg_entry->sle_owner->so_owner.so_nfs4_owner.so_clientrec;
 	/* Update delegation stats for file. */
 	struct file_deleg_stats *statistics =
 		&entry->object.file.fdeleg_stats;

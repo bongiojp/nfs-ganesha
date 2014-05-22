@@ -1089,7 +1089,7 @@ bool eval_deleg_revoke(state_lock_entry_t *deleg_entry)
         assert(sd_type == OPEN_DELEGATE_READ || sd_type == OPEN_DELEGATE_WRITE);
 
 	clfl_stats = &deleg_entry->sle_state->state_data.deleg.sd_clfile_stats;
-	cl_stats = &clfl_stats->cfd_clientid->cid_deleg_stats;
+	cl_stats = &deleg_entry->sle_owner->so_owner.so_nfs4_owner.so_clientrec->cid_deleg_stats;
 
 	curr_time = time(NULL);
 	recall_success_time = clfl_stats->cfd_rs_time;
@@ -1269,7 +1269,8 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 				 deleg_entry);
 
 	clfl_stats = &deleg_entry->sle_state->state_data.deleg.sd_clfile_stats;
-	cl_stats = &clfl_stats->cfd_clientid->cid_deleg_stats;
+        cl_stats = &deleg_entry->sle_owner->so_owner.so_nfs4_owner.so_clientrec->cid_deleg_stats;
+
 	deleg_state = &deleg_entry->sle_state->state_data.deleg.sd_state;
 
 	switch (hook) {
@@ -1353,8 +1354,9 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 	struct delegrecall_context *p_cargs = NULL;
 	struct cf_deleg_stats *clfl_stats =
 			&deleg_entry->sle_state->state_data.deleg.sd_clfile_stats;
-	struct c_deleg_stats *cl_stats =
-			&clfl_stats->cfd_clientid->cid_deleg_stats;
+	struct c_deleg_stats *cl_stats;
+        cl_stats = &deleg_entry->sle_owner->so_owner.so_nfs4_owner.so_clientrec->cid_deleg_stats;
+
 	cache_entry_t *entry = deleg_entry->sle_entry;
 
 	LogDebug(COMPONENT_FSAL_UP, "Recalling delegation(%p)", deleg_entry);

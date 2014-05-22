@@ -62,14 +62,16 @@ pthread_mutex_t all_state_v4_mutex = PTHREAD_MUTEX_INITIALIZER;
  * @brief Checks for a conflict between an existing delegation state and a
  * candidate state.
  *
- * @param[in] state      Existing state
- * @param[in] state_type Type of candidate state
- * @param[in] state_data Data for the candidate state
+ * @param[in] state       Existing delegation
+ * @param[in] state_type  Type of candidate state
+ * @param[in] state_data  Data for the candidate state
+ * @param[in] state_owner Owner of the candidate state
  *
  * @retval true if there is a conflict.
  * @retval false if no conflict has been found
  */
-static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
+static bool check_deleg_conflict(state_lock_entry_t *deleg_entry,
+				 state_type_t candidate_type,
 				 state_data_t *candidate_data,
 				 state_owner_t *candidate_owner)
 {
@@ -77,19 +79,19 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 
 	LogDebug(COMPONENT_STATE, "Checking for conflict!!");
 
-	if (state == NULL || candidate_data == NULL)
+	if (deleg_entry == NULL || candidate_data == NULL)
 		return true;
 
 	assert(state->state_type != STATE_TYPE_DELEG);
 	deleg_clientid =
-		state->state_data.deleg.sd_clfile_stats.cfd_clientid->cid_clientid;
+		deleg_entry->sle_owner->so_owner.so_nfs4_owner.so_clientrec->cid_clientid;
 	candidate_clientid =
 		candidate_owner->so_owner.so_nfs4_owner.so_clientid;
 
 	/* We are getting a new share, checking if delegations conflict. */
 	switch (candidate_type) {
 	case STATE_TYPE_DELEG:
-		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
+		if (deleg_entry->sle_state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
 			LogDebug(COMPONENT_STATE, "Getting a delegation when "
 				 "write delegation exists on different client"
 				 " conflict");
@@ -104,7 +106,7 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 		}
 		break;
 	case STATE_TYPE_SHARE:
-		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_READ
+		if (deleg_entry->sle_state->state_data.deleg.sd_type == OPEN_DELEGATE_READ
 		    && candidate_data->share.share_access
 		    & OPEN4_SHARE_ACCESS_WRITE) {
 			LogDebug(COMPONENT_STATE, "Read delegation exists. "
@@ -112,7 +114,7 @@ static bool check_deleg_conflict(state_t *state, state_type_t candidate_type,
 				 " conflict");
 			return true;
 		}
-		if (state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
+		if (deleg_entry->sle_state->state_data.deleg.sd_type == OPEN_DELEGATE_WRITE) {
 			LogDebug(COMPONENT_STATE, "Write delegation exists. "
 				 " New share is with diff client. conflict.");
 			return true;
@@ -279,7 +281,7 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 				LogDebug(COMPONENT_STATE, "Wrong state type");
 				continue;
 			}
-			if (check_deleg_conflict(piter_state, state_type,
+			if (check_deleg_conflict(piter_lock, state_type,
 						 state_data, owner_input)) {
 				int rc = async_delegrecall(general_fridge, entry);
 				if (rc != 0) {
