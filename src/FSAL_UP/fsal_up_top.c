@@ -1386,6 +1386,8 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 	}
 	pthread_mutex_unlock(&clid->cid_mutex);
 
+	// sri is going to look into not using this function but referencing it some other way.
+	// jv doesn't think this belongs in clientid level
 	chan = nfs_rpc_get_chan(clid, NFS_RPC_FLAG_NONE);
 	if (!chan) {
 		LogCrit(COMPONENT_NFS_CB, "nfs_rpc_get_chan failed");
@@ -1420,7 +1422,7 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 			    clid->cid_cb.v40.cb_callback_ident, "brrring!!!",
 			    10);
 
-	memset(argop, 0, sizeof(nfs_cb_argop4));
+	//memset(argop, 0, sizeof(nfs_cb_argop4));
 	argop->argop = NFS4_OP_CB_RECALL;
 	argop->nfs_cb_argop4_u.opcbrecall.stateid.seqid =
 	    deleg_entry->sle_state->state_seqid;
@@ -1444,10 +1446,11 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 				entry->obj_handle,
 				exp)) {
 		code = NFS_CB_CALL_ABORTED;
+		// add a debug statement here.
 		goto out;
 	}
 
-	/* add ops, till finished (dont exceed count) */
+	/* add ops */ // sri will look into this.
 	cb_compound_add_op(&call->cbt, argop);
 
 	/* set completion hook */
@@ -1472,6 +1475,9 @@ out:
 	if (clid != NULL)
                 dec_client_id_ref(clid);
 
+	//remove switch and make needs_revoke dependent on whether nfs_rpc_submit_call() was sent or not.
+
+	// don't look at call states here.
 	switch (code) {
 	case NFS_CB_CALL_FINISHED:
 		break;
@@ -1649,6 +1655,8 @@ state_status_t delegrecall_impl(cache_entry_t *entry)
 	uint32_t *deleg_state = NULL;
 	struct cf_deleg_stats *clfl_stats = NULL;
 
+	// MOVE THE STATE LOCK TO THIS LOCATION
+
 	LogDebug(COMPONENT_FSAL_UP,
 		 "FSAL_UP_DELEG: Invalidate cache found entry %p type %u",
 		 entry, entry->type);
@@ -1662,10 +1670,11 @@ state_status_t delegrecall_impl(cache_entry_t *entry)
 		deleg_state =
 			&deleg_entry->sle_state->state_data.deleg.sd_state;
 		if (*deleg_state != DELEG_GRANTED) {
-			pthread_mutex_unlock(&deleg_entry->sle_mutex);
-			LogDebug(COMPONENT_FSAL_UP,
+			//			pthread_mutex_unlock(&deleg_entry->sle_mutex);
+			LogDebug(COMPONENT_FSAL_UP, // put mor information about the entry that is continuing and being recalled. clientid, inode info
 				 "Delegation already being recalled, NOOP");
-			return rc;
+			continue;
+			//			return rc;
 		}
 		*deleg_state = DELEG_RECALL_WIP;
 		clfl_stats->cfd_r_time = time(NULL);
@@ -1673,9 +1682,9 @@ state_status_t delegrecall_impl(cache_entry_t *entry)
 		rc = delegrecall_one(deleg_entry);
 
 		/* break in case of write delegation, there will be only one */
-		if (deleg_entry->sle_state->state_data.deleg.sd_type ==
-							OPEN_DELEGATE_WRITE)
-			break;
+		//if (deleg_entry->sle_state->state_data.deleg.sd_type ==
+		//					OPEN_DELEGATE_WRITE)
+		//	break;
 	}
 	return rc;
 }
@@ -1701,7 +1710,7 @@ state_status_t delegrecall(struct fsal_module *fsal,
 		 * in cache in a cluster. */
 		return rc;
 	}
-
+	
 	PTHREAD_RWLOCK_wrlock(&entry->state_lock);
 	rc = delegrecall_impl(entry);
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);

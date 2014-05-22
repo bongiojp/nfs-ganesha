@@ -512,6 +512,7 @@ int up_async_delegrecall(struct fridgethr *fr,
 	args = gsh_malloc(sizeof(struct delegrecall_args) + handle->len);
 	if (!args) {
 		rc = ENOMEM;
+		// get rid of out. not necessary here.
 		goto out;
 	}
 
@@ -527,7 +528,7 @@ int up_async_delegrecall(struct fridgethr *fr,
 
 	rc = fridgethr_submit(fr, up_queue_delegrecall, args);
  out:
-
+	
 	if (rc != 0 && args)
 		gsh_free(args);
 
