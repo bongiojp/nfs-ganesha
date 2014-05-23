@@ -1244,9 +1244,7 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 		tdentry = glist_entry(glist, state_lock_entry_t, sle_list);
 		if (deleg_ctx->deleg_entry == tdentry &&
 		    tdentry->sle_type == LEASE_LOCK &&
-		    !memcmp(&ctx_stateid,
-			    &tdentry-> sle_state->state_data.deleg.sd_stateid,
-			    sizeof(stateid4))) {
+		    SAME_STATEID(&ctx_stateid, tdentry->sle_state)) {
 			deleg_entry = tdentry;
 			break;
 		}
@@ -1450,8 +1448,7 @@ static uint32_t delegrecall_one(state_lock_entry_t *deleg_entry)
 	p_cargs->clid = clid;
 	p_cargs->entry = entry;
 	p_cargs->deleg_entry = deleg_entry;
-	p_cargs->sd_stateid =
-			deleg_entry->sle_state->state_data.deleg.sd_stateid;
+	COPY_STATEID(&p_cargs->sd_stateid, deleg_entry->sle_state);
 	nfs_rpc_submit_call(call, p_cargs, NFS_RPC_CALL_NONE);
 	code = call->states;
 	maxfh = NULL; /* avoid free */
@@ -1527,10 +1524,7 @@ static void delegrevoke_check(struct fridgethr_context *ctx)
 		deleg_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 		if (deleg_ctx->deleg_entry == deleg_entry &&
 			deleg_entry->sle_type == LEASE_LOCK &&
-			!memcmp(&ctx_stateid,
-				&deleg_entry->
-				       sle_state->state_data.deleg.sd_stateid,
-					sizeof(stateid4))) {
+			SAME_STATEID(&ctx_stateid, deleg_entry->sle_state)) {
 			if (eval_deleg_revoke(deleg_ctx->deleg_entry)) {
 				LogDebug(COMPONENT_STATE,
 					"Revoking delegation(%p)", deleg_entry);
@@ -1581,10 +1575,7 @@ static void delegrecall_task(struct fridgethr_context *ctx)
 		deleg_entry = glist_entry(glist, state_lock_entry_t, sle_list);
 		if (deleg_ctx->deleg_entry == deleg_entry &&
 			deleg_entry->sle_type == LEASE_LOCK &&
-			!memcmp(&ctx_stateid,
-				&deleg_entry->
-				       sle_state->state_data.deleg.sd_stateid,
-					sizeof(stateid4))) {
+			SAME_STATEID(&ctx_stateid, deleg_entry->sle_state)) {
 			delegrecall_one(deleg_entry);
 			break;
 		} else {
@@ -1607,7 +1598,7 @@ static int schedule_delegrecall_task(state_lock_entry_t *deleg_entry)
 
 	ctx->entry = deleg_entry->sle_entry;
 	ctx->deleg_entry = deleg_entry;
-	ctx->sd_stateid = deleg_entry->sle_state->state_data.deleg.sd_stateid;
+	COPY_STATEID(&ctx->sd_stateid, deleg_entry->sle_state);
 
 	rc = fridgethr_submit(general_fridge, delegrecall_task, ctx);
 	return rc;
@@ -1622,7 +1613,7 @@ static int schedule_delegrevoke_check(state_lock_entry_t *deleg_entry)
 
 	ctx->entry = deleg_entry->sle_entry;
 	ctx->deleg_entry = deleg_entry;
-	ctx->sd_stateid = deleg_entry->sle_state->state_data.deleg.sd_stateid;
+	COPY_STATEID(&ctx->sd_stateid, deleg_entry->sle_state);
 
 	rc = fridgethr_submit(general_fridge, delegrevoke_check, ctx);
 	return rc;
