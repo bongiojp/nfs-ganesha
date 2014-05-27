@@ -318,6 +318,7 @@ void get_deleg_perm(cache_entry_t *entry, nfsace4 *permissions,
  * NFS4ERR_REVOKED or NFS4ERR_EXPIRED
  *
  * @param[in] deleg state lock entry.
+ * Should be called with state lock held.
  */
 state_status_t deleg_revoke(state_lock_entry_t *deleg_entry)
 {
@@ -326,16 +327,7 @@ state_status_t deleg_revoke(state_lock_entry_t *deleg_entry)
 	struct root_op_context root_op_context;
 	state_owner_t *clientowner = NULL;
 	fsal_lock_param_t lock_desc;
-	struct nfs_client_id_t *clid = NULL;
-	state_t *deleg_state;
-
-	uint32_t code =
-		nfs_client_id_get_confirmed(deleg_entry->sle_owner->so_owner.
-					    so_nfs4_owner.so_clientid, &clid);
-	if (code != CLIENT_ID_SUCCESS) {
-		LogCrit(COMPONENT_NFS_V4_LOCK, "No clid record  code %d", code);
-		return STATE_NOT_FOUND;
-	}
+	state_t *deleg_state = NULL;
 
 	init_root_op_context(&root_op_context, NULL, NULL,
 			     0, 0, UNKNOWN_REQUEST);
@@ -345,8 +337,13 @@ state_status_t deleg_revoke(state_lock_entry_t *deleg_entry)
 	root_op_context.req_ctx.fsal_export =
 			deleg_entry->sle_state->state_export->fsal_export;
 
-	clientowner = &clid->cid_owner;
+	deleg_state = deleg_entry->sle_state;
+	clientowner = deleg_entry->sle_owner;
 	pentry = deleg_entry->sle_entry;
+	root_op_context.req_ctx.clientid =
+				&deleg_entry->sle_owner->
+				so_owner.so_nfs4_owner.
+				so_clientid;
 
 	lock_desc.lock_type = FSAL_LOCK_R;  /* doesn't matter for unlock */
 	lock_desc.lock_start = 0;
@@ -354,16 +351,16 @@ state_status_t deleg_revoke(state_lock_entry_t *deleg_entry)
 	lock_desc.lock_sle_type = FSAL_LEASE_LOCK;
 
 	deleg_state = deleg_entry->sle_state;
-	state_status = state_unlock(pentry, &root_op_context.req_ctx,
-				    clientowner, deleg_state,
-				    &lock_desc, deleg_entry->sle_type);
+	state_status = state_unlock_locked(pentry, &root_op_context.req_ctx,
+					   clientowner, deleg_state,
+					   &lock_desc, deleg_entry->sle_type);
 
 	if (state_status != STATE_SUCCESS) {
 		LogDebug(COMPONENT_NFS_V4_LOCK, "state unlock failed: %d",
 			 state_status);
 	}
 
-	state_del(deleg_state, false);
+	state_del_locked(deleg_state, pentry);
 
 	return STATE_SUCCESS;
 }
