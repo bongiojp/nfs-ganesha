@@ -50,6 +50,7 @@
 #include "cache_inode_lru.h"
 #include "export_mgr.h"
 #include "nfs_rpc_callback.h"
+#include "fsal_up.h"
 
 /**
  * @brief Initialize new delegation state as argument for state_add()
@@ -170,6 +171,7 @@ bool init_deleg_heuristics(cache_entry_t *entry)
 	statistics->fds_avg_hold = 0;
 	statistics->fds_num_opens = 0;
 	statistics->fds_first_open = 0;
+	statistics->anon_ops = 0;
 
 	return true;
 }
@@ -405,4 +407,42 @@ void state_deleg_revoke(state_t *state, cache_entry_t *entry)
 	 * be completely abstracted out inside delegation state itself.
 	 */
 	state_del_locked(state, entry);
+}
+
+/* returns STATE_SUCCESS if a new state or operation that WRITEs or READs
+ * data will conflict with a delegation. */
+state_status_t deleg_conflict(cache_entry_t *entry, bool write) {
+	state_status_t status = STATE_SUCCESS;
+	struct file_deleg_stats *deleg_data;
+
+	if (entry->type == REGULAR_FILE
+	    && op_ctx->fsal_export->ops->fs_supports(
+						op_ctx->fsal_export,
+						fso_delegations)
+	    && (op_ctx->export_perms->options &
+		EXPORT_OPTION_DELEGATIONS)) {
+		deleg_data = &entry->object.file.fdeleg_stats;
+		if (deleg_data->fds_curr_delegations > 0
+		    && ((deleg_data->fds_deleg_type == OPEN_DELEGATE_READ
+			 && write)
+			|| (deleg_data->fds_deleg_type == OPEN_DELEGATE_WRITE))
+		    ) {
+			LogDebug(COMPONENT_STATE,
+				 "While trying to perform a %s op, found a "
+				 "conflicting %s delegation",
+				 write ? "write" : "read",
+				 (deleg_data->fds_deleg_type
+				  == OPEN_DELEGATE_WRITE) ? "WRITE" : "READ");
+			status = STATE_FSAL_DELAY;
+		}
+		if (status == STATE_FSAL_DELAY) {
+			status = async_delegrecall(general_fridge, entry);
+			if (status != 0)
+				LogCrit(COMPONENT_STATE,
+					"Failed to start thread to recall "
+					"delegation from conflicting v3 "
+					"operation.");
+		}
+	}
+	return status;
 }

@@ -641,8 +641,13 @@ state_status_t state_share_anonymous_io_start(cache_entry_t *entry,
 					    share_access,
 					    OPEN4_SHARE_DENY_NONE,
 					    bypass);
+	status = deleg_conflict(entry,
+				(share_access & OPEN4_SHARE_ACCESS_WRITE) > 0);
 
 	if (status == STATE_SUCCESS) {
+		/* update a counter that says we are processing an anonymous request
+		 * and can't currently grant a new delegation */
+		entry->object.file.fdeleg_stats.anon_ops++;
 		/* Temporarily bump the access counters, v4 mode doesn't matter
 		 * since there is no deny mode associated with anonymous I/O.
 		 */
@@ -672,6 +677,9 @@ void state_share_anonymous_io_done(cache_entry_t *entry, int share_access)
 	state_share_update_counter(entry, share_access, OPEN4_SHARE_DENY_NONE,
 				   OPEN4_SHARE_ACCESS_NONE,
 				   OPEN4_SHARE_DENY_NONE, false);
+
+	entry->object.file.fdeleg_stats.anon_ops--;
+	assert(entry->object.file.fdeleg_stats.anon_ops >= 0);
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 }

@@ -596,6 +596,7 @@ bool update_delegation_stats(state_lock_entry_t *deleg_entry);
 state_status_t delegrecall_impl(cache_entry_t *entry);
 state_status_t deleg_revoke(state_lock_entry_t *deleg_entry);
 void state_deleg_revoke(state_t *state, cache_entry_t *entry);
+state_status_t deleg_conflict(cache_entry_t *entry, bool write);
 
 #ifdef DEBUG_SAL
 void dump_all_states(void);
