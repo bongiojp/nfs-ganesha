@@ -47,6 +47,7 @@
 #include "nfs_proto_functions.h"
 #include "nfs_convert.h"
 #include "nfs_proto_tools.h"
+#include "sal_functions.h"
 
 /**
  * @brief The NFSPROC3_SETATTR
@@ -76,6 +77,7 @@ int nfs3_setattr(nfs_arg_t *arg,
 	};
 	cache_inode_status_t cache_status;
 	int rc = NFS_REQ_OK;
+	bool locked;
 
 	if (isDebug(COMPONENT_NFSPROTO)) {
 		char str[LEN_FH_STR];
@@ -145,9 +147,18 @@ int nfs3_setattr(nfs_arg_t *arg,
 		 */
 		squash_setattr(&setattr);
 
-		cache_status = cache_inode_setattr(entry,
-						   &setattr,
-						   false);
+		/* Check if v4 delegations conflict with v3 op */
+		if (v3_deleg_conflict(entry, 1, &locked) == STATE_FSAL_DELAY) {
+			res->res_setattr3.status = NFS3ERR_JUKEBOX;
+			rc = NFS_REQ_OK;
+			goto out;
+		}
+
+		cache_status = cache_inode_setattr(entry, &setattr, false);
+
+		/* If entry was locked during delegation check, unlock here. */
+		if (locked)
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
 		if (cache_status != CACHE_INODE_SUCCESS)
 			goto out_fail;

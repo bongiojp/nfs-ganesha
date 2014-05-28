@@ -169,6 +169,8 @@ int nfs3_rename(nfs_arg_t *arg,
 		goto out_fail;
 	}
 
+	// How do we insure that delegations are not broken by this?
+
 	cache_status = cache_inode_rename(parent_entry,
 					  entry_name,
 					  new_parent_entry,

@@ -47,6 +47,7 @@
 #include "nfs_convert.h"
 #include "server_stats.h"
 #include "export_mgr.h"
+#include "sal_functions.h"
 
 static void nfs_read_ok(struct svc_req *req,
 			nfs_res_t *res,
@@ -101,7 +102,7 @@ int nfs3_read(nfs_arg_t *arg,
 	void *data = NULL;
 	bool eof_met = false;
 	int rc = NFS_REQ_OK;
-	bool sync = false;
+	bool sync = false, locked;
 
 	if (isDebug(COMPONENT_NFSPROTO)) {
 		char str[LEN_FH_STR];
@@ -206,6 +207,13 @@ int nfs3_read(nfs_arg_t *arg,
 		size = op_ctx->export->MaxRead;
 	}
 
+	/* Check if v4 delegations conflict with v3 op */
+	if (v3_deleg_conflict(entry, 0, &locked) == STATE_FSAL_DELAY) {
+		res->res_read3.status = NFS3ERR_JUKEBOX;
+		rc = NFS_REQ_OK;
+		goto out;
+	}
+
 	if (size == 0) {
 		nfs_read_ok(req, res, NULL, 0, entry, 0);
 		rc = NFS_REQ_OK;
@@ -234,6 +242,10 @@ int nfs3_read(nfs_arg_t *arg,
 		}
 		gsh_free(data);
 	}
+
+	/* If entry was locked during delegation check, unlock here. */
+	if (locked)
+		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
 	/* If we are here, there was an error */
 	if (nfs_RetryableError(cache_status)) {

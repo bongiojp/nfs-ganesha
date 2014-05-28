@@ -60,6 +60,7 @@ int nlm4_Lock(nfs_arg_t *args,
 	state_block_data_t *pblock_data;
 	const char *proc_name = "nlm4_Lock";
 	care_t care = CARE_MONITOR;
+	bool locked;
 
 	if (req->rq_proc == NLMPROC4_NM_LOCK) {
 		/* If call is a NM lock, indicate that we care about NLM
@@ -126,6 +127,15 @@ int nlm4_Lock(nfs_arg_t *args,
 			 lock_result_str(res->res_nlm4.stat.stat));
 		return NFS_REQ_OK;
 	}
+
+	/* Check if v4 delegations conflict with v3 op */
+	if (v3_deleg_conflict(entry, 0, &locked) == STATE_FSAL_DELAY) {
+		res->res_nlm4.stat.stat = NFS3ERR_JUKEBOX;
+		return NFS_REQ_OK;
+	}
+	/* If entry was locked during delegation check, unlock here. */
+	if (locked)
+		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 
 	/* Cast the state number into a state pointer to protect
 	 * locks from a client that has rebooted from the SM_NOTIFY

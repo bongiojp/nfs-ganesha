@@ -49,6 +49,7 @@
 #include "nlm_util.h"
 #include "cache_inode_lru.h"
 #include "export_mgr.h"
+#include "fsal_up.h"
 
 /**
  * @brief Initialize new delegation state as argument for state_add()
@@ -415,4 +416,48 @@ void state_deleg_revoke(state_t *state, cache_entry_t *entry)
 	 * be completely abstracted out inside delegation state itself.
 	 */
 	state_del_locked(state, entry);
+}
+
+state_status_t v3_deleg_conflict(cache_entry_t *entry, bool write, bool *locked) {
+	state_status_t status = STATE_SUCCESS;
+	struct glist_head *glist = NULL, *glistn = NULL;
+	state_lock_entry_t *piter_lock;
+	state_t *piter_state = NULL;
+
+	*locked = false;
+	if (entry->type == REGULAR_FILE
+	    && op_ctx->fsal_export->ops->fs_supports(
+						op_ctx->fsal_export,
+						fso_delegations)
+	    && (op_ctx->export_perms->options &
+		EXPORT_OPTION_DELEGATIONS)) {
+		*locked = true;
+		PTHREAD_RWLOCK_rdlock(&entry->state_lock);
+		glist_for_each_safe(glist, glistn,
+				    &entry->object.file.deleg_list) {
+			piter_lock = glist_entry(glist, state_lock_entry_t,
+						 sle_list);
+			piter_state = piter_lock->sle_state;
+			if (write) {
+				status = STATE_FSAL_DELAY;
+				break;
+			}
+			if (!write && piter_state->state_data.deleg.sd_type
+			    == OPEN_DELEGATE_WRITE) {
+				status = STATE_FSAL_DELAY;
+				break;
+			}
+		}
+		if (status == STATE_FSAL_DELAY) {
+			*locked = false;
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
+			status = async_delegrecall(general_fridge, entry);
+			if (status != 0)
+				LogCrit(COMPONENT_STATE,
+					"Failed to start thread to recall "
+					"delegation from conflicting v3 "
+					"operation.");
+		}
+	}
+	return status;
 }

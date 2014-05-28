@@ -45,6 +45,7 @@
 #include "nfs_proto_functions.h"
 #include "nfs_convert.h"
 #include "nfs_proto_tools.h"
+#include "sal_functions.h"
 
 /**
  *
@@ -76,6 +77,7 @@ int nfs3_remove(nfs_arg_t *arg,
 	cache_inode_status_t cache_status;
 	const char *name = arg->arg_remove3.object.name;
 	int rc = NFS_REQ_OK;
+	bool locked;
 
 	if (isDebug(COMPONENT_NFSPROTO)) {
 		char str[LEN_FH_STR];
@@ -138,11 +140,23 @@ int nfs3_remove(nfs_arg_t *arg,
 		}
 	}
 
+	/* Check if v4 delegations conflict with v3 op */
+	if (v3_deleg_conflict(child_entry, 1, &locked)
+	    == STATE_FSAL_DELAY) {
+		res->res_remove3.status = NFS3ERR_JUKEBOX;
+		rc = NFS_REQ_OK;
+		goto out;
+	}
+
 	LogFullDebug(COMPONENT_NFSPROTO,
 		     "==== NFS REMOVE ====> Trying to remove" " file %s", name);
 
 	/* Remove the entry. */
 	cache_status = cache_inode_remove(parent_entry, name);
+
+	/* If entry was locked during delegation check, unlock here. */
+	if (locked)
+		PTHREAD_RWLOCK_unlock(&child_entry->state_lock);
 
 	if (cache_status != CACHE_INODE_SUCCESS)
 		goto out_fail;

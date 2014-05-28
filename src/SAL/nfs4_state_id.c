@@ -851,9 +851,7 @@ nfsstat4 nfs4_check_special_stateid(cache_entry_t *entry, const char *tag,
 			break;
 
 		case STATE_TYPE_DELEG:
-			/** @todo FSF: should check for conflicting delegations,
-			 *  may need to recall
-			 */
+			/* Skip, will check for conflicting delegations later */
 			break;
 
 		case STATE_TYPE_LAYOUT:

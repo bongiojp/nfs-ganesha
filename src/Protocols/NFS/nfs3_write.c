@@ -49,6 +49,7 @@
 #include "nfs_proto_tools.h"
 #include "server_stats.h"
 #include "export_mgr.h"
+#include "sal_functions.h"
 
 /**
  *
@@ -82,7 +83,7 @@ int nfs3_write(nfs_arg_t *arg,
 	uint64_t offset = 0;
 	void *data = NULL;
 	bool eof_met = false;
-	bool sync = false;
+	bool sync = false, locked;
 	int rc = NFS_REQ_OK;
 	fsal_status_t fsal_status;
 
@@ -217,14 +218,30 @@ int nfs3_write(nfs_arg_t *arg,
 		size = op_ctx->export->MaxWrite;
 	}
 
+	/* Check if v4 delegations conflict with v3 op */
+	if (v3_deleg_conflict(entry, 1, &locked) == STATE_FSAL_DELAY) {
+		res->res_write3.status = NFS3ERR_JUKEBOX;
+		rc = NFS_REQ_OK;
+		goto out;
+	}
+
 	if (size == 0) {
 		cache_status = CACHE_INODE_SUCCESS;
 		written_size = 0;
+
+		/* If entry was locked during delegation check, unlock here. */
+		if (locked)
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
 	} else {
 		/* An actual write is to be made, prepare it */
 		cache_status =
 		    cache_inode_rdwr(entry, CACHE_INODE_WRITE, offset, size,
 				     &written_size, data, &eof_met, &sync);
+
+		/* If entry was locked during delegation check, unlock here. */
+		if (locked)
+			PTHREAD_RWLOCK_unlock(&entry->state_lock);
+
 		if (cache_status == CACHE_INODE_SUCCESS) {
 			/* Build Weak Cache Coherency data */
 			nfs_SetWccData(NULL, entry,
