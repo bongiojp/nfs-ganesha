@@ -1035,37 +1035,22 @@ static state_status_t subtract_deleg_from_list(cache_entry_t *entry,
 					       struct glist_head *list)
 {
 	state_lock_entry_t *found_entry;
-	struct glist_head *glist, *glistn, remove_list;;
+	struct glist_head *glist, *glistn;
 	state_status_t status = STATE_SUCCESS;
 
 	*removed = false;
-	glist_init(&remove_list);
-
 	glist_for_each_safe(glist, glistn, list) {
 		found_entry = glist_entry(glist, state_lock_entry_t, sle_list);
-		if (owner != NULL
-		    && different_owners(found_entry->sle_owner, owner))
-			continue;
+		if (found_entry->sle_state == state) {
+			/* Remove each deleg lock entry from deleg_list. */
+			glist_del(&found_entry->sle_list);
+			
+			/* Then free the lock entry */
+			lock_entry_dec_ref(found_entry);
 
-		if (found_entry->sle_type != LEASE_LOCK)
-			continue;
-
-		if (state != NULL && found_entry->sle_state == state)
-			continue;
-
-		/* Make a list of all matching delegation locks. Should be
-		 * only one? */
-		glist_add_tail(&remove_list, &(found_entry->sle_list));
-		*removed = true;
-	}
-	glist_for_each_safe(glist, glistn, &remove_list) {
-		found_entry =
-			glist_entry(glist, state_lock_entry_t, sle_list);
-		/* Remove each deleg lock entry from deleg_list. */
-		glist_del(&found_entry->sle_list);
-
-		/* Then free the lock entry */
-		lock_entry_dec_ref(found_entry);
+			*removed = true;
+			break;
+		}
 	}
 	return status;
 }
