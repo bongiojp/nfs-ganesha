@@ -1018,7 +1018,7 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 
 	/* Decide if we should delegate, then add it. */
 	if (nfs_param.nfsv4_param.allow_delegations &&
-	    data->current_entry->type != DIRECTORY
+	    data->current_entry->type == REGULAR_FILE
 	    && data->req_ctx->fsal_export->ops->fs_supports(
 						data->req_ctx->fsal_export,
 						fso_delegations)
