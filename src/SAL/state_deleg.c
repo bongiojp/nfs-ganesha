@@ -325,6 +325,19 @@ state_status_t deleg_revoke(state_lock_entry_t *deleg_entry)
 	deleg_state = deleg_entry->sle_state;
 	clientowner = deleg_entry->sle_owner;
 	pentry = deleg_entry->sle_entry;
+
+	/* Allocation of a new file handle */
+	if (nfs4_AllocateFH(&fhandle) != NFS4_OK) {
+		LogDebug(COMPONENT_NFS_V4_LOCK, "nfs4_AllocateFH failed");
+		return NFS4ERR_SERVERFAULT;
+	}
+
+	/* Building a new fh ; Ignore return code, should not fail*/
+	(void) nfs4_FSALToFhandle(&fhandle,
+				  pentry->obj_handle,
+				  deleg_state->state_export);
+
+	/* Put the revoked delegation on the stable storage. */
 	root_op_context.req_ctx.clientid =
 				&deleg_entry->sle_owner->
 				so_owner.so_nfs4_owner.
@@ -348,23 +361,9 @@ state_status_t deleg_revoke(state_lock_entry_t *deleg_entry)
 			 state_status);
 	}
 
-	/* Allocation of a new file handle */
-	if (nfs4_AllocateFH(&fhandle) != NFS4_OK) {
-		LogDebug(COMPONENT_NFS_V4_LOCK, "nfs4_AllocateFH failed");
-		return NFS4ERR_SERVERFAULT;
-	}
-
-	pthread_mutex_lock(&deleg_entry->sle_mutex);
-	deleg_entry->sle_state->state_data.deleg.sd_state = DELEG_REVOKED;
-	/* Building a new fh ; Ignore return code, should not fail*/
-	(void) nfs4_FSALToFhandle(&fhandle,
-				  deleg_entry->sle_entry->obj_handle,
-				  deleg_entry->sle_state->state_export);
 	/* Put the revoked delegation on the stable storage. */
 	nfs4_record_revoke(clid, &fhandle);
-	pthread_mutex_unlock(&deleg_entry->sle_mutex);
 	state_del_locked(deleg_state, pentry);
-	gsh_free(fhandle.nfs_fh4_val);
 
 	gsh_free(fhandle.nfs_fh4_val);
 	return STATE_SUCCESS;
