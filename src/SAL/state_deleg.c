@@ -326,6 +326,9 @@ state_status_t deleg_revoke(state_lock_entry_t *deleg_entry)
 	lock_desc.lock_sle_type = FSAL_LEASE_LOCK;
 
 	deleg_state = deleg_entry->sle_state;
+
+	deleg_heuristics_recall(deleg_entry);
+
 	state_status = state_unlock_locked(pentry, &root_op_context.req_ctx,
 					   clientowner, deleg_state,
 					   &lock_desc, deleg_entry->sle_type);
