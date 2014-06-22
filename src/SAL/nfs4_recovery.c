@@ -685,8 +685,7 @@ static int nfs4_read_recov_clids(DIR *dp,
 	int total_tgt_len;
 	int total_clid_len;
 
-	dentp = readdir(dp);
-	while (dentp != NULL) {
+	for (dentp = readdir(dp); dentp != NULL; dentp = readdir(dp)) {
 		/* don't add '.' and '..' entry */
 		if (!strcmp(dentp->d_name, ".") || !strcmp(dentp->d_name, ".."))
 			continue;
@@ -766,7 +765,6 @@ static int nfs4_read_recov_clids(DIR *dp,
 				/* this shouldn't happen, but we should skip
 				 * the entry to avoid infinite loops
 				 */
-				dentp = readdir(dp);
 				continue;
 			}
 
@@ -807,7 +805,6 @@ static int nfs4_read_recov_clids(DIR *dp,
 						"invalid clid format: %s, too long",
 						build_clid);
 					free_heap(path, NULL, build_clid);
-					dentp = readdir(dp);
 					continue;
 				}
 				ptr = strchr(build_clid, '(');
@@ -816,7 +813,6 @@ static int nfs4_read_recov_clids(DIR *dp,
 						 "invalid clid format: %s",
 						 build_clid);
 					free_heap(path, NULL, build_clid);
-					dentp = readdir(dp);
 					continue;
 				}
 				ptr2 = strchr(ptr, ':');
@@ -825,7 +821,6 @@ static int nfs4_read_recov_clids(DIR *dp,
 						 "invalid clid format: %s",
 						 build_clid);
 					free_heap(path, NULL, build_clid);
-					dentp = readdir(dp);
 					continue;
 				}
 				len = ptr2-ptr-1;
@@ -834,7 +829,6 @@ static int nfs4_read_recov_clids(DIR *dp,
 						 "invalid clid format: %s",
 						 build_clid);
 					free_heap(path, NULL, build_clid);
-					dentp = readdir(dp);
 					continue;
 				}
 				strncpy(temp, ptr+1, len);
@@ -879,7 +873,6 @@ static int nfs4_read_recov_clids(DIR *dp,
 			}
 			gsh_free(path);
 		}
-		dentp = readdir(dp);
 	}
 
 	return num;
