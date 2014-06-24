@@ -1144,6 +1144,14 @@ void nfs4_record_revoke(nfs_client_id_t *delr_clid, nfs_fh4 *delr_handle)
 	int length, position = 0;
 	int fd;
 
+	/* If client is expired, no need to record the revoked file handle */
+	pthread_mutex_lock(&delr_clid->cid_mutex);
+	if (delr_clid->cid_confirmed == EXPIRED_CLIENT_ID) {
+		pthread_mutex_unlock(&delr_clid->cid_mutex);
+		return;
+	}
+	pthread_mutex_unlock(&delr_clid->cid_mutex);
+
 	/* Make sure that handle size is not greather than NAME_MAX */
 	assert(2 * delr_handle->nfs_fh4_len < NAME_MAX);
 	/* Convert nfs_fh4_val into a human readable string */

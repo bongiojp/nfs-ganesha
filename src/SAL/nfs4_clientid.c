@@ -323,6 +323,13 @@ void free_client_id(nfs_client_id_t *clientid)
 			nfs41_Session_Del(session->session_id);
 		}
 	}
+
+	if (clientid->cid_recov_dir != NULL) {
+		nfs4_rm_clid(clientid->cid_recov_dir, v4_recov_dir, 0);
+		gsh_free(clientid->cid_recov_dir);
+		clientid->cid_recov_dir = NULL;
+	}
+
 	pool_free(client_id_pool, clientid);
 }
 
@@ -992,12 +999,6 @@ bool nfs_client_id_expire(nfs_client_id_t *clientid)
 					"Expire session failed");
 			}
 		}
-	}
-
-	if (clientid->cid_recov_dir != NULL) {
-		nfs4_rm_clid(clientid->cid_recov_dir, v4_recov_dir, 0);
-		gsh_free(clientid->cid_recov_dir);
-		clientid->cid_recov_dir = NULL;
 	}
 
 	if (isFullDebug(COMPONENT_CLIENTID)) {
