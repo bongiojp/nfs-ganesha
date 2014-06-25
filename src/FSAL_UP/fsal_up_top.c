@@ -1236,6 +1236,8 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 		break;
 	default:
 		LogDebug(COMPONENT_NFS_CB, "%p unknown hook %d", call, hook);
+
+		set_cb_chan_down(clientid, true);
 		/* Mark the recall as failed */
 		resp_act = DELEG_RECALL_SCHED;
 		break;
