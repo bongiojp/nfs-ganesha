@@ -217,6 +217,14 @@ static nfsstat4 open4_do_open(struct nfs_argop4 *op, compound_data_t *data,
 					      data->minorversion > 0 ?
 							&refer : NULL);
 
+		/* It's possible a delegation already exists for file.
+		 * We want to just reuse the delegation in that case. */
+		if (state_status == STATE_ENTRY_EXISTS &&
+		    file_state->state_type == STATE_TYPE_DELEG) {
+			*state = file_state;
+			return nfs4_Errno_state(state_status);
+		}
+
 		if (state_status != STATE_SUCCESS)
 			return nfs4_Errno_state(state_status);
 
@@ -848,6 +856,35 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
 }
 
 
+static void finalize_deleg(OPEN4resok *resok, compound_data_t *data,
+			   state_t *new_state,
+			   open_delegation_type4 deleg_type) {
+	resok->delegation.delegation_type = deleg_type;
+	if (deleg_type == OPEN_DELEGATE_WRITE) {
+		open_write_delegation4 *writeres =
+			&resok->delegation.open_delegation4_u.write;
+		writeres->
+			space_limit.limitby = NFS_LIMIT_SIZE;
+		writeres->
+			space_limit.nfs_space_limit4_u.filesize =
+			DELEG_SPACE_LIMIT_FILESZ;
+		COPY_STATEID(&writeres->stateid, new_state);
+		writeres->recall = false;
+		get_deleg_perm(data->current_entry,
+			       &writeres->permissions,
+			       deleg_type);
+	} else {
+		assert(deleg_type == OPEN_DELEGATE_READ);
+		open_read_delegation4 *readres =
+			&resok->delegation.open_delegation4_u.read;
+		COPY_STATEID(&readres->stateid, new_state);
+		readres->recall = false;
+		get_deleg_perm(data->current_entry,
+			       &readres->permissions,
+			       deleg_type);
+	}
+}
+
 /**
  * @brief Create a new delegation state then get the delegation.
  *
@@ -962,30 +999,7 @@ static void get_delegation(compound_data_t *data, OPEN4args *args,
 			state_del_locked(new_state, new_state->state_entry);
 			return;
 		} else {
-			resok->delegation.delegation_type = deleg_type;
-			if (deleg_type == OPEN_DELEGATE_WRITE) {
-				open_write_delegation4 *writeres =
-				&resok->delegation.open_delegation4_u.write;
-				writeres->
-					space_limit.limitby = NFS_LIMIT_SIZE;
-				writeres->
-				space_limit.nfs_space_limit4_u.filesize =
-						DELEG_SPACE_LIMIT_FILESZ;
-				COPY_STATEID(&writeres->stateid, new_state);
-				writeres->recall = false;
-				get_deleg_perm(data->current_entry,
-					       &writeres->permissions,
-					       deleg_type);
-			} else {
-				assert(deleg_type == OPEN_DELEGATE_READ);
-				open_read_delegation4 *readres =
-				&resok->delegation.open_delegation4_u.read;
-				COPY_STATEID(&readres->stateid, new_state);
-				readres->recall = false;
-				get_deleg_perm(data->current_entry,
-					       &readres->permissions,
-					       deleg_type);
-			}
+			finalize_deleg(resok, data, new_state, deleg_type);
 		}
 	}
 
@@ -1444,11 +1458,25 @@ int nfs4_op_open(struct nfs_argop4 *op, compound_data_t *data,
 					  &file_state,
 					  &new_state,
 					  openflags);
-
 	if (res_OPEN4->status == NFS4_OK)
 		do_delegation(arg_OPEN4, res_OPEN4, data, owner, file_state,
 			      clientid);
+
 	PTHREAD_RWLOCK_unlock(&data->current_entry->state_lock);
+
+	/* Check if a delegation already exists and supercedes the open. */
+	if (res_OPEN4->status == NFS4ERR_EXIST &&
+	    file_state->state_type == STATE_TYPE_DELEG) {
+		res_OPEN4->OPEN4res_u.resok4.delegation.delegation_type =
+			file_state->state_data.deleg.sd_type;
+
+		finalize_deleg(&res_OPEN4->OPEN4res_u.resok4, data,
+			       file_state, file_state->state_data.deleg.sd_type);
+		LogFullDebug(COMPONENT_STATE,
+			     "NFS4 OPEN returning prev delegation and NFS4_OK");
+		res_OPEN4->status = NFS4_OK;
+		goto out;
+	}
 
 	if (res_OPEN4->status != NFS4_OK) {
 		LogDebug(COMPONENT_NFS_V4, "open4_do_open failed");

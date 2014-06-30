@@ -199,6 +199,7 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 	cache_inode_status_t cache_status;
 	bool got_pinned = false;
 	state_status_t status = 0;
+	bool conflict;
 
 	if (glist_empty(&entry->state_list)) {
 		cache_status = cache_inode_inc_pin_ref(entry);
@@ -232,7 +233,25 @@ state_status_t state_add_impl(cache_entry_t *entry, state_type_t state_type,
 	glist_for_each(glist, &entry->state_list) {
 		piter_state = glist_entry(glist, state_t, state_list);
 
-		if (state_conflict(piter_state, state_type, state_data)) {
+		conflict = state_conflict(piter_state, state_type, state_data);
+		if (conflict && piter_state->state_type == STATE_TYPE_DELEG &&
+		    state_type == STATE_TYPE_SHARE) {
+			/* If client owner is the same, then this client
+			 * which is opening the file, already has a delegation.
+			 * Let's recycle that delegation. */
+			if (owner_input->so_owner.so_nfs4_owner.so_clientid
+			    == piter_state->state_owner->so_owner.so_nfs4_owner.so_clientid
+			    && ! (piter_state->state_data.deleg.sd_type
+				  == OPEN_DELEGATE_READ && 
+				  state_data->share.share_access
+				  & OPEN4_SHARE_ACCESS_WRITE)) {
+				/* Yes! client matches. Make sure the delegation is enough
+				 * to cover this open request. */
+				status = STATE_ENTRY_EXISTS;
+				return status;
+			}
+		}
+		if (conflict) {
 			LogDebug(COMPONENT_STATE,
 				 "new state conflicts with another state for entry %p",
 				 entry);
