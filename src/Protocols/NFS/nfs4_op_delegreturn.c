@@ -66,6 +66,7 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 	DELEGRETURN4res * const res_DELEGRETURN4 =
 	    &resp->nfs_resop4_u.opdelegreturn;
 
+	cache_inode_status_t cache_status;
 	state_status_t state_status;
 	state_t *state_found;
 	state_owner_t *lock_owner;
@@ -148,6 +149,20 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 
 	deleg_heuristics_recall(found_lock);
 
+	/* Check if we have an openfd. In some cases we need this for the FSAL
+	 * unlock function to work. */
+	cache_status = cache_inode_inc_pin_ref(data->current_entry);
+	cache_status = cache_inode_open(data->current_entry, FSAL_O_READ, 0);
+	if (cache_status != CACHE_INODE_SUCCESS) {
+                res_DELEGRETURN4->status =
+			cache_inode_status_to_state_status(cache_status);
+                LogDebug(COMPONENT_STATE,
+			 "Could not get an open fd to unlock delegation.");
+                cache_inode_dec_pin_ref(data->current_entry, false);
+                goto unlock;
+        }
+
+
 	/* Now we have a lock owner and a stateid.
 	 * Go ahead and push unlock into SAL (and FSAL).
 	 */
@@ -156,6 +171,7 @@ int nfs4_op_delegreturn(struct nfs_argop4 *op, compound_data_t *data,
 					   state_found,
 					   &lock_desc,
 					   LEASE_LOCK);
+	cache_inode_dec_pin_ref(data->current_entry, false);
 	if (state_status != STATE_SUCCESS) {
 		/* Save the response in the lock owner */
 		Copy_nfs4_state_req(lock_owner,
