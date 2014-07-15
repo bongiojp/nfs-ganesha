@@ -837,6 +837,30 @@ static nfsstat4 open4_claim_null(OPEN4args *arg, compound_data_t *data,
 	return nfs_status;
 }
 
+static void fill_deleg_reply(OPEN4resok *resok,
+			     open_delegation_type4 deleg_type,
+			       state_t *deleg_state, cache_entry_t *entry) {
+	resok->delegation.delegation_type = deleg_type;
+	if (deleg_type == OPEN_DELEGATE_WRITE) {
+		open_write_delegation4 *writeres =
+			&resok->delegation.open_delegation4_u.write;
+		writeres->space_limit.limitby = NFS_LIMIT_SIZE;
+		writeres->space_limit.nfs_space_limit4_u.filesize =
+			DELEG_SPACE_LIMIT_FILESZ;
+		COPY_STATEID(&writeres->stateid, deleg_state);
+		writeres->recall = false;
+		get_deleg_perm(entry, &writeres->permissions, deleg_type);
+	} else {
+		assert(deleg_type == OPEN_DELEGATE_READ);
+		open_read_delegation4 *readres =
+			&resok->delegation.open_delegation4_u.read;
+		COPY_STATEID(&readres->stateid, deleg_state);
+		readres->recall = false;
+		get_deleg_perm(entry, &readres->permissions, deleg_type);
+	}
+}
+
+
 
 /**
  * @brief Create a new delegation state then get the delegation.
@@ -944,30 +968,8 @@ static void get_delegation(compound_data_t *data, OPEN4args *args,
 			state_del_locked(new_state, new_state->state_entry);
 			return;
 		} else {
-			resok->delegation.delegation_type = deleg_type;
-			if (deleg_type == OPEN_DELEGATE_WRITE) {
-				open_write_delegation4 *writeres =
-				&resok->delegation.open_delegation4_u.write;
-				writeres->
-					space_limit.limitby = NFS_LIMIT_SIZE;
-				writeres->
-				space_limit.nfs_space_limit4_u.filesize =
-						DELEG_SPACE_LIMIT_FILESZ;
-				COPY_STATEID(&writeres->stateid, new_state);
-				writeres->recall = false;
-				get_deleg_perm(data->current_entry,
-					       &writeres->permissions,
-					       deleg_type);
-			} else {
-				assert(deleg_type == OPEN_DELEGATE_READ);
-				open_read_delegation4 *readres =
-				&resok->delegation.open_delegation4_u.read;
-				COPY_STATEID(&readres->stateid, new_state);
-				readres->recall = false;
-				get_deleg_perm(data->current_entry,
-					       &readres->permissions,
-					       deleg_type);
-			}
+			fill_deleg_reply(resok, deleg_type, new_state,
+					   data->current_entry);
 		}
 	}
 
@@ -983,6 +985,8 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 	OPEN4resok *resok = &res_OPEN4->OPEN4res_u.resok4;
 	struct file_deleg_stats *fdeleg_stats =
 				&data->current_entry->object.file.fdeleg_stats;
+	struct glist_head *glist;
+	state_t *state_iterate;
 
 	/* This will be updated later if we actually delegate */
 	resok->delegation.delegation_type = OPEN_DELEGATE_NONE;
@@ -992,6 +996,23 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 		if (fdeleg_stats->fds_num_opens == 0)
 			fdeleg_stats->fds_first_open = time(NULL);
 		fdeleg_stats->fds_num_opens++;
+	}
+
+	glist_for_each(glist, &data->current_entry->state_list) {
+		state_iterate = glist_entry(glist, state_t, state_list);
+		if (state_iterate->state_type == STATE_TYPE_DELEG &&
+		    state_iterate->state_owner->
+		    so_owner.so_nfs4_owner.so_clientid
+		    == clientid->cid_clientid) {
+			LogFullDebug(COMPONENT_STATE,
+				     "Reusing existing DELEG state.");
+			/* We'll be re-using the found state */
+			fill_deleg_reply(resok,
+					 state_iterate->
+					 state_data.deleg.sd_type,
+					 state_iterate, data->current_entry);
+			return;
+		}
 	}
 
 	/* Decide if we should delegate, then add it. */
