@@ -61,6 +61,7 @@
 #include "abstract_atomic.h"
 #include "gsh_intrinsic.h"
 #include "server_stats.h"
+#include "sal_functions.h"
 
 /* Clients are stored in an AVL tree
  */
@@ -733,6 +734,71 @@ static struct gsh_dbus_method cltmgr_show_v41_layouts = {
 };
 
 /**
+ * DBUS method to report NFSv4.0/1 delegation statistics
+ *
+ */
+
+static bool get_nfsv4_stats_delegations(DBusMessageIter *args,
+					DBusMessage *reply,
+					DBusError *error)
+{
+	char *errormsg = "OK";
+	DBusMessageIter iter;
+	nfs_client_id_t *clientid;
+	sockaddr_t sockaddr;
+	char ip_str[INET6_ADDRSTRLEN];
+	int ret;
+	bool confirmed;
+
+	dbus_message_iter_init_append(reply, &iter);
+
+	/* Get the socket address from the dbus args */
+	if (!arg_ipaddr(args, &sockaddr, &errormsg)) {
+		errormsg = "Failed to get ip address.";
+		dbus_status_reply(&iter, false, errormsg);
+		return true;
+	}
+
+	/* Convert address to a string for comparison */
+	ret = getnameinfo((struct sockaddr *)&sockaddr, sizeof(sockaddr),
+			ip_str, sizeof(ip_str), 0, 0, NI_NUMERICHOST);
+	if (ret != 0) {
+		errormsg = "Failed to convert address to string.";
+		dbus_status_reply(&iter, false, errormsg);
+		return true;
+	}
+
+	LogDebug(COMPONENT_DBUS,
+		 "Searching for clientid that matches IP address %s", ip_str);
+
+	/* Search through hashtable for clientid with matching ip address.
+	 * Note: how does this work with ipv6? */
+	clientid = get_clientid_by_ip((char *)ip_str, &confirmed);
+	if (clientid == NULL) {
+		errormsg = "Client that matches IP was not found.";
+		dbus_status_reply(&iter, false, errormsg);
+		return true;
+	}
+
+	dbus_status_reply(&iter, true, errormsg);
+	server_dbus_v4_delegations(&clientid->cid_deleg_stats, confirmed,
+				   &iter);
+	dec_client_id_ref(clientid);
+
+	return true;
+}
+
+static struct gsh_dbus_method cltmgr_show_delegations = {
+	.name = "GetDelegations",
+	.method = get_nfsv4_stats_delegations,
+	.args = {IPADDR_ARG,
+		 STATUS_REPLY,
+		 TIMESTAMP_REPLY,
+		 LAYOUTS_REPLY,
+		 END_ARG_LIST}
+};
+
+/**
  * DBUS method to report 9p I/O statistics
  *
  */
@@ -832,6 +898,7 @@ static struct gsh_dbus_method *cltmgr_stats_methods[] = {
 	&cltmgr_show_v40_io,
 	&cltmgr_show_v41_io,
 	&cltmgr_show_v41_layouts,
+	&cltmgr_show_delegations,
 	&cltmgr_show_9p_io,
 	&cltmgr_show_9p_trans,
 	NULL

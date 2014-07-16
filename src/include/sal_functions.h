@@ -712,8 +712,7 @@ void nfs4_clean_old_recov_dir(char *);
 void nfs4_create_recov_dir(void);
 void nfs4_record_revoke(nfs_client_id_t *, nfs_fh4 *);
 bool nfs4_can_deleg_reclaim_prev(nfs_client_id_t *, nfs_fh4 *);
-
-
+nfs_client_id_t *get_clientid_by_ip(char *ip, bool *confirmed);
 #endif				/* SAL_FUNCTIONS_H */
 
 /** @} */

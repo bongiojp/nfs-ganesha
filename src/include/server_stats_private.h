@@ -40,6 +40,8 @@
 #ifndef SERVER_STATS_PRIVATE_H
 #define SERVER_STATS_PRIVATE_H
 
+#include "sal_data.h"
+
 /**
  * @brief Server request statistics
  *
@@ -195,7 +197,29 @@ struct export_stats {
 	.name = "layout_recall",\
 	.type = "(ttt)",	\
 	.direction = "out"	\
-}				\
+}
+
+#define DELEG_REPLY		       \
+{				       \
+	.name = "num_curr_delegations",\
+	.type = "(ttt)",	       \
+	.direction = "out"	       \
+},				       \
+{				       \
+	.name = "num_recalls",         \
+	.type = "(ttt)",	       \
+	.direction = "out"	       \
+},				       \
+{				       \
+	.name = "failed_recalls",      \
+	.type = "(ttt)",	       \
+	.direction = "out"	       \
+},				       \
+{				       \
+	.name = "num_revokes",         \
+	.type = "(ttt)",	       \
+	.direction = "out"	       \
+}
 
 void server_stats_summary(DBusMessageIter *iter, struct gsh_stats *st);
 void server_dbus_v3_iostats(struct nfsv3_stats *v3p, DBusMessageIter *iter);
@@ -204,6 +228,8 @@ void server_dbus_v41_iostats(struct nfsv41_stats *v41p, DBusMessageIter *iter);
 void server_dbus_v41_layouts(struct nfsv41_stats *v41p, DBusMessageIter *iter);
 void server_dbus_v42_iostats(struct nfsv41_stats *v42p, DBusMessageIter *iter);
 void server_dbus_v42_layouts(struct nfsv41_stats *v42p, DBusMessageIter *iter);
+void server_dbus_v4_delegations(struct c_deleg_stats *c_stats, bool confirmed,
+				DBusMessageIter *iter);
 void server_dbus_total_ops(struct export_stats *export_st,
 			   DBusMessageIter *iter);
 void global_dbus_total_ops(DBusMessageIter *iter);
