@@ -1613,6 +1613,45 @@ void server_dbus_v42_layouts(struct nfsv41_stats *v42p, DBusMessageIter *iter)
 	server_dbus_layouts(&v42p->recall, iter);
 }
 
+/**
+ * @brief Report delegation statistics as a struct
+ *
+ * struct c_deleg_stats {
+ *       uint32_t curr_deleg_grants;
+ *       uint32_t tot_recalls;
+ *       uint32_t failed_recalls;
+ *       uint32_t num_revokes;
+ * }
+ *
+ * @param iop   [IN] pointer to xfer op sub-structure of interest
+ * @param iter  [IN] interator in reply stream to fill
+ */
+#define dbus_contain(x)						       \
+	dbus_message_iter_open_container(iter, DBUS_TYPE_STRUCT, NULL, \
+					 &struct_iter);		       \
+	x;							       \
+	dbus_message_iter_close_container(iter, &struct_iter);
+void server_dbus_v4_delegations(struct c_deleg_stats *c_stats, bool confirmed,
+				DBusMessageIter *iter)
+{
+	struct timespec timestamp;
+	DBusMessageIter struct_iter;
+
+	now(&timestamp);
+	dbus_append_timestamp(iter, &timestamp);
+
+	dbus_contain(dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_BOOLEAN,
+						    &confirmed));
+	dbus_contain(dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
+						    &c_stats->curr_deleg_grants));
+	dbus_contain(dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
+						    &c_stats->tot_recalls));
+	dbus_contain(dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
+						    &c_stats->failed_recalls));
+	dbus_contain(dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
+						    &c_stats->num_revokes));
+}
+
 #endif				/* USE_DBUS */
 
 /**

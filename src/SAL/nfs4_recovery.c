@@ -1378,4 +1378,70 @@ static void nfs_release_v4_client(char *ip)
 	}
 }
 
+/**
+ * @brief Finds a clientid that matches a given IP address.
+ *
+ * @param[in] ip The IP address that we want a clientid for.
+ * @param[in/out] confirmed Whether the clientid found was confirmed or not.
+ *
+ * @retval Pointer to clientid if success, NULL otherwise.
+ */
+nfs_client_id_t *get_clientid_by_ip_ht(char *ip, hash_table_t *ht)
+{
+	struct rbt_head *head_rbt;
+	struct rbt_node *node;
+	struct hash_data *pdata;
+	nfs_client_id_t *cp;
+	int i;
+
+	LogMidDebug(COMPONENT_STATE, "Finding clientid byIP for ip: %s", ip);
+
+	/* go through the confirmed clients looking for a match */
+	for (i = 0; i < ht->parameter.index_size; i++) {
+
+		PTHREAD_RWLOCK_wrlock(&ht->partitions[i].lock);
+		head_rbt = &ht->partitions[i].rbt;
+
+		/* go through all entries in the red-black-tree */
+		RBT_LOOP(head_rbt, node) {
+			pdata = RBT_OPAQ(node);
+
+			cp = (nfs_client_id_t *) pdata->val.addr;
+			pthread_mutex_lock(&cp->cid_mutex);
+			if (ip_match(ip, cp)) {
+				LogMidDebug(COMPONENT_STATE,
+					    "Found matching clientid");
+				inc_client_id_ref(cp);
+				pthread_mutex_unlock(&cp->cid_mutex);
+				PTHREAD_RWLOCK_unlock(&ht->partitions[i].lock);
+				return cp;
+			} else {
+				pthread_mutex_unlock(&cp->cid_mutex);
+			}
+			RBT_INCREMENT(node);
+		}
+		PTHREAD_RWLOCK_unlock(&ht->partitions[i].lock);
+	}
+	return NULL;
+}
+
+nfs_client_id_t *get_clientid_by_ip(char *ip, bool *confirmed)
+{
+	nfs_client_id_t *clientid;
+
+	LogMidDebug(COMPONENT_STATE,
+		    "Searching for IP in confirmed client list.");
+	clientid = get_clientid_by_ip_ht(ip, ht_confirmed_client_id);
+	if (clientid != NULL) {
+		*confirmed = true;
+		return clientid;
+	}
+
+	*confirmed = false;
+	LogMidDebug(COMPONENT_STATE,
+		    "Searching for IP in unconfirmed client list.");
+	clientid = get_clientid_by_ip_ht(ip, ht_unconfirmed_client_id);
+	return clientid;
+}
+
 /** @} */
