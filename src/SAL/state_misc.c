@@ -632,6 +632,7 @@ nfsstat3 nfs3_Errno_state(state_status_t error)
 		nfserror = NFS3ERR_NOENT;
 		break;
 
+	case STATE_STATE_CONFLICT:
 	case STATE_FSAL_EACCESS:
 		nfserror = NFS3ERR_ACCES;
 		break;
@@ -721,7 +722,6 @@ nfsstat3 nfs3_Errno_state(state_status_t error)
 	case STATE_CACHE_INODE_ERR:
 	case STATE_INCONSISTENT_ENTRY:
 	case STATE_HASH_TABLE_ERROR:
-	case STATE_STATE_CONFLICT:
 	case STATE_ASYNC_POST_ERROR:
 	case STATE_STATE_ERROR:
 	case STATE_LOCK_CONFLICT:
