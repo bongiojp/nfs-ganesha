@@ -50,6 +50,7 @@
 #include "cache_inode_lru.h"
 #include "export_mgr.h"
 #include "nfs_rpc_callback.h"
+#include "server_stats.h"
 
 /**
  * @brief Initialize new delegation state as argument for state_add()
@@ -217,7 +218,6 @@ bool update_delegation_stats(struct deleg_data *deleg_entry)
 	cache_entry_t *entry = deleg_entry->dd_entry;
 	nfs_client_id_t *client = deleg_entry->dd_owner->so_owner.
 					so_nfs4_owner.so_clientrec;
-
 	/* Update delegation stats for file. */
 	struct file_deleg_stats *statistics = &entry->object.file.fdeleg_stats;
 
@@ -226,7 +226,8 @@ bool update_delegation_stats(struct deleg_data *deleg_entry)
 	statistics->fds_last_delegation = time(NULL);
 
 	/* Update delegation stats for client. */
-	atomic_inc_uint32_t(&client->cid_deleg_stats.curr_deleg_grants);
+	inc_grants(client->gsh_client);
+	atomic_inc_uint32_t(&client->curr_deleg_grants);
 
 	return true;
 }
@@ -251,6 +252,7 @@ bool deleg_heuristics_recall(struct deleg_data *deleg_entry)
 	cache_entry_t *entry = deleg_entry->dd_entry;
 	nfs_client_id_t *client = deleg_entry->dd_owner->so_owner.
 					so_nfs4_owner.so_clientrec;
+
 	/* Update delegation stats for file. */
 	struct file_deleg_stats *statistics = &entry->object.file.fdeleg_stats;
 
@@ -258,7 +260,8 @@ bool deleg_heuristics_recall(struct deleg_data *deleg_entry)
 	statistics->fds_recall_count++;
 
 	/* Update delegation stats for client. */
-	atomic_dec_uint32_t(&client->cid_deleg_stats.curr_deleg_grants);
+	dec_grants(client->gsh_client);
+	atomic_dec_uint32_t(&client->curr_deleg_grants);
 
 	/* Update delegation stats for file. */
 	statistics->fds_avg_hold = advance_avg(statistics->fds_avg_hold,
@@ -327,7 +330,6 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
 	/* specific file, all clients, stats */
 	struct file_deleg_stats *file_stats = &entry->object.file.fdeleg_stats;
 	/* specific client, all files stats */
-	struct c_deleg_stats *client_stats = &client->cid_deleg_stats;
 	open_claim_type4 claim = args->claim.claim;
 
 	LogDebug(COMPONENT_STATE, "Checking if we should grant delegation.");
@@ -382,7 +384,7 @@ bool should_we_grant_deleg(cache_entry_t *entry, nfs_client_id_t *client,
 		return false;
 
 	/* Check if this is a misbehaving or unreliable client */
-	if (client_stats->num_revokes > 2) /* more than 2 revokes */
+	if (atomic_fetch_uint32_t(&client->num_revokes) > 2) /* more than 2 revokes */
 		return false;
 
 	LogDebug(COMPONENT_STATE, "Let's delegate!!");
