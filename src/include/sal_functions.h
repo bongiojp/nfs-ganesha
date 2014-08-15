@@ -207,6 +207,7 @@ nfs_client_id_t *create_client_id(clientid4 clientid,
 				  nfs_client_record_t *client_record,
 				  sockaddr_t *client_addr,
 				  nfs_client_cred_t *credential,
+				  struct gsh_client *gsh_client,
 				  uint32_t minorversion);
 
 clientid_status_t nfs_client_id_insert(nfs_client_id_t *clientid);
@@ -275,6 +276,9 @@ nfs_client_record_t *get_client_record(const char *const value,
 				       const size_t len,
 				       const uint32_t pnfs_flags,
 				       const uint32_t server_addr);
+
+nfs_client_id_t *get_clientid_by_ip(char *ip, bool *confirmed);
+int ip_match(char *ip, nfs_client_id_t *cid);
 
 /******************************************************************************
  *
@@ -711,8 +715,6 @@ void nfs4_clean_old_recov_dir(char *);
 void nfs4_create_recov_dir(void);
 void nfs4_record_revoke(nfs_client_id_t *, nfs_fh4 *);
 bool nfs4_can_deleg_reclaim_prev(nfs_client_id_t *, nfs_fh4 *);
-
-
 #endif				/* SAL_FUNCTIONS_H */
 
 /** @} */

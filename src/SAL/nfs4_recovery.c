@@ -1293,7 +1293,7 @@ static void nfs_release_nlm_state()
 	return;
 }
 
-static int ip_match(char *ip, nfs_client_id_t *cid)
+int ip_match(char *ip, nfs_client_id_t *cid)
 {
 	LogDebug(COMPONENT_STATE, "NFS Server V4 match ip %s with (%s) or (%s)",
 		 ip, cid->cid_server_owner,
