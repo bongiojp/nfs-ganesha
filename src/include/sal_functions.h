@@ -276,6 +276,11 @@ nfs_client_record_t *get_client_record(const char *const value,
 				       const uint32_t pnfs_flags,
 				       const uint32_t server_addr);
 
+nfs_client_id_t *get_clientid_by_ip(char *ip, bool *confirmed);
+
+/* Just a helper function, but used in multiple places. */
+int ip_match(char *ip, nfs_client_id_t *cid);
+
 /******************************************************************************
  *
  * NFS4.1 Session ID functions
@@ -711,8 +716,6 @@ void nfs4_clean_old_recov_dir(char *);
 void nfs4_create_recov_dir(void);
 void nfs4_record_revoke(nfs_client_id_t *, nfs_fh4 *);
 bool nfs4_can_deleg_reclaim_prev(nfs_client_id_t *, nfs_fh4 *);
-
-
 #endif				/* SAL_FUNCTIONS_H */
 
 /** @} */
