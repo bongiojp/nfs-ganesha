@@ -1182,12 +1182,12 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 	state_status_t rc = STATE_SUCCESS;
 	struct delegrecall_context *deleg_ctx =
 				(struct delegrecall_context *) arg;
-	struct c_deleg_stats *cl_stats = NULL;
+	struct server_stats *server_stats;
+	struct c_deleg_stats *cl_stats;
 	struct deleg_data *deleg_entry, *tdentry;
 	cache_entry_t *entry = deleg_ctx->drc_entry;
 	struct glist_head *glist, *glist_n;
 	nfs_client_id_t *clientid;
-
 
 	LogDebug(COMPONENT_NFS_CB, "%p %s", call,
 		 (hook == RPC_CALL_COMPLETE) ? "Success" : "Failed");
@@ -1218,9 +1218,11 @@ static int32_t delegrecall_completion_func(rpc_call_t *call,
 
 	LogDebug(COMPONENT_NFS_CB, "deleg_entry %p", deleg_entry);
 
+	
 	clientid = deleg_entry->dd_owner->so_owner.so_nfs4_owner.so_clientrec;
-	cl_stats = &clientid->cid_deleg_stats;
-
+	server_stats = container_of(clientid->gsh_client, struct server_stats,
+				    client);
+	cl_stats = server_stats->st.deleg;
 
 	switch (hook) {
 	case RPC_CALL_COMPLETE:
@@ -1310,11 +1312,14 @@ static uint32_t delegrecall_one(struct deleg_data *deleg_entry,
 	nfs_cb_argop4 argop[1];
 	struct gsh_export *exp;
 	struct c_deleg_stats *cl_stats;
-	struct cf_deleg_stats *clfl_stats = NULL;
+	struct cf_deleg_stats *clfl_stats;
 	nfs_client_id_t *clientid;
 	clientid = deleg_entry->dd_owner->so_owner.so_nfs4_owner.so_clientrec;
-	cl_stats = &clientid->cid_deleg_stats;
 	clfl_stats = &deleg_entry->dd_state->state_data.deleg.sd_clfile_stats;
+
+	server_stats = container_of(clientid->gsh_client, struct server_stats,
+				    client);
+	cl_stats = server_stats->st.deleg;
 
 	/* record the first attempt to recall this delegation */
 	if (clfl_stats->cfd_r_time == 0)

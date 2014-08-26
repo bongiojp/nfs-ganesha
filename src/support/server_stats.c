@@ -1628,7 +1628,7 @@ void server_dbus_v42_layouts(struct nfsv41_stats *v42p, DBusMessageIter *iter)
  * @param iop   [IN] pointer to xfer op sub-structure of interest
  * @param iter  [IN] interator in reply stream to fill
  */
-void server_dbus_v4_delegations(struct c_deleg_stats *c_stats, bool confirmed,
+void server_dbus_v4_delegations(struct c_deleg_stats *c_stats,
 				DBusMessageIter *iter)
 {
 	struct timespec timestamp;
@@ -1638,8 +1638,6 @@ void server_dbus_v4_delegations(struct c_deleg_stats *c_stats, bool confirmed,
 	dbus_append_timestamp(iter, &timestamp);
 	dbus_message_iter_open_container(iter, DBUS_TYPE_STRUCT, NULL,
 					 &struct_iter);
-	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_BOOLEAN,
-				       &confirmed);
 	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
 				       &c_stats->curr_deleg_grants);
 	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,

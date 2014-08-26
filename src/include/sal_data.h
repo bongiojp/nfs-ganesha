@@ -704,7 +704,7 @@ struct nfs_client_id_t {
 	uint32_t cid_minorversion;
 	uint32_t cid_stateid_counter;
 
-	struct c_deleg_stats cid_deleg_stats;
+	struct gsh_client *gsh_client; /* Used to access client specific stats. */
 };
 
 /**

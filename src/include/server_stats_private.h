@@ -59,6 +59,7 @@ struct nfsv40_stats;
 struct nfsv41_stats;
 struct nfsv42_stats;
 struct _9p_stats;
+struct deleg_stats;
 
 struct gsh_stats {
 	struct nfsv3_stats *nfsv3;
@@ -68,6 +69,7 @@ struct gsh_stats {
 	struct nfsv40_stats *nfsv40;
 	struct nfsv41_stats *nfsv41;
 	struct nfsv41_stats *nfsv42;
+	struct c_deleg_stats *deleg;
 	struct _9p_stats *_9p;
 };
 
