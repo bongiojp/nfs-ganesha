@@ -408,9 +408,22 @@ void state_deleg_revoke(state_t *state, cache_entry_t *entry)
 	state_del_locked(state, entry);
 }
 
-/* returns STATE_SUCCESS if a new state or operation that WRITEs or READs
- * data will conflict with a delegation. */
-state_status_t deleg_conflict(cache_entry_t *entry, bool write) {
+/**
+ * @brief Check if an operation is conflicting with delegations.
+ *
+ * Check if an operation will conflict with current delegations on a file.
+ * Return TRUE if there is a conflict and the delegations have been recalled.
+ * Return FALSE if there is no conflict.
+ *
+ * @param[in] entry cache inode entry
+ * @param[in] write a boolean indicating whether the operation will read or
+ *            change the file.
+ *
+ * Must be called with cache inode entry's state lock held in read or read-write
+ * mode.
+ */
+bool deleg_conflict(cache_entry_t *entry, bool write)
+{
 	state_status_t status = STATE_SUCCESS;
 	struct file_deleg_stats *deleg_data;
 
@@ -441,7 +454,8 @@ state_status_t deleg_conflict(cache_entry_t *entry, bool write) {
 					"Failed to start thread to recall "
 					"delegation from conflicting v3 "
 					"operation.");
+			return true;
 		}
 	}
-	return status;
+	return false;
 }
