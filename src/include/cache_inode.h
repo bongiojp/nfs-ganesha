@@ -370,6 +370,10 @@ struct file_deleg_stats {
 	uint32_t fds_num_opens;         /* total num of opens so far. */
 	time_t fds_first_open;          /* time that we started recording
 					   num_opens */
+	uint32_t anon_ops;                   /* number of anonymous operations
+					      * happening at the moment which
+					      * prevents delegations from being
+					      * granted */
 };
 
 /**

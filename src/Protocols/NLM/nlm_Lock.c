@@ -127,6 +127,13 @@ int nlm4_Lock(nfs_arg_t *args,
 		return NFS_REQ_OK;
 	}
 
+	/* Check if v4 delegations conflict with v3 op */
+	if (deleg_conflict(entry, op_ctx) == STATE_FSAL_DELAY) {
+		res->res_nlm4.stat.stat = NLM4_FAILED;
+		return NFS_REQ_OK;
+	} else
+		atomic_inc_uint32_t(&entry->object.file.fdeleg_stats.anon_ops);
+
 	/* Cast the state number into a state pointer to protect
 	 * locks from a client that has rebooted from the SM_NOTIFY
 	 * that will release old locks
@@ -141,6 +148,8 @@ int nlm4_Lock(nfs_arg_t *args,
 				  &holder,
 				  &conflict,
 				  POSIX_LOCK);
+
+	atomic_dec_uint32_t(&entry->object.file.fdeleg_stats.anon_ops);
 
 	if (state_status != STATE_SUCCESS) {
 		res->res_nlm4test.test_stat.stat =
