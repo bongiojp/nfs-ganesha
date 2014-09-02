@@ -50,6 +50,7 @@
 #include "cache_inode_lru.h"
 #include "export_mgr.h"
 #include "nfs_rpc_callback.h"
+#include "fsal_up.h"
 
 /**
  * @brief Initialize new delegation state as argument for state_add()
@@ -520,4 +521,50 @@ void state_deleg_revoke(state_t *state, cache_entry_t *entry)
 	}
 	LogFatal(COMPONENT_STATE,
 		"Delegation state exists but not the delegation data object");
+}
+
+/**
+ * @brief Check if an operation is conflicting with delegations.
+ *
+ * Check if an operation will conflict with current delegations on a file.
+ * Return TRUE if there is a conflict and the delegations have been recalled.
+ * Return FALSE if there is no conflict.
+ *
+ * @param[in] entry cache inode entry
+ * @param[in] write a boolean indicating whether the operation will read or
+ *            change the file.
+ *
+ * @retval true if there is a conflict and the delegations have been recalled.
+ * @retval false if there is no delegation conflict.
+ *
+ * Must be called with cache inode entry's state lock held in read or read-write
+ * mode.
+ */
+bool deleg_conflict(cache_entry_t *entry, bool write)
+{
+	struct file_deleg_stats *deleg_data;
+
+	if (entry->type != REGULAR_FILE)
+		return false;
+
+	deleg_data = &entry->object.file.fdeleg_stats;
+	if (deleg_data->fds_curr_delegations > 0
+	    && ((deleg_data->fds_deleg_type == OPEN_DELEGATE_READ
+		 && write)
+		|| (deleg_data->fds_deleg_type == OPEN_DELEGATE_WRITE))
+	    ) {
+		LogDebug(COMPONENT_STATE,
+			 "While trying to perform a %s op, found a "
+			 "conflicting %s delegation",
+			 write ? "write" : "read",
+			 (deleg_data->fds_deleg_type
+			  == OPEN_DELEGATE_WRITE) ? "WRITE" : "READ");
+		if (async_delegrecall(general_fridge, entry) != 0)
+			LogCrit(COMPONENT_STATE,
+				"Failed to start thread to recall "
+				"delegation from conflicting "
+				"operation.");
+		return true;
+	}
+	return false;
 }
