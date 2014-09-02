@@ -641,18 +641,29 @@ state_status_t state_share_anonymous_io_start(cache_entry_t *entry,
 					    share_access,
 					    OPEN4_SHARE_DENY_NONE,
 					    bypass);
-
-	if (status == STATE_SUCCESS) {
-		/* Temporarily bump the access counters, v4 mode doesn't matter
-		 * since there is no deny mode associated with anonymous I/O.
-		 */
-		state_share_update_counter(entry, OPEN4_SHARE_ACCESS_NONE,
-					   OPEN4_SHARE_DENY_NONE, share_access,
-					   OPEN4_SHARE_DENY_NONE, false);
+	if (status != STATE_SUCCESS) {
+		PTHREAD_RWLOCK_unlock(&entry->state_lock);
+		return status;
 	}
 
-	PTHREAD_RWLOCK_unlock(&entry->state_lock);
+	if (deleg_conflict(entry,
+			   (share_access & OPEN4_SHARE_ACCESS_WRITE) > 0)) {
+		/* Delegations are being recalled. Delay client until that
+		 * process finishes. */
+		return STATE_FSAL_DELAY;
+	}
+	/* update a counter that says we are processing an anonymous
+	 * request and can't currently grant a new delegation */
+	atomic_inc_uint32_t(&entry->object.file.anon_ops);
 
+	/* Temporarily bump the access counters, v4 mode doesn't matter
+	 * since there is no deny mode associated with anonymous I/O.
+	 */
+	state_share_update_counter(entry, OPEN4_SHARE_ACCESS_NONE,
+				   OPEN4_SHARE_DENY_NONE, share_access,
+				   OPEN4_SHARE_DENY_NONE, false);
+
+	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 	return status;
 }
 
@@ -672,6 +683,11 @@ void state_share_anonymous_io_done(cache_entry_t *entry, int share_access)
 	state_share_update_counter(entry, share_access, OPEN4_SHARE_DENY_NONE,
 				   OPEN4_SHARE_ACCESS_NONE,
 				   OPEN4_SHARE_DENY_NONE, false);
+
+	/* If we are this far, then delegations weren't recalled and we
+	 * incremented this variable. */
+	atomic_dec_uint32_t(&entry->object.file.anon_ops);
+	assert(atomic_fetch_uint32_t(&entry->object.file.anon_ops) >= 0);
 
 	PTHREAD_RWLOCK_unlock(&entry->state_lock);
 }
