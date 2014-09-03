@@ -405,8 +405,16 @@ struct global_stats {
 	struct qta_ops qt;
 };
 
-static struct global_stats global_st;
+struct deleg_stats {
+	uint32_t curr_deleg_grants; /* current num of delegations owned by
+				       this client */
+	uint32_t tot_recalls;       /* total num of times client was asked to
+				       recall */
+	uint32_t failed_recalls;    /* times client failed to process recall */
+	uint32_t num_revokes;	    /* Num revokes for the client */
+};
 
+static struct global_stats global_st;
 struct cache_stats cache_st;
 struct cache_stats *cache_stp = &cache_st;
 
@@ -1147,6 +1155,60 @@ void server_stats_io_done(size_t requested,
 	return;
 }
 
+/**
+ * @brief record Delegation stats
+ *
+ * Called from a bunch of places.
+ */
+void inc_grants(struct gsh_client *client) {
+  if (client != NULL) {
+    struct server_stats *server_st;
+    server_st = container_of(op_ctx->client, struct server_stats,
+			     client);
+    atomic_inc_uint32_t(&server_st->st.deleg->curr_deleg_grants);
+  }
+}
+void dec_grants(struct gsh_client *client) {
+	if (client != NULL) {
+		struct server_stats *server_st;
+		server_st = container_of(op_ctx->client, struct server_stats,
+					 client);
+		atomic_dec_uint32_t(&server_st->st.deleg->curr_deleg_grants);
+	}
+}
+void dec_grants(struct gsh_client *client) {
+  if (client != NULL) {
+    struct server_stats *server_st;
+    server_st = container_of(op_ctx->client, struct server_stats,
+			     client);
+    atomic_dec_uint32_t(&server_st->st.deleg->curr_deleg_grants);
+  }
+}
+void inc_revokes(struct gsh_client *client) {
+  if (client != NULL) {
+    struct server_stats *server_st;
+    server_st = container_of(op_ctx->client, struct server_stats,
+			     client);
+    atomic_inc_uint32_t(&server_st->st.deleg->num_revokes);
+  }
+}
+void inc_recalls(struct gsh_client *client) {
+  if (client != NULL) {
+    struct server_stats *server_st;
+    server_st = container_of(op_ctx->client, struct server_stats,
+			     client);
+    atomic_inc_uint32_t(&server_st->st.deleg->tot_recalls);
+  }
+}
+void inc_failed_recalls(struct gsh_client *client) {
+  if (client != NULL) {
+    struct server_stats *server_st;
+    server_st = container_of(op_ctx->client, struct server_stats,
+			     client);
+    atomic_inc_uint32_t(&server_st->st.deleg->failed_recalls);
+  }
+}
+
 #ifdef USE_DBUS
 
 /* Functions for marshalling statistics to DBUS
@@ -1618,36 +1680,29 @@ void server_dbus_v42_layouts(struct nfsv41_stats *v42p, DBusMessageIter *iter)
 /**
  * @brief Report delegation statistics as a struct
  *
- * struct c_deleg_stats {
- *       uint32_t curr_deleg_grants;
- *       uint32_t tot_recalls;
- *       uint32_t failed_recalls;
- *       uint32_t num_revokes;
- * }
- *
  * @param iop   [IN] pointer to xfer op sub-structure of interest
  * @param iter  [IN] interator in reply stream to fill
  */
-void server_dbus_v4_delegations(struct c_deleg_stats *c_stats, bool confirmed,
+void server_dbus_v4_delegations(struct gsh_client *client,
 				DBusMessageIter *iter)
 {
 	struct timespec timestamp;
 	DBusMessageIter struct_iter;
-
+	struct server_stats *server_st;
+	server_st = container_of(op_ctx->client, struct server_stats,
+				 client);
 	now(&timestamp);
 	dbus_append_timestamp(iter, &timestamp);
 	dbus_message_iter_open_container(iter, DBUS_TYPE_STRUCT, NULL,
 					 &struct_iter);
-	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_BOOLEAN,
-				       &confirmed);
 	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
-				       &c_stats->curr_deleg_grants);
+				       server_st->st.curr_deleg_grants);
 	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
-				       &c_stats->tot_recalls);
+				       server_st->st.deleg->tot_recalls);
 	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
-				       &c_stats->failed_recalls);
+				       server_st->st.deleg->failed_recalls);
 	dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT32,
-				       &c_stats->num_revokes);
+				       server_st->st.deleg->num_revokes);
 	dbus_message_iter_close_container(iter, &struct_iter);
 }
 

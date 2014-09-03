@@ -743,47 +743,22 @@ static bool get_nfsv4_stats_delegations(DBusMessageIter *args,
 					DBusError *error)
 {
 	char *errormsg = "OK";
+	struct gsh_client *client = NULL;
+	struct server_stats *server_st = NULL;
 	DBusMessageIter iter;
-	nfs_client_id_t *clientid;
-	sockaddr_t sockaddr;
-	char ip_str[INET6_ADDRSTRLEN];
-	int ret;
-	bool confirmed;
 
 	dbus_message_iter_init_append(reply, &iter);
-
-	/* Get the socket address from the dbus args */
-	if (!arg_ipaddr(args, &sockaddr, &errormsg)) {
-		errormsg = "Failed to get ip address.";
-		dbus_status_reply(&iter, false, errormsg);
-		return true;
-	}
-
-	/* Convert address to a string for comparison */
-	ret = getnameinfo((struct sockaddr *)&sockaddr, sizeof(sockaddr),
-			ip_str, sizeof(ip_str), 0, 0, NI_NUMERICHOST);
-	if (ret != 0) {
-		errormsg = "Failed to convert address to string.";
-		dbus_status_reply(&iter, false, errormsg);
-		return true;
-	}
-
-	LogDebug(COMPONENT_DBUS,
-		 "Searching for clientid that matches IP address %s", ip_str);
-
-	/* Search through hashtable for clientid with matching ip address.
-	 * Note: how does this work with ipv6? */
-	clientid = get_clientid_by_ip((char *)ip_str, &confirmed);
-	if (clientid == NULL) {
-		errormsg = "Client that matches IP was not found.";
-		dbus_status_reply(&iter, false, errormsg);
-		return true;
+	client = lookup_client(args, &errormsg);
+	if (client == NULL) {
+		success = false;
+		if (errormsg == NULL)
+			errormsg = "Client IP address not found";
 	}
 
 	dbus_status_reply(&iter, true, errormsg);
-	server_dbus_v4_delegations(&clientid->cid_deleg_stats, confirmed,
-				   &iter);
-	dec_client_id_ref(clientid);
+	server_dbus_v4_delegations(client, &iter);
+	if (client != NULL)
+		put_gsh_client(client);
 
 	return true;
 }
