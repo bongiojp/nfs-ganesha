@@ -14,21 +14,17 @@ glib.init_threads()
 # Create a session bus.
 import dbus
 
-class RetrieveStats():
+class RetrieveExportStats():
     def __init__(self):
         self.dbus_service_name = "org.ganesha.nfsd"
         self.dbus_exportstats_name = "org.ganesha.nfsd.exportstats"
         self.dbus_exportmgr_name = "org.ganesha.nfsd.exportmgr"
-        self.dbus_clientstats_name = "org.ganesha.nfsd.clientstats"
         self.export_interface = "/org/ganesha/nfsd/ExportMgr"
-        self.client_interface = "/org/ganesha/nfsd/ClientMgr"
 
         self.bus = dbus.SystemBus()
         try:
             self.exportmgrobj = self.bus.get_object(self.dbus_service_name,
                                 self.export_interface)
-            self.clientmgrobj = self.bus.get_object(self.dbus_service_name,
-                                    self.client_interface)
         except:
             print "Error: Can't talk to ganesha service on d-bus. Looks like Ganesha is down"
             sys.exit()
@@ -54,11 +50,6 @@ class RetrieveStats():
                                  self.dbus_exportmgr_name)
         return ExportStats(stats_op())
 
-    # delegation stats related to a single client ip
-    def deleg_stats(self, ip):
-        stats_op = self.clientmgrobj.get_dbus_method("GetDelegations",
-                          self.dbus_clientstats_name)
-        return DelegStats(stats_op(ip))
     # NFSv3/NFSv4/NLM/MNT/QUOTA stats totalled for a single export
     def total_stats(self, export_id):
         stats_op = self.exportmgrobj.get_dbus_method("GetTotalOPS",
@@ -85,11 +76,11 @@ class RetrieveStats():
     def v3io_stats(self, export_id):
         stats_op =  self.exportmgrobj.get_dbus_method("GetNFSv3IO",
                                   self.dbus_exportstats_name)
-        return IOv3Stats(self.io_stats(stats_op, export_id))
+        return ExportIOv3Stats(self.io_stats(stats_op, export_id))
     def v4io_stats(self, export_id):
         stats_op = self.exportmgrobj.get_dbus_method("GetNFSv40IO",
                                  self.dbus_exportstats_name)
-        return IOv4Stats(self.io_stats(stats_op, export_id))
+        return ExportIOv4Stats(self.io_stats(stats_op, export_id))
     def pnfs_stats(self, export_id):
         stats_op = self.exportmgrobj.get_dbus_method("GetNFSv41Layouts",
                                  self.dbus_exportstats_name)
@@ -103,27 +94,68 @@ class RetrieveStats():
             stats_dict[export_id] = stats_op(int(export_id))
             return PNFSStats(stats_dict)
 
+class RetrieveClientStats():
+    def __init__(self):
+        self.dbus_service_name = "org.ganesha.nfsd"
+        self.dbus_clientstats_name = "org.ganesha.nfsd.clientstats"
+        self.dbus_clientmgr_name = "org.ganesha.nfsd.clientmgr"
+        self.client_interface = "/org/ganesha/nfsd/ClientMgr"
+
+        self.bus = dbus.SystemBus()
+        try:
+            self.clientmgrobj = self.bus.get_object(self.dbus_service_name,
+                                    self.client_interface)
+        except:
+            print "Error: Can't talk to ganesha service on d-bus. Looks like Ganesha is down"
+            sys.exit()
+
+    # delegation stats related to a single client ip
+    def deleg_stats(self, ip):
+        stats_op = self.clientmgrobj.get_dbus_method("GetDelegations",
+                          self.dbus_clientstats_name)
+        return DelegStats(stats_op(ip))
+    def list_clients(self):
+        stats_op = self.clientmgrobj.get_dbus_method("ShowClients",
+                          self.dbus_clientmgr_name)
+        return Clients(stats_op())
+
+class Clients():
+    def __init__(self, clients):
+        self._clients = clients
+    def __str__(self):
+        output = ("\nTimestamp: " + time.ctime(self._clients[0][0]) +
+                  str(self._clients[0][1]) + " nsecs" +
+                  "\nClient List:\n" )
+        for client in self._clients[1]:
+            output += ("\n\nAddress: " + client[0] +
+                       "\nNFSv3 stats available: " + str(client[1]) +
+                       "\nMNT stats available: " + str(client[2]) +
+                       "\nNLM4 stats available: " + str(client[3]) +
+                       "\nRQUOTA stats available: " + str(client[4]) +
+                       "\nNFSv4.0 stats available " + str(client[5]) +
+                       "\nNFSv4.1 stats available: " + str(client[6]) +
+                       "\nNFSv4.2 stats available: " + str(client[7]) +
+                       "\n9P stats available: " + str(client[8]) )
+        return output
 class DelegStats():
     def __init__(self, stats):
         self.status = stats[1]
         if stats[1] == "OK":
             self.timestamp = (stats[2][0], stats[2][1])
-            self.confirmed = stats[3][0]
-            self.curr_deleg = stats[3][1]
-            self.curr_recall = stats[3][2]
-            self.fail_recall = stats[3][3]
-            self.num_revokes = stats[3][4]
+            self.curr_deleg = stats[3][0]
+            self.curr_recall = stats[3][1]
+            self.fail_recall = stats[3][2]
+            self.num_revokes = stats[3][3]
     def __str__(self):
         if self.status != "OK":
             return ("GANESHA RESPONSE STATUS: " + self.status)
         else:
             return ( "GANESHA RESPONSE STATUS: " + self.status +
-                     "\nTimestamp: " + time.ctime(self.timestamp[0]) + timestamp[1] + " nsecs" +
-                     "\nConfirmed: " + self.confirmed +
-                     "\nCurrent Delegations: " + self.curr_deleg +
-                     "\nCurrent Recalls: " + self.curr_recall +
-                     "\nCurrent Failed Recalls: " + self.fail_recall +
-                     "\nCurrent Number of Revokes: " + self.num_revokes )
+                     "\nTimestamp: " + time.ctime(self.timestamp[0]) + str(self.timestamp[1]) + " nsecs" +
+                     "\nCurrent Delegations: " + str(self.curr_deleg) +
+                     "\nCurrent Recalls: " + str(self.curr_recall) +
+                     "\nCurrent Failed Recalls: " + str(self.fail_recall) +
+                     "\nCurrent Number of Revokes: " + str(self.num_revokes) )
 
 class Export():
     def __init__(self, export):
@@ -223,7 +255,7 @@ class FastStats():
                     output += "%s: " % (self.stats[3][i].ljust(20))
         return output
 
-class IOv3Stats():
+class ExportIOv3Stats():
     def __init__(self, stats):
         self.stats = stats
     def __str__(self):
@@ -242,7 +274,7 @@ class IOv3Stats():
                 output += "\t" + str(stat).rjust(8)
         return output
 
-class IOv4Stats():
+class ExportIOv4Stats():
     def __init__(self, stats):
         self.stats = stats
     def __str__(self):

@@ -738,59 +738,42 @@ static struct gsh_dbus_method cltmgr_show_v41_layouts = {
  *
  */
 
-static bool get_nfsv4_stats_delegations(DBusMessageIter *args,
-					DBusMessage *reply,
-					DBusError *error)
+static bool get_stats_delegations(DBusMessageIter *args,
+				  DBusMessage *reply,
+				  DBusError *error)
 {
 	char *errormsg = "OK";
+	struct gsh_client *client = NULL;
+	struct server_stats *server_st = NULL;
+	bool success = true;
 	DBusMessageIter iter;
-	nfs_client_id_t *clientid;
-	sockaddr_t sockaddr;
-	char ip_str[INET6_ADDRSTRLEN];
-	int ret;
-	bool confirmed;
 
 	dbus_message_iter_init_append(reply, &iter);
-
-	/* Get the socket address from the dbus args */
-	if (!arg_ipaddr(args, &sockaddr, &errormsg)) {
-		errormsg = "Failed to get ip address.";
-		dbus_status_reply(&iter, false, errormsg);
-		return true;
+	client = lookup_client(args, &errormsg);
+	if (client == NULL) {
+		success = false;
+		errormsg = "Client IP address not found";
+	} else {
+	  server_st = container_of(client, struct server_stats, client);
+	  if (server_st->st.deleg == NULL) {
+	    success = false;
+	    errormsg = "Client does not have any Delegation activity";
+	  }
 	}
 
-	/* Convert address to a string for comparison */
-	ret = getnameinfo((struct sockaddr *)&sockaddr, sizeof(sockaddr),
-			ip_str, sizeof(ip_str), 0, 0, NI_NUMERICHOST);
-	if (ret != 0) {
-		errormsg = "Failed to convert address to string.";
-		dbus_status_reply(&iter, false, errormsg);
-		return true;
-	}
+	dbus_status_reply(&iter, success, errormsg);
+	if (success)
+	  server_dbus_delegations(server_st->st.deleg, &iter);
 
-	LogDebug(COMPONENT_DBUS,
-		 "Searching for clientid that matches IP address %s", ip_str);
-
-	/* Search through hashtable for clientid with matching ip address.
-	 * Note: how does this work with ipv6? */
-	clientid = get_clientid_by_ip((char *)ip_str, &confirmed);
-	if (clientid == NULL) {
-		errormsg = "Client that matches IP was not found.";
-		dbus_status_reply(&iter, false, errormsg);
-		return true;
-	}
-
-	dbus_status_reply(&iter, true, errormsg);
-	server_dbus_v4_delegations(&clientid->cid_deleg_stats, confirmed,
-				   &iter);
-	dec_client_id_ref(clientid);
+	if (client != NULL)
+		put_gsh_client(client);
 
 	return true;
 }
 
 static struct gsh_dbus_method cltmgr_show_delegations = {
 	.name = "GetDelegations",
-	.method = get_nfsv4_stats_delegations,
+	.method = get_stats_delegations,
 	.args = {IPADDR_ARG,
 		 STATUS_REPLY,
 		 TIMESTAMP_REPLY,
