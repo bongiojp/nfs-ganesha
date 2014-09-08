@@ -650,6 +650,7 @@ state_status_t state_share_anonymous_io_start(cache_entry_t *entry,
 			   (share_access & OPEN4_SHARE_ACCESS_WRITE) > 0)) {
 		/* Delegations are being recalled. Delay client until that
 		 * process finishes. */
+		PTHREAD_RWLOCK_unlock(&entry->state_lock);
 		return STATE_FSAL_DELAY;
 	}
 	/* update a counter that says we are processing an anonymous
