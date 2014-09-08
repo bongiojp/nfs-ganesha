@@ -1094,6 +1094,8 @@ static void get_delegation(compound_data_t *data, OPEN4args *args,
 				get_deleg_perm(data->current_entry,
 					       &writeres->permissions,
 					       deleg_type);
+				data->current_entry->object.file.fdeleg_stats.
+					fds_deleg_type = OPEN_DELEGATE_WRITE;
 			} else {
 				assert(deleg_type == OPEN_DELEGATE_READ);
 				open_read_delegation4 *readres =
@@ -1103,6 +1105,8 @@ static void get_delegation(compound_data_t *data, OPEN4args *args,
 				get_deleg_perm(data->current_entry,
 					       &readres->permissions,
 					       deleg_type);
+				data->current_entry->object.file.fdeleg_stats.
+					fds_deleg_type = OPEN_DELEGATE_READ;
 			}
 		}
 	}
@@ -1124,19 +1128,18 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 	/* This will be updated later if we actually delegate */
 	resok->delegation.delegation_type = OPEN_DELEGATE_NONE;
 
-	/* Update delegation open stats */
-	if (data->current_entry->type == REGULAR_FILE) {
-		if (fdeleg_stats->fds_num_opens == 0)
-			fdeleg_stats->fds_first_open = time(NULL);
-		fdeleg_stats->fds_num_opens++;
-	}
-
 	/* Decide if we should delegate, then add it. */
 	if (data->current_entry->type == REGULAR_FILE
+	    && atomic_fetch_uint32_t(&data->current_entry->object.file.anon_ops) == 0
 	    && should_we_grant_deleg(data->current_entry,
 				     clientid,
 				     open_state,
 				     arg_OPEN4, owner, &prerecall)) {
+		/* Update delegation open stats */
+		if (fdeleg_stats->fds_num_opens == 0)
+			fdeleg_stats->fds_first_open = time(NULL);
+		fdeleg_stats->fds_num_opens++;
+
 		LogDebug(COMPONENT_STATE, "Attempting to grant delegation");
 		get_delegation(data, arg_OPEN4, open_state, owner, clientid,
 			       resok, prerecall);
