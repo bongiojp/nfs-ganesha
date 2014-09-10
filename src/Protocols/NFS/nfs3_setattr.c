@@ -153,7 +153,7 @@ int nfs3_setattr(nfs_arg_t *arg,
 						SHARE_BYPASS_V3_WRITE));
 
 			if (res->res_setattr3.status != NFS3_OK)
-				goto out_fail;
+				goto anon_fail;
 		}
 
 		cache_status = cache_inode_setattr(entry,
@@ -191,11 +191,10 @@ int nfs3_setattr(nfs_arg_t *arg,
 	return rc;
 
  out_fail:
-
-	LogFullDebug(COMPONENT_NFSPROTO, "nfs_Setattr: failed");
-
 	/* Set the NFS return */
 	res->res_setattr3.status = nfs3_Errno(cache_status);
+ anon_fail:
+	LogFullDebug(COMPONENT_NFSPROTO, "nfs_Setattr: failed");
 
 	nfs_SetWccData(&pre_attr, entry,
 		       &res->res_setattr3.SETATTR3res_u.resfail.obj_wcc);
