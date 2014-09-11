@@ -1122,6 +1122,9 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 {
 	OPEN4resok *resok = &res_OPEN4->OPEN4res_u.resok4;
 	bool prerecall;
+	struct glist_head *glist = NULL;
+	state_lock_entry_t *lock_entry;
+	state_nlm_share_t *nlm_share;
 	struct file_deleg_stats *fdeleg_stats =
 				&data->current_entry->object.file.fdeleg_stats;
 
@@ -1151,6 +1154,25 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 				     clientid,
 				     open_state,
 				     arg_OPEN4, owner, &prerecall)) {
+		/* We have to check for conflicting NLM shares ourselves. */
+		glist_for_each(glist, &data->current_entry->object.file.
+			       nlm_share_list) {
+			nlm_share = glist_entry(glist, state_nlm_share_t,
+						sns_share_per_file);
+			if (nlm_share->sns_access & fsa_W)
+				return;
+		}
+
+		/* We have to check for conflicting NLM locks ourselves. 
+		 * We only check for WRITE locks. If there was a READ lock
+		 * an open for WRITE would conflict. */
+		glist_for_each(glist, &data->current_entry->object.file.
+			       lock_list) {
+			lock_entry = glist_entry(glist, state_lock_entry_t, sle_list);
+			if (lock_entry->sle_lock.lock_type == FSAL_LOCK_W)
+				return;
+		}
+
 		/* Update delegation open stats */
 		if (fdeleg_stats->fds_num_opens == 0)
 			fdeleg_stats->fds_first_open = time(NULL);
