@@ -1122,6 +1122,8 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 {
 	OPEN4resok *resok = &res_OPEN4->OPEN4res_u.resok4;
 	bool prerecall;
+	struct glist_head *glist = NULL;
+	state_nlm_share_t *nlm_share;
 	struct file_deleg_stats *fdeleg_stats =
 				&data->current_entry->object.file.fdeleg_stats;
 
@@ -1135,6 +1137,18 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 				     clientid,
 				     open_state,
 				     arg_OPEN4, owner, &prerecall)) {
+		/* We have to check for conflicting NLM locks ourselves. */
+		glist_for_each(glist, &data->current_entry->object.file.
+			       nlm_share_list) {
+			nlm_share = glist_entry(glist, state_nlm_share_t,
+						sns_share_per_file);
+			if (nlm_share->sns_access & fsa_W) {
+				resok->delegation.open_delegation4_u.
+					od_whynone.ond_why = WND4_NOT_WANTED;
+				return;
+			}
+		}
+
 		/* Update delegation open stats */
 		if (fdeleg_stats->fds_num_opens == 0)
 			fdeleg_stats->fds_first_open = time(NULL);
@@ -1143,6 +1157,7 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 		LogDebug(COMPONENT_STATE, "Attempting to grant delegation");
 		get_delegation(data, arg_OPEN4, open_state, owner, clientid,
 			       resok, prerecall);
+		return;
 	} else {
 		resok->delegation.open_delegation4_u.
 			od_whynone.ond_why = WND4_NOT_WANTED;
