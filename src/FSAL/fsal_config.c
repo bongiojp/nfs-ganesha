@@ -86,8 +86,13 @@ bool fsal_supports(struct fsal_staticfsinfo_t *info,
 		return !!info->homogenous;
 	case fso_auth_exportpath_xdev:
 		return !!info->auth_exportpath_xdev;
+	case fso_delegations_r:
+		return !!(info->delegations & SUPP_DELEG_R);
+	case fso_delegations_w:
+		return !!(info->delegations & SUPP_DELEG_W);
 	case fso_delegations:
-		return !!info->delegations;
+		return !!(info->delegations & SUPP_DELEG_R
+			  || info->delegations & SUPP_DELEG_W);
 	case fso_pnfs_ds_supported:
 		return !!info->pnfs_file;
 	case fso_accesscheck_support:

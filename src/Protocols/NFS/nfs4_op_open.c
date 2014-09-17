@@ -1130,6 +1130,18 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 	/* This will be updated later if we actually delegate */
 	resok->delegation.delegation_type = OPEN_DELEGATE_NONE;
 
+	if ((arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_WRITE &&
+	    (!op_ctx->fsal_export->ops->fs_supports( op_ctx->fsal_export,
+						     fso_delegations_w)))
+	    ||
+	    (arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_READ &&
+	     (!op_ctx->fsal_export->ops->fs_supports( op_ctx->fsal_export,
+						      fso_delegations_r)))) {
+		resok->delegation.open_delegation4_u.
+			od_whynone.ond_why = WND4_NOT_WANTED;
+		return;
+	}
+
 	/* Decide if we should delegate, then add it. */
 	if (data->current_entry->type == REGULAR_FILE
 	    && atomic_fetch_uint32_t(&data->current_entry->object.file.anon_ops) == 0
