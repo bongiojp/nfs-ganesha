@@ -121,6 +121,12 @@ typedef struct fsal_xattrent {
 /* function for getting an attribute value */
 #define XATTR_RW_COOKIE ~0
 
+/* Flags representing if an FSAL supports read or write delegations */
+#define SUPP_DELEG_NONE  0x00000000
+#define SUPP_DELEG_R     0x00000001
+#define SUPP_DELEG_W     0x00000002
+#define SUPP_DELEG_RW    0x00000003
+
 /******************************************************
  *                Structure used to define a fsal
  ******************************************************/
