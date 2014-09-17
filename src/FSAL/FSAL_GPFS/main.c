@@ -80,7 +80,7 @@ static struct fsal_staticfsinfo_t default_gpfs_info = {
 	.accesscheck_support = true,
 	.share_support = true,
 	.share_support_owner = false,
-	.delegations = true,	/* not working with pNFS */
+	.delegations = SUPP_DELEG_R,	/* not working with pNFS */
 	.pnfs_file = true,
 	.fsal_trace = true,
 	.reopen_method = true,
@@ -99,8 +99,9 @@ static struct config_item gpfs_params[] = {
 		       fsal_staticfsinfo_t, auth_exportpath_xdev),
 	CONF_ITEM_MODE("xattr_access_rights", 0, 0777, 0400,
 		       fsal_staticfsinfo_t, xattr_access_rights),
-	CONF_ITEM_BOOL("delegations", true,
-		       fsal_staticfsinfo_t, delegations),
+	/* At the moment GPFS doesn't support WRITE delegations */
+	CONF_ITEM_MODE("delegations", SUPP_DELEG_NONE, SUPP_DELEG_R,
+		       SUPP_DELEG_R, fsal_staticfsinfo_t, delegations),
 	CONF_ITEM_BOOL("pnfs_file", false,
 		       fsal_staticfsinfo_t, pnfs_file),
 	CONF_ITEM_BOOL("fsal_trace", true,
