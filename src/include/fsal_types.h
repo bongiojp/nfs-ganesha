@@ -640,6 +640,8 @@ typedef enum enum_fsal_fsinfo_options {
 	fso_homogenous,
 	fso_auth_exportpath_xdev,
 	fso_delegations,
+	fso_delegations_r,
+	fso_delegations_w,
 	fso_accesscheck_support,
 	fso_share_support,
 	fso_share_support_owner,
