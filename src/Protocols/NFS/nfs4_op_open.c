@@ -1130,17 +1130,21 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 	/* This will be updated later if we actually delegate */
 	resok->delegation.delegation_type = OPEN_DELEGATE_NONE;
 
+	/* Client doesn't want a delegation. */
+	if (arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_WANT_NO_DELEG) {
+		resok->delegation.open_delegation4_u.
+			od_whynone.ond_why = WND4_NOT_WANTED;
+		return;
+	}
+
 	if ((arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_WRITE &&
 	    (!op_ctx->fsal_export->ops->fs_supports( op_ctx->fsal_export,
 						     fso_delegations_w)))
 	    ||
 	    (arg_OPEN4->share_access & OPEN4_SHARE_ACCESS_READ &&
 	     (!op_ctx->fsal_export->ops->fs_supports( op_ctx->fsal_export,
-						      fso_delegations_r)))) {
-		resok->delegation.open_delegation4_u.
-			od_whynone.ond_why = WND4_NOT_WANTED;
+						      fso_delegations_r))))
 		return;
-	}
 
 	/* Decide if we should delegate, then add it. */
 	if (data->current_entry->type == REGULAR_FILE
@@ -1154,11 +1158,8 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 			       nlm_share_list) {
 			nlm_share = glist_entry(glist, state_nlm_share_t,
 						sns_share_per_file);
-			if (nlm_share->sns_access & fsa_W) {
-				resok->delegation.open_delegation4_u.
-					od_whynone.ond_why = WND4_NOT_WANTED;
+			if (nlm_share->sns_access & fsa_W)
 				return;
-			}
 		}
 
 		/* Update delegation open stats */
@@ -1170,9 +1171,6 @@ static void do_delegation(OPEN4args *arg_OPEN4, OPEN4res *res_OPEN4,
 		get_delegation(data, arg_OPEN4, open_state, owner, clientid,
 			       resok, prerecall);
 		return;
-	} else {
-		resok->delegation.open_delegation4_u.
-			od_whynone.ond_why = WND4_NOT_WANTED;
 	}
 }
 
