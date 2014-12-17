@@ -545,7 +545,20 @@ void cache_inode_unexport(struct gsh_export *export)
 		 * result in CACHE_INODE_NOT_FOUND as the mapping for
 		 * the stale inode gets cleaned up.
 		 */
-		if (status != CACHE_INODE_SUCCESS) {
+		if (status == CACHE_INODE_ESTALE) {
+			PTHREAD_RWLOCK_rdlock(&export->lock);
+			status = export_get_first_entry(&entry, &parms);
+			if (unlikely(status != CACHE_INODE_SUCCESS)) {
+				LogDebug(COMPONENT_CACHE_INODE,
+					 "get_entry failed with %s",
+					 cache_inode_err_str(status));
+				if (status == CACHE_INODE_MALLOC_ERROR)
+					errcnt++;
+				continue;
+			}
+			PTHREAD_RWLOCK_unlock(&export->lock);
+		}
+		else if (status != CACHE_INODE_SUCCESS) {
 			if (status == CACHE_INODE_MALLOC_ERROR)
 				errcnt++;
 			continue;
