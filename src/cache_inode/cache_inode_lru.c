@@ -891,6 +891,12 @@ lru_run(struct fridgethr_context *ctx)
 					"Futility count exceeded.  The LRU "
 					"thread is unable to make progress in "
 					"reclaiming FDs.  Disabling FD cache.");
+				LogCrit(COMPONENT_CACHE_INODE_LRU,
+					"openfds before reclaim loop. %lu"
+					" openfds after reclaim loop. %lu"
+					" system imposed limit. %d",
+					formeropen, currentopen,
+					lru_state.fds_system_imposed);
 				lru_state.caching_fds = false;
 			}
 		}

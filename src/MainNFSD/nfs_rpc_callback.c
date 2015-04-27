@@ -179,6 +179,8 @@ nc_type nfs_netid_to_nc(const char *netid)
 		     netid_nc_table[_NC_SCTP6].netid_len))
 		return _NC_SCTP6;
 
+	LogWarn(COMPONENT_NFS_CB, "Could not find protocol for netid label %s",
+		netid);
 	return _NC_ERR;
 }
 
@@ -193,12 +195,12 @@ nc_type nfs_netid_to_nc(const char *netid)
  * @param[in]     uaddr    na_r_addr from the clientaddr4
  */
 
-static inline void setup_client_saddr(nfs_client_id_t *clientid,
+static inline int setup_client_saddr(nfs_client_id_t *clientid,
 				      const char *uaddr)
 {
 	char addr_buf[SOCK_NAME_MAX + 1];
 	uint32_t bytes[11];
-	int code;
+	int code = EINVAL;
 
 	assert(clientid->cid_minorversion == 0);
 
@@ -232,6 +234,9 @@ static inline void setup_client_saddr(nfs_client_id_t *clientid,
 					 "client callback addr:port %s:%d",
 					 addr_buf, ntohs(sin->sin_port));
 			}
+		} else {
+		  LogWarn(COMPONENT_NFS_CB,
+			  "Could not find address for v4 callback channel");
 		}
 		break;
 	case _NC_TCP6:
@@ -264,12 +269,16 @@ static inline void setup_client_saddr(nfs_client_id_t *clientid,
 					 "client callback addr:port %s:%d",
 					 addr_buf, ntohs(sin6->sin6_port));
 			}
+		} else {
+		  LogWarn(COMPONENT_NFS_CB,
+			  "Could not find address for v6 callback channel");
 		}
 		break;
 	default:
 		/* unknown netid */
 		break;
 	};
+	return code;
 }
 
 /**
@@ -284,6 +293,10 @@ void nfs_set_client_location(nfs_client_id_t *clientid,
 {
 	assert(clientid->cid_minorversion == 0);
 	clientid->cid_cb.v40.cb_addr.nc = nfs_netid_to_nc(addr4->r_netid);
+	if (clientid->cid_cb.v40.cb_addr.nc == _NC_ERR) {
+		LogCrit(COMPONENT_NFS_CB, "Invalid callback protocol."
+			" Future callbacks will fail.");
+	}
 	strlcpy(clientid->cid_cb.v40.cb_client_r_addr, addr4->r_addr,
 		SOCK_NAME_MAX);
 	setup_client_saddr(clientid, clientid->cid_cb.v40.cb_client_r_addr);
@@ -321,7 +334,11 @@ static inline int32_t nfs_clid_connected_socket(nfs_client_id_t *clientid,
 		sock_type = SOCK_DGRAM;
 		protocol = IPPROTO_UDP;
 		break;
+	case _NC_ERR:
+		LogWarn(COMPONENT_NFS_CB, "Callback socket protocol _NC_ERR");
 	default:
+		LogWarn(COMPONENT_NFS_CB, "Invalid callback protocol: %d",
+			clientid->cid_cb.v40.cb_addr.nc);
 		code = EINVAL;
 		goto out;
 	}
@@ -335,6 +352,8 @@ static inline int32_t nfs_clid_connected_socket(nfs_client_id_t *clientid,
 		sock_size = sizeof(struct sockaddr_in6);
 		break;
 	default:
+		LogWarn(COMPONENT_NFS_CB, "Invalid callback socket family: %d",
+			clientid->cid_cb.v40.cb_addr.ss.ss_family);
 		code = EINVAL;
 		goto out;
 	}

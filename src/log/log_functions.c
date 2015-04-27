@@ -265,6 +265,7 @@ static int log_mask = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 static char program_name[1024];
 static char hostname[256];
 static int syslog_opened;
+static int filelog_fd = -1;
 
 /*
  * Variables specifiques aux threads.
@@ -1195,7 +1196,7 @@ static int log_to_file(log_header_t headers, void *private,
 		       struct display_buffer *buffer, char *compstr,
 		       char *message)
 {
-	int fd, my_status, len, rc = 0;
+	int my_status, len, rc = 0;
 	char *path = private;
 
 	len = display_buffer_len(buffer);
@@ -1204,10 +1205,12 @@ static int log_to_file(log_header_t headers, void *private,
 	buffer->b_start[len] = '\n';
 	buffer->b_start[len + 1] = '\0';
 
-	fd = open(path, O_WRONLY | O_SYNC | O_APPEND | O_CREAT, log_mask);
+	if (filelog_fd == -1)
+	  filelog_fd = open(path, O_WRONLY | O_SYNC | O_APPEND | O_CREAT,
+			    log_mask);
 
-	if (fd != -1) {
-		rc = write(fd, buffer->b_start, len + 1);
+	if (filelog_fd != -1) {
+		rc = write(filelog_fd, buffer->b_start, len + 1);
 
 		if (rc < (len + 1)) {
 			if (rc >= 0)
@@ -1215,15 +1218,15 @@ static int log_to_file(log_header_t headers, void *private,
 			else
 				my_status = errno;
 
-			(void)close(fd);
+			(void)close(filelog_fd);
 
 			goto error;
 		}
 
-		rc = close(fd);
-
-		if (rc == 0)
-			goto out;
+		//		rc = close(filelog_fd);
+		//
+		//		if (rc == 0)
+		//			goto out;
 	}
 
 	my_status = errno;
@@ -1235,7 +1238,7 @@ static int log_to_file(log_header_t headers, void *private,
 		"status=%d (%s) message was:\n%s", path, my_status,
 		strerror(my_status), buffer->b_start);
 
- out:
+	// out:
 
 	/* Remove newline from buffer */
 	buffer->b_start[len] = '\0';
