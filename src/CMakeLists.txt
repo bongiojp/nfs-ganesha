@@ -38,7 +38,7 @@ set(GANESHA_PATCH_LEVEL .0)
 # Extra version is for naming development/RC.  It is blank in master/stable branches
 # so it can be available to end-users to name local variants/versions
 # If used, it is always of the form "-whateveryouwant"
-set(GANESHA_EXTRA_VERSION -2ibm1)
+set(GANESHA_EXTRA_VERSION -5ibm2)
 
 set(GANESHA_VERSION ${GANESHA_MAJOR_VERSION}.${GANESHA_MINOR_VERSION}${GANESHA_PATCH_LEVEL}${GANESHA_EXTRA_VERSION})
 set(GANESHA_BASE_VERSION ${GANESHA_MAJOR_VERSION}.${GANESHA_MINOR_VERSION}${GANESHA_PATCH_LEVEL})
@@ -91,6 +91,9 @@ find_package(Toolchain REQUIRED)
 
 # Add maintainer mode for (mainly) strict builds
 include(${CMAKE_SOURCE_DIR}/cmake/maintainer_mode.cmake)
+
+# For libraries that provide pkg-config files
+include(FindPkgConfig)
 
 # If we are in a git tree, then this CMakeLists.txt is in "src/" and go .git is in "src/.."
 IF( EXISTS ${CMAKE_SOURCE_DIR}/../.git/HEAD  )
@@ -446,6 +449,13 @@ IF(PROXY_HANDLE_MAPPING)
   endif(NOT HAVE_SQLITE3 OR HAVE_SQLITE3_H)
 ENDIF(PROXY_HANDLE_MAPPING)
 
+IF(_VALGRIND_MEMCHECK)
+  check_include_files(valgrind/memcheck.h HAVE_MEMCHECK_H)
+  if(NOT HAVE_MEMCHECK_H)
+	  message(FATAL_ERROR "Cannot find valgrind/memcheck.h, install valgrind-devel package to enable _VALGRIND_MEMCHECK")
+  ENDIF(NOT HAVE_MEMCHECK_H)
+ENDIF(_VALGRIND_MEMCHECK)
+
 # X_ATTRD requires the kernel to have xattrs...DBUS_STATS
 if(NOT _NO_XATTRD)
   check_include_files("unistd.h;sys/xattr.h" HAVE_XATTR_H)
@@ -480,22 +490,15 @@ endif(KRB5_FOUND AND HAVE_GSSAPI_H)
 # Validate fsal dependencies
 
 if(USE_FSAL_GLUSTER)
-  find_library(HAVE_GFAPI gfapi)
-  check_library_exists(
-    gfapi
-    glfs_h_lookupat
-    ""
-    HAVE_GFAPI
-    )
-  check_include_files("glusterfs/api/glfs.h" HAVE_GLUSTER_H)
-  if((NOT HAVE_GFAPI) OR (NOT HAVE_GLUSTER_H))
+  pkg_check_modules(GFAPI glusterfs-api>=7.3.7)
+  if(NOT GFAPI_FOUND)
     if(STRICT_PACKAGE)
       message(FATAL_ERROR "STRICT PACKAGE: Cannot find GLUSTER GFAPI runtime. Disabling GLUSTER fsal build")
     else(STRICT_PACKAGE)
       message(WARNING "Cannot find GLUSTER GFAPI runtime. Disabling GLUSTER fsal build")
       set(USE_FSAL_GLUSTER OFF)
     endif(STRICT_PACKAGE)
-  endif((NOT HAVE_GFAPI) OR (NOT HAVE_GLUSTER_H))
+  endif(NOT GFAPI_FOUND)
 
   if(USE_FSAL_GLUSTER)
     check_include_files("unistd.h;attr/xattr.h" HAVE_XATTR_H)
@@ -507,6 +510,14 @@ if(USE_FSAL_GLUSTER)
         set(USE_FSAL_GLUSTER OFF)
       endif(STRICT_PACKAGE)
     endif(NOT HAVE_XATTR_H)
+    check_include_files("acl/libacl.h" HAVE_ACL_H)
+    if(HAVE_ACL_H)
+	set(USE_POSIX_ACLS ON)
+    else()
+	set(USE_POSIX_ACLS OFF)
+	set(USE_FSAL_GLUSTER OFF)
+	message(STATUS "Could not find libacl, disabling GLUSTER fsal build")
+    endif(HAVE_ACL_H)
   endif(USE_FSAL_GLUSTER)
 endif(USE_FSAL_GLUSTER)
 

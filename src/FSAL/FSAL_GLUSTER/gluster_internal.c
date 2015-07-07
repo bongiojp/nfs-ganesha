@@ -267,6 +267,16 @@ int construct_handle(struct glusterfs_export *glexport, const struct stat *sb,
 
 	stat2fsal_attributes(sb, &constructing->handle.attributes);
 
+	switch (constructing->handle.type) {
+	case REGULAR_FILE:
+		buffxstat.is_dir = false;
+		break;
+	case DIRECTORY:
+		buffxstat.is_dir = true;
+		break;
+	default:
+		break;
+	}
 	status = glusterfs_get_acl(glexport, glhandle, &buffxstat,
 				   &constructing->handle.attributes);
 
@@ -478,40 +488,43 @@ fsal_status_t glusterfs_get_acl(struct glusterfs_export *glfs_export,
 				glusterfs_fsal_xstat_t *buffxstat,
 				struct attrlist *fsalattr)
 {
-	int rc = 0;
-	const char *acl_key = "user.nfsv4_acls";
-	glusterfs_acl_t *acl = NULL;
-
+	fsal_status_t status = { ERR_FSAL_NO_ERROR, 0 };
 	fsalattr->acl = NULL;
 
 	if (NFSv4_ACL_SUPPORT && FSAL_TEST_MASK(fsalattr->mask, ATTR_ACL)) {
-		rc = glfs_h_getxattrs(glfs_export->gl_fs,
-				      glhandle,
-				      acl_key, buffxstat->buffacl,
-				      GLFS_ACL_BUF_SIZE);
-		if (rc > 0) {
+
+		buffxstat->e_acl = glfs_h_acl_get(glfs_export->gl_fs,
+						glhandle,
+						ACL_TYPE_ACCESS);
+		if (buffxstat->e_acl) {
 			/* rc is the size of buffacl */
-			acl = (glusterfs_acl_t *) buffxstat->buffacl;
 			FSAL_SET_MASK(buffxstat->attr_valid, XATTR_ACL);
+			/* For directories consider inherited acl too */
+			if (buffxstat->is_dir) {
+				buffxstat->i_acl = glfs_h_acl_get(
+						glfs_export->gl_fs,
+						glhandle, ACL_TYPE_DEFAULT);
+				if (!buffxstat->i_acl)
+					LogDebug(COMPONENT_FSAL,
+				"inherited acl is not defined for directory");
+
+				status = posix_acl_2_fsal_acl_for_dir(
+						buffxstat->e_acl,
+						buffxstat->i_acl,
+						&fsalattr->acl);
+			} else
+				status = posix_acl_2_fsal_acl(buffxstat->e_acl,
+						&fsalattr->acl);
 			LogFullDebug(COMPONENT_FSAL, "acl = %p", fsalattr->acl);
-		} else if (rc == 0 || (rc == -1 && errno == ENOATTR)) {
-			/* ACL is empty, or no ACL has been set */
-			FSAL_SET_MASK(buffxstat->attr_valid, XATTR_ACL);
-			LogFullDebug(COMPONENT_FSAL, "no ACL-xattr set");
 		} else {
 			/* some real error occurred */
 			LogMajor(COMPONENT_FSAL, "failed to fetch ACL");
 			return fsalstat(ERR_FSAL_SERVERFAULT, errno);
 		}
 
-		rc = glusterfs_acl_2_fsal_acl(fsalattr, acl);
-		if (rc != ERR_FSAL_NO_ERROR) {
-			LogMajor(COMPONENT_FSAL, "failed to convert ACL");
-			return fsalstat(ERR_FSAL_SERVERFAULT, errno);
-		}
 	}
 
-	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+	return status;
 }
 
 /*
@@ -522,24 +535,24 @@ fsal_status_t glusterfs_set_acl(struct glusterfs_export *glfs_export,
 				glusterfs_fsal_xstat_t *buffxstat)
 {
 	int rc = 0;
-	char *acl_key = "user.nfsv4_acls";
-	glusterfs_acl_t *acl_p;
-	unsigned int acl_total_size = 0;
 
-	if (!NFSv4_ACL_SUPPORT)
-		return fsalstat(ERR_FSAL_ATTRNOTSUPP, 0);
-
-	acl_p = (glusterfs_acl_t *)(buffxstat->buffacl);
-	acl_total_size = acl_p->acl_len;
-	rc = glfs_h_setxattrs(glfs_export->gl_fs, objhandle->glhandle,
-			      acl_key, buffxstat->buffacl,
-			      acl_total_size, 0);
-
+	rc = glfs_h_acl_set(glfs_export->gl_fs, objhandle->glhandle,
+				ACL_TYPE_ACCESS, buffxstat->e_acl);
 	if (rc < 0) {
 		/* TODO: check if error is appropriate.*/
+		LogMajor(COMPONENT_FSAL, "failed to set access type posix acl");
 		return fsalstat(ERR_FSAL_INVAL, 0);
 	}
-
+	/* For directories consider inherited acl too */
+	if (buffxstat->is_dir && buffxstat->i_acl) {
+		rc = glfs_h_acl_set(glfs_export->gl_fs, objhandle->glhandle,
+				ACL_TYPE_DEFAULT, buffxstat->i_acl);
+		if (rc < 0) {
+			LogMajor(COMPONENT_FSAL,
+				 "failed to set default type posix acl");
+			return fsalstat(ERR_FSAL_INVAL, 0);
+		}
+	}
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
@@ -924,32 +937,105 @@ fsal_status_t glusterfs_process_acl(struct glfs *fs,
 				    struct attrlist *attrs,
 				    glusterfs_fsal_xstat_t *buffxstat)
 {
-	fsal_status_t status = { ERR_FSAL_NO_ERROR, 0 };
-	uint32_t fsal_mode;
-
-	memset(&buffxstat->buffacl, 0, GLFS_ACL_BUF_SIZE);
-	fsal_mode = unix2fsal_mode(buffxstat->buffstat.st_mode);
-
 	if (attrs->acl) {
 		LogDebug(COMPONENT_FSAL, "setattr acl = %p",
 			 attrs->acl);
 
-		/* Clear owner,group,everyone mode-bits */
-		fsal_mode &= CLEAR_MODE_BITS;
+		/* Convert FSAL ACL to POSIX ACL */
+		buffxstat->e_acl = fsal_acl_2_posix_acl(attrs->acl,
+						ACL_TYPE_ACCESS);
+		if (!buffxstat->e_acl) {
+			LogMajor(COMPONENT_FSAL,
+				 "failed to set access type posix acl");
+			return fsalstat(ERR_FSAL_FAULT, 0);
+		}
+		/* For directories consider inherited acl too */
+		if (buffxstat->is_dir) {
+			buffxstat->i_acl = fsal_acl_2_posix_acl(attrs->acl,
+							ACL_TYPE_DEFAULT);
+			if (!buffxstat->i_acl)
+				LogDebug(COMPONENT_FSAL,
+				"inherited acl is not defined for directory");
+		}
 
-		/* Convert FSAL ACL to GLUSTERFS NFS4 ACL and fill buffer. */
-		status =
-		    fsal_acl_2_glusterfs_acl(attrs->acl,
-					buffxstat->buffacl, &fsal_mode);
-		buffxstat->buffstat.st_mode = fsal2unix_mode(fsal_mode);
-
-		if (FSAL_IS_ERROR(status))
-			return status;
 	} else {
 		LogCrit(COMPONENT_FSAL, "setattr acl is NULL");
 		return fsalstat(ERR_FSAL_FAULT, 0);
 	}
-	return status;
+	return fsalstat(ERR_FSAL_NO_ERROR, 0);
+}
+
+int initiate_up_thread(struct glusterfs_export *glfsexport)
+{
+
+	pthread_attr_t up_thr_attr;
+	int retval  = -1;
+	int err   = 0;
+	int retries = 10;
+
+	memset(&up_thr_attr, 0, sizeof(up_thr_attr));
+
+	/* Initialization of thread attributes from nfs_init.c */
+	err = pthread_attr_init(&up_thr_attr);
+	if (err) {
+		LogCrit(COMPONENT_THREAD,
+			"can't init pthread's attributes (%s)",
+			strerror(err));
+		goto out;
+	}
+
+	err = pthread_attr_setscope(&up_thr_attr,
+				      PTHREAD_SCOPE_SYSTEM);
+	if (err) {
+		LogCrit(COMPONENT_THREAD,
+			"can't set pthread's scope (%s)",
+			strerror(err));
+		goto out;
+	}
+
+	err = pthread_attr_setdetachstate(&up_thr_attr,
+					  PTHREAD_CREATE_JOINABLE);
+	if (err) {
+		LogCrit(COMPONENT_THREAD,
+			"can't set pthread's join state (%s)",
+			strerror(err));
+		goto out;
+	}
+
+	err = pthread_attr_setstacksize(&up_thr_attr, 2116488);
+	if (err) {
+		LogCrit(COMPONENT_THREAD,
+			"can't set pthread's stack size (%s)",
+			strerror(err));
+		goto out;
+	}
+
+	do {
+		err = pthread_create(&glfsexport->up_thread,
+					&up_thr_attr,
+					GLUSTERFSAL_UP_Thread,
+					glfsexport);
+		sleep(1);
+	} while (err && (err == EAGAIN) && (retries-- > 0));
+
+	if (err) {
+		LogCrit(COMPONENT_THREAD,
+			"can't create upcall pthread (%s)",
+			strerror(err));
+		goto out;
+	}
+
+	retval = 0;
+
+out:
+	err = pthread_attr_destroy(&up_thr_attr);
+	if (err) {
+		LogCrit(COMPONENT_THREAD,
+			"can't destroy pthread's attributes (%s)",
+			strerror(err));
+	}
+
+	return retval;
 }
 
 #ifdef GLTIMING

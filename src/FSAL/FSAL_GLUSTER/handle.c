@@ -655,13 +655,21 @@ static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl)
 	now(&s_time);
 #endif
 
-	/* FIXME: Should we hold the fd so that any async op does
-	 * not close it */
-	if (objhandle->openflags != FSAL_O_CLOSED)
-		rc = glfs_fstat(objhandle->glfd, &buffxstat.buffstat);
-	else
-		rc = glfs_h_stat(glfs_export->gl_fs,
-				objhandle->glhandle, &buffxstat.buffstat);
+	/*
+	 * There is a kind of race here when the glfd part of the
+	 * FSAL GLUSTER object handle is destroyed during a close
+	 * coming in from another NFSv3 WRITE thread which does
+	 * cache_inode_open(). Since the context/fd is destroyed
+	 * we cannot depend on glfs_fstat assuming glfd is valid.
+
+	 * Fixing the issue by removing the glfs_fstat call here.
+
+	 * So default to glfs_h_stat and re-optimize if a better
+	 * way is found - that may involve introducing locks in
+	 * the gfapi's for close and getattrs etc.
+	 */
+	rc = glfs_h_stat(glfs_export->gl_fs,
+			 objhandle->glhandle, &buffxstat.buffstat);
 	if (rc != 0) {
 		if (errno == ENOENT)
 			status = gluster2fsal_error(ESTALE);
@@ -673,7 +681,16 @@ static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl)
 
 	fsalattr = &objhandle->handle.attributes;
 	stat2fsal_attributes(&buffxstat.buffstat, fsalattr);
-
+	switch (obj_hdl->type) {
+	case REGULAR_FILE:
+		buffxstat.is_dir = false;
+		break;
+	case DIRECTORY:
+		buffxstat.is_dir = true;
+		break;
+	default:
+		break;
+	}
 	status = glusterfs_get_acl(glfs_export, objhandle->glhandle,
 				   &buffxstat, fsalattr);
 
@@ -698,7 +715,6 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 	glusterfs_fsal_xstat_t buffxstat;
 	int mask = 0;
 	int attr_valid = 0;
-	bool is_dir = 0;
 	struct glusterfs_export *glfs_export =
 	    container_of(op_ctx->fsal_export, struct glusterfs_export, export);
 	struct glusterfs_handle *objhandle =
@@ -775,6 +791,16 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 
 	if (NFSv4_ACL_SUPPORT) {
 		if (FSAL_TEST_MASK(attrs->mask, ATTR_ACL)) {
+			switch (obj_hdl->type) {
+			case REGULAR_FILE:
+				buffxstat.is_dir = false;
+				break;
+			case DIRECTORY:
+				buffxstat.is_dir = true;
+				break;
+			default:
+				break;
+			}
 			FSAL_SET_MASK(attr_valid, XATTR_ACL);
 			status =
 			  glusterfs_process_acl(glfs_export->gl_fs,
@@ -787,6 +813,8 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			/* mode-bits too if not already passed */
 			FSAL_SET_MASK(mask, GLAPI_SET_ATTR_MODE);
 		} else if (mask & GLAPI_SET_ATTR_MODE) {
+#if 0
+			bool is_dir = 0;
 			switch (obj_hdl->type) {
 			case REGULAR_FILE:
 				is_dir = 0; break;
@@ -795,13 +823,8 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 			default:
 				break;
 			}
-			status =
-			 mode_bits_to_acl(glfs_export->gl_fs, objhandle,
-					  attrs, &attr_valid,
-					  &buffxstat, is_dir);
+#endif
 
-			if (FSAL_IS_ERROR(status))
-				goto out;
 		}
 	} else if (FSAL_TEST_MASK(attrs->mask, ATTR_ACL)) {
 		status = fsalstat(ERR_FSAL_ATTRNOTSUPP, 0);
@@ -820,12 +843,9 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 		GLUSTER_VALIDATE_RETURN_STATUS(rc);
 	}
 
-	if (FSAL_TEST_MASK(attr_valid, XATTR_ACL)) {
-		status = glusterfs_set_acl(glfs_export,
-					   objhandle, &buffxstat);
-		if (FSAL_IS_ERROR(status))
-			goto out;
-	}
+	if (FSAL_TEST_MASK(attr_valid, XATTR_ACL))
+		status = glusterfs_set_acl(glfs_export, objhandle, &buffxstat);
+
 out:
 #ifdef GLTIMING
 	now(&e_time);

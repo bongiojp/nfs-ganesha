@@ -27,6 +27,7 @@
 #include "fsal.h"
 #include "fsal_types.h"
 #include "fsal_api.h"
+#include "posix_acls.h"
 #include <glusterfs/api/glfs.h>
 #include <glusterfs/api/glfs-handles.h>
 
@@ -359,6 +360,8 @@ struct glusterfs_export {
 	bool acl_enable;
 	bool pnfs_ds_enabled;
 	bool pnfs_mds_enabled;
+	int8_t destroy_mode;
+	pthread_t up_thread; /* upcall thread */
 };
 
 struct glusterfs_handle {
@@ -381,7 +384,6 @@ struct glusterfs_handle {
 struct glfs_ds_handle {
 	struct fsal_ds_handle ds;
 	struct glfs_object *glhandle;
-	struct glfs_fd *glfd;
 	stable_how4  stability_got;
 	bool connected;
 };
@@ -394,7 +396,6 @@ struct glfs_file_layout {
 
 struct glfs_ds_wire {
 	unsigned char gfid[16];
-	int flags;
 	struct glfs_file_layout layout; /*< Layout information */
 };
 
@@ -429,6 +430,9 @@ typedef struct fsal_xstat__ {
 	int attr_valid;
 	struct stat buffstat;
 	char buffacl[GLFS_ACL_BUF_SIZE];
+	acl_t e_acl; /* stores effective acl */
+	acl_t i_acl; /* stores inherited acl */
+	bool is_dir;
 } glusterfs_fsal_xstat_t;
 
 /* GLUSTERFS ACL */
@@ -538,5 +542,10 @@ nfsstat4 getdeviceinfo(struct fsal_module *fsal_hdl,
 			XDR *da_addr_body, const layouttype4 type,
 			const struct pnfs_deviceid *deviceid);
 
+/* UP thread routines */
+void *GLUSTERFSAL_UP_Thread(void *Arg);
+int initiate_up_thread(struct glusterfs_export *glfsexport);
+int upcall_inode_invalidate(struct glusterfs_export *glfsexport,
+			    struct glfs_object *object);
 
 #endif				/* GLUSTER_INTERNAL */
