@@ -85,7 +85,7 @@ void *GPFSFSAL_UP_Thread(void *Arg)
 			     "Requesting event from FSAL Callback interface for %d.",
 			     gpfs_fs->root_fd);
 
-		handle.handle_size = OPENHANDLE_HANDLE_LEN;
+		handle.handle_size = gpfs_max_fh_size;
 		handle.handle_key_size = OPENHANDLE_KEY_LEN;
 		handle.handle_version = OPENHANDLE_VERSION;
 
@@ -392,6 +392,14 @@ void *GPFSFSAL_UP_Thread(void *Arg)
 						&key,
 						upflags);
 			break;
+
+		case THREAD_PAUSE:
+			/* File system image is probably going away, but
+			 * we don't need to do anything here as we
+			 * eventually get other errors that stop this
+			 * thread.
+			 */
+			continue; /* get next event */
 
 		default:
 			LogWarn(COMPONENT_FSAL_UP, "Unknown event: %d", reason);

@@ -205,20 +205,6 @@ struct state_refer {
  *****************************************************************************/
 
 /**
- * @brief Grace period control structure
- *
- * This could be expanded to implement grace instances, where a new
- * grace period is started for every failover.  for now keep it
- * simple, just a global used by all clients.
- */
-typedef struct grace {
-	pthread_mutex_t g_mutex;	/*< Mutex */
-	time_t g_start;		/*< Start of grace period */
-	time_t g_duration;	/*< Duration of grace period */
-	struct glist_head g_clid_list;	/*< Clients */
-} grace_t;
-
-/**
  * @brief Revoked filehandle list
  */
 typedef struct rdel_fh {
