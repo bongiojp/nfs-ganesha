@@ -433,8 +433,7 @@ int nfs4_op_lock(struct nfs_argop4 *op, compound_data_t *data,
 			res_LOCK4->status = NFS4ERR_GRACE;
 			goto out;
 		}
-		if (!fsal_grace && arg_LOCK4->reclaim
-		    && !clientid->cid_allow_reclaim) {
+		if (!fsal_grace && arg_LOCK4->reclaim) {
 			LogLock(COMPONENT_NFS_V4_LOCK, NIV_DEBUG,
 				"LOCK failed, invalid reclaim while in grace",
 				data->current_entry, resp_owner, &lock_desc);
