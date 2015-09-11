@@ -165,6 +165,7 @@ typedef struct nfs_worker_data {
 	wait_q_entry_t wqe;	/*< Queue for coordinating with decoder */
 
 	sockaddr_t hostaddr;	/*< Client address */
+	sockaddr_t serveraddr;	/*< Server address */
 	struct fridgethr_context *ctx;	/*< Link back to thread context */
 } nfs_worker_data_t;
 

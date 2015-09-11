@@ -137,6 +137,25 @@ bool copy_xprt_addr(sockaddr_t *addr, SVCXPRT *xprt)
 }
 
 /**
+ * @brief Copy transport nfs server address into an address field
+ *
+ * @param[out] addr Address field to fill in.
+ * @param[in]  xprt Transport to get nfs server address from.
+ *
+ * @retval true if okay.
+ * @retval false if not.
+ */
+
+bool copy_xprt_server_addr(sockaddr_t *addr, SVCXPRT *xprt)
+{
+	struct netbuf *phostaddr = svc_getlocal_netbuf(xprt);
+	if (phostaddr->len > sizeof(sockaddr_t) || phostaddr->buf == NULL)
+		return 0;
+	memcpy(addr, phostaddr->buf, phostaddr->len);
+	return 1;
+}
+
+/**
  * @brief Create a hash value based on the sockaddr_t structure
  *
  * This creates a native pointer size (unsigned long int) hash value

@@ -213,6 +213,14 @@ typedef struct rdel_fh {
 } rdel_fh_t;
 
 /**
+ * @brief Recovery path to be cleaned
+ */
+typedef struct clean_entry {
+	struct glist_head clean_list;
+	char *old_rec_dir_path; 
+} clean_entry_t;
+
+/**
  * @brief A client entry
  */
 typedef struct clid_entry {
