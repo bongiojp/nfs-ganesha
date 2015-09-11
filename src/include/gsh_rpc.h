@@ -349,6 +349,7 @@ do {									\
 } while (0)
 
 bool copy_xprt_addr(sockaddr_t *, SVCXPRT *);
+bool copy_xprt_server_addr(sockaddr_t *addr, SVCXPRT *xprt);
 
 int display_sockaddr(struct display_buffer *dspbuf, sockaddr_t *addr);
 

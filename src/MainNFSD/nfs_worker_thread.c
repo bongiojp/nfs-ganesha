@@ -60,6 +60,7 @@
 #include "export_mgr.h"
 #include "server_stats.h"
 #include "uid2grp.h"
+#include "gsh_rpc.h"
 
 #ifdef USE_LTTNG
 #include "gsh_lttng/nfs_rpc.h"
@@ -737,6 +738,7 @@ static void nfs_rpc_execute(request_data_t *req,
 	op_ctx = &req_ctx;
 	op_ctx->creds = &user_credentials;
 	op_ctx->caller_addr = &worker_data->hostaddr;
+	op_ctx->server_addr = &worker_data->serveraddr;
 	op_ctx->nfs_vers = svcreq->rq_vers;
 	op_ctx->req_type = req->rtype;
 	op_ctx->export_perms = &export_perms;
@@ -767,6 +769,33 @@ static void nfs_rpc_execute(request_data_t *req,
 		DISP_SUNLOCK(xprt);
 		goto out;
 	}
+
+	/* We need the server addr later for nfsv4 recovery.
+	 * It's possible the server has multiple ips so we find the
+	 * ip the client used here. */
+	if (copy_xprt_server_addr(op_ctx->server_addr, xprt) == 0) {
+		LogDebug(COMPONENT_DISPATCH,
+			 "copy_xprt_server_addr failed for Program %d, Version %d, "
+			 "Function %d", (int)svcreq->rq_prog,
+			 (int)svcreq->rq_vers, (int)svcreq->rq_proc);
+		/* XXX move lock wrapper into RPC API */
+		DISP_SLOCK(xprt);
+		svcerr_systemerr(xprt, svcreq);
+		DISP_SUNLOCK(xprt);
+		goto out;
+	}
+
+	char clientstr[SOCK_NAME_MAX];
+	char serverstr[SOCK_NAME_MAX];
+	sprint_sockip(op_ctx->caller_addr, clientstr, SOCK_NAME_MAX);
+	sprint_sockip(op_ctx->server_addr, serverstr, SOCK_NAME_MAX);
+	LogFullDebug(COMPONENT_DISPATCH,
+		"Program %d, Version %d, Function %d clientip: %s serverip: %s",
+		(int)svcreq->rq_prog,
+		(int)svcreq->rq_vers,
+		(int)svcreq->rq_proc,
+		clientstr,
+		serverstr);
 
 	port = get_port(op_ctx->caller_addr);
 	op_ctx->client = get_gsh_client(op_ctx->caller_addr, false);

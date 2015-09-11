@@ -70,6 +70,8 @@
 #include "uid2grp.h"
 #include "pnfs_utils.h"
 
+/* Shared with nfs4_recovery.c */
+extern pthread_mutex_t grace_mutex;
 
 /* global information exported to all layers (as extern vars) */
 nfs_parameter_t nfs_param;
@@ -865,8 +867,10 @@ void nfs_start(nfs_start_info_t *p_start_info)
 	LogEvent(COMPONENT_MAIN, "NFS EXIT: regular exit");
 
 	/* if not in grace period, clean up the old state directory */
+	PTHREAD_MUTEX_lock(&grace_mutex);
 	if (!nfs_in_grace())
-		nfs4_clean_old_recov_dir(v4_old_dir);
+		nfs4_clean_recov_dir_no_lock(v4_old_dir);
+	PTHREAD_MUTEX_unlock(&grace_mutex);
 
 	Cleanup();
 

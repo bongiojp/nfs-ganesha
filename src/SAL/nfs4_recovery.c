@@ -50,10 +50,12 @@ char v4_old_dir[PATH_MAX];
 time_t current_grace;
 pthread_mutex_t grace_mutex = PTHREAD_MUTEX_INITIALIZER;        /*< Mutex */
 struct glist_head clid_list = GLIST_HEAD_INIT(clid_list);  /*< Clients */
+struct glist_head clean_list = GLIST_HEAD_INIT(clean_list);  /*< For reaper */
 
 static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp);
 static void nfs_release_nlm_state(char *release_ip);
 static void nfs_release_v4_client(char *ip);
+static void nfs4_load_all_ip_recov_dirs(void);
 
 /**
  * @brief Start grace period
@@ -298,8 +300,12 @@ void nfs4_create_clid_name41(nfs_client_record_t *cl_rec,
 void nfs4_add_clid(nfs_client_id_t *clientid)
 {
 	int err = 0;
-	char path[PATH_MAX] = {0}, segment[NAME_MAX + 1] = {0};
+	char ip_path[PATH_MAX] = {0}, nodeid_path[PATH_MAX] = {0},
+					segment[NAME_MAX + 1] = {0};
 	int length, position = 0;
+	const char *str_client_addr = "(unknown)";
+	#define MAX_IPv6_STRING 480
+	char ipstr[MAX_IPv6_STRING];
 
 	if (clientid->cid_minorversion > 0)
 		nfs4_create_clid_name41(clientid->cid_client_record, clientid);
@@ -312,7 +318,39 @@ void nfs4_add_clid(nfs_client_id_t *clientid)
 
 	/* break clientid down if it is greater than max dir name */
 	/* and create a directory hierachy to represent the clientid. */
-	snprintf(path, sizeof(path), "%s", v4_recov_dir);
+	if (op_ctx->server_addr->ss_family == AF_INET) {
+	  struct sockaddr_in *addr = (struct sockaddr_in *) op_ctx->server_addr;
+	  inet_ntop(AF_INET, &addr->sin_addr, ipstr, MAX_IPv6_STRING);
+	} else if (op_ctx->server_addr->ss_family == AF_INET6) {
+	  struct sockaddr_in6 *addr = (struct sockaddr_in6 *) op_ctx->server_addr;
+	  inet_ntop(AF_INET6, &addr->sin6_addr, ipstr, MAX_IPv6_STRING);
+	} else {
+	  LogEvent(COMPONENT_CLIENTID,
+		   "Failed to create IP-based client in recovery dir, server "
+		   "address incorrect: errno:%d %s", errno, strerror(errno));
+	  return;
+	}
+	snprintf(ip_path, sizeof(ip_path), "%s/%s/", NFS_V4_RECOV_ROOT, ipstr);
+
+	/* Make sure IP-based recovery path exists ... this needs to be created
+	 * on the fly here because server IPs can change. */
+	err = mkdir(ip_path, 0700);
+	if (err == -1 && errno != EEXIST) {
+	  LogEvent(COMPONENT_CLIENTID,
+		   "Failed to create client in recovery dir, IP-based directory"
+		   " not created. errno:%d %s", errno, strerror(errno));
+	  return;
+	}
+	strcat(ip_path, NFS_V4_RECOV_DIR);
+	err = mkdir(ip_path, 0700);
+	if (err == -1 && errno != EEXIST) {
+	  LogEvent(COMPONENT_CLIENTID,
+		   "Failed to create client in recovery dir, IP-based directory"
+		   " not created. errno:%d %s", errno, strerror(errno));
+	  return;
+	}
+
+	snprintf(nodeid_path, sizeof(nodeid_path), "%s", v4_recov_dir);
 
 	length = strlen(clientid->cid_recov_dir);
 	while (position < length) {
@@ -320,28 +358,41 @@ void nfs4_add_clid(nfs_client_id_t *clientid)
 		/* create the last level of dir and break out */
 		int len = strlen(&clientid->cid_recov_dir[position]);
 		if (len <= NAME_MAX) {
-			strcat(path, "/");
-			strncat(path, &clientid->cid_recov_dir[position], len);
-			err = mkdir(path, 0700);
+			strcat(nodeid_path, "/");
+			strncat(nodeid_path, &clientid->cid_recov_dir[position], len);
+			err = mkdir(nodeid_path, 0700);
+
+			strcat(ip_path, "/");
+			strncat(ip_path, &clientid->cid_recov_dir[position], len);
+			err = mkdir(ip_path, 0700);
 			break;
 		}
+
 		/* if (remaining) clientid is longer than 255, */
 		/* get the next 255 bytes and create a subdir */
 		strncpy(segment, &clientid->cid_recov_dir[position], NAME_MAX);
-		strcat(path, "/");
-		strncat(path, segment, NAME_MAX);
-		err = mkdir(path, 0700);
+
+		strcat(nodeid_path, "/");
+		strncat(nodeid_path, segment, NAME_MAX);
+		err = mkdir(nodeid_path, 0700);
 		if (err == -1 && errno != EEXIST)
-			break;
+		  break;
+
+		strcat(ip_path, "/");
+		strncat(ip_path, segment, NAME_MAX);
+		err = mkdir(ip_path, 0700);
+		if (err == -1 && errno != EEXIST)
+		  break;
+
 		position += NAME_MAX;
 	}
 
 	if (err == -1 && errno != EEXIST) {
 		LogEvent(COMPONENT_CLIENTID,
 			 "Failed to create client in recovery dir (%s), errno=%d",
-			 path, errno);
+			 nodeid_path, errno);
 	} else {
-		LogDebug(COMPONENT_CLIENTID, "Created client dir [%s]", path);
+		LogDebug(COMPONENT_CLIENTID, "Created client dir [%s]", nodeid_path);
 	}
 }
 
@@ -739,6 +790,7 @@ static int nfs4_read_recov_clids(DIR *dp,
 		if (clid_str)
 			strcpy(build_clid, clid_str);
 		strncat(build_clid, dentp->d_name, segment_len);
+
 		subdp = opendir(path);
 		if (subdp == NULL) {
 			LogEvent(COMPONENT_CLIENTID,
@@ -868,12 +920,15 @@ static int nfs4_read_recov_clids(DIR *dp,
 static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp)
 {
 	DIR *dp;
+	struct dirent *dentp;
 	struct glist_head *node;
 	clid_entry_t *clid_entry;
 	int rc;
 	char path[PATH_MAX];
+	char old_rec_dir[PATH_MAX];
+	clean_entry_t *clean_ent;
 
-	LogDebug(COMPONENT_STATE, "Load recovery cli %p", gsp);
+	strcpy(old_rec_dir, v4_old_dir);
 
 	if (gsp == NULL) {
 		/* when not doing a takeover, start with an empty list */
@@ -886,19 +941,21 @@ static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp)
 			}
 		}
 
-		dp = opendir(v4_old_dir);
+		nfs4_load_all_ip_recov_dirs();
+
+		dp = opendir(old_rec_dir);
 		if (dp == NULL) {
 			LogEvent(COMPONENT_CLIENTID,
 				 "Failed to open v4 recovery dir (%s), errno=%d",
-				 v4_old_dir, errno);
+				 old_rec_dir, errno);
 			return;
 		}
-		rc = nfs4_read_recov_clids(dp, v4_old_dir, NULL, NULL, 0);
+		rc = nfs4_read_recov_clids(dp, old_rec_dir, NULL, NULL, 0);
 		if (rc == -1) {
 			(void)closedir(dp);
 			LogEvent(COMPONENT_CLIENTID,
 				 "Failed to read v4 recovery dir (%s)",
-				 v4_old_dir);
+				 old_rec_dir);
 			return;
 		}
 		(void)closedir(dp);
@@ -912,7 +969,7 @@ static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp)
 		}
 
 		rc = nfs4_read_recov_clids(dp, v4_recov_dir,
-					   NULL, v4_old_dir, 0);
+					   NULL, old_rec_dir, 0);
 		if (rc == -1) {
 			(void)closedir(dp);
 			LogEvent(COMPONENT_CLIENTID,
@@ -928,25 +985,93 @@ static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp)
 		}
 
 	} else {
-		if (gsp->event == EVENT_UPDATE_CLIENTS)
+	  if (gsp->event == EVENT_UPDATE_CLIENTS) {
 			snprintf(path, sizeof(path), "%s", v4_recov_dir);
+	  }
+		else if (gsp->event == EVENT_TAKE_IP) {
+			struct sockaddr_in sa;
+			struct sockaddr_in6 sa6;
+			if (inet_pton(AF_INET, gsp->ipaddr, &(sa.sin_addr)) == 1) {
+				/* Using ipv6 format seems simpler. */
+				snprintf(path, sizeof(path), "%s/::ffff:%s/%s",
+					 NFS_V4_RECOV_ROOT, gsp->ipaddr,
+					 NFS_V4_RECOV_DIR);
+				snprintf(old_rec_dir, sizeof(old_rec_dir),
+					 "%s/::ffff:%s/%s",
+					 NFS_V4_RECOV_ROOT, gsp->ipaddr,
+					 NFS_V4_OLD_DIR);
+				rc = mkdir(old_rec_dir, 0755);
+				if (rc == -1 && errno != EEXIST) {
+					LogEvent(COMPONENT_CLIENTID,
+						 "Failed to create v4 recovery dir(%s), errno=%d",
+						 old_rec_dir, errno);
+				}
+			}
+			else if (inet_pton(AF_INET6, gsp->ipaddr,
+					   &(sa6.sin6_addr)) == 1) {
+				snprintf(path, sizeof(path), "%s/%s/%s",
+					 NFS_V4_RECOV_ROOT, gsp->ipaddr,
+					 NFS_V4_RECOV_DIR);
+				snprintf(old_rec_dir, sizeof(old_rec_dir),
+					 "%s/%s/%s",
+					 NFS_V4_RECOV_ROOT, gsp->ipaddr, NFS_V4_OLD_DIR);
+				rc = mkdir(old_rec_dir, 0755);
+				if (rc == -1 && errno != EEXIST) {
+					LogEvent(COMPONENT_CLIENTID,
+						 "Failed to create v4 recovery dir(%s), errno=%d",
+						 old_rec_dir, errno);
+				}
+			}
+			else {
+				LogEvent(COMPONENT_CLIENTID,
+					 "IP isn't properly formatted for recovery: %s",
+					 gsp->ipaddr);
+			}
 
-		else if (gsp->event == EVENT_TAKE_IP)
-			snprintf(path, sizeof(path), "%s/%s/%s",
-				 NFS_V4_RECOV_ROOT, gsp->ipaddr,
-				 NFS_V4_RECOV_DIR);
+			/* There are 2 situations where old rec dir is used.
+			   1. If ganesha crashes in middle of grace and must continue
+			   recovery after restarting.
+			   2. If ganesha crashes and a _different_ node must continue
+			   grace and recovery. Case 2 is dealt with here ...
+			*/
+			dp = opendir(old_rec_dir);
+			if (dp == NULL) {
+			  LogEvent(COMPONENT_CLIENTID,
+				   "Failed to open v4 recovery dir (%s), errno=%d",
+				   old_rec_dir, errno);
+			  return;
+			}
+			LogEvent(COMPONENT_CLIENTID, "Reading from old rec dir: %s",
+				 old_rec_dir);
+			rc = nfs4_read_recov_clids(dp, old_rec_dir, NULL, NULL, 0);
+			if (rc == -1) {
+			  (void)closedir(dp);
+			  LogEvent(COMPONENT_CLIENTID,
+				   "Failed to read v4 recovery dir (%s)",
+				   old_rec_dir);
+			  return;
+			}
+			(void)closedir(dp);
 
-		else if (gsp->event == EVENT_TAKE_NODEID)
+		}
+		else if (gsp->event == EVENT_TAKE_NODEID) {
+		  LogDebug(COMPONENT_CLIENTID, "EVENT_TAKE_NODEID");
 			snprintf(path, sizeof(path), "%s/%s/node%d",
 				 NFS_V4_RECOV_ROOT, NFS_V4_RECOV_DIR,
 				 gsp->nodeid);
-
-		else
-			return;
+		}
+		else {
+		  LogEvent(COMPONENT_CLIENTID,
+			   "Invalid recovery event requested: %d", gsp->event);
+		  return;
+		}
 
 		LogEvent(COMPONENT_CLIENTID, "Recovery for nodeid %d dir (%s)",
 			 gsp->nodeid, path);
 
+		/* Then read clientids from the main recovery directory and
+		 * copy them to the old rec dir.
+		 */
 		dp = opendir(path);
 		if (dp == NULL) {
 			LogEvent(COMPONENT_CLIENTID,
@@ -955,12 +1080,41 @@ static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp)
 			return;
 		}
 
-		rc = nfs4_read_recov_clids(dp, path, NULL, v4_old_dir, 1);
+		rc = nfs4_read_recov_clids(dp, path, NULL, old_rec_dir, 1);
 		if (rc == -1) {
 			(void)closedir(dp);
 			LogEvent(COMPONENT_CLIENTID,
 				 "Failed to read v4 recovery dir (%s)", path);
 			return;
+		}
+
+		if (gsp->event == EVENT_TAKE_IP) {
+			/* At this point all client ids to be recovered have
+			 * been moved to "old_rec_dir" and are in our grace
+			 * period client list. We can now remove client ids from
+			 * the main recovery dir so we don't continue collecting
+			 * old client ids. During recovery, clients receive a
+			 * new clientid and a new recovery entry, so the entries
+			 * previously read aren't needed. */
+			nfs4_clean_recov_dir_no_lock((char *) path);
+
+			/* And tell reaper thread that once grace period is
+			 * finished it can clean up the old recovery directory.
+			 * WARNING: This is not guaranteed. When will the reaper
+			 * thread run next? Will Ganesha reboot before that
+			 * happens and recover these clients a _second_ time? */
+			clean_ent = gsh_malloc(sizeof(clean_entry_t));
+			if (clean_ent == NULL) {
+				LogEvent(COMPONENT_CLIENTID,
+					 "Alloc Failed: clean_entry_t");
+				return;
+			}
+			clean_ent->old_rec_dir_path = strdup(old_rec_dir);
+			glist_add(&clean_list, &clean_ent->clean_list);
+			LogDebug(COMPONENT_CLIENTID,
+				 "added directory %s to cleaning list",
+				 clean_ent->old_rec_dir_path);
+			clean_old_recov_state();
 		}
 		rc = closedir(dp);
 		if (rc == -1) {
@@ -986,9 +1140,9 @@ void nfs4_load_recov_clids(nfs_grace_start_t *gsp)
 }
 
 /**
- * @brief Clean up recovery directory
+ * @brief Clean up recovery directory, whether main directory or old directory.
  */
-void nfs4_clean_old_recov_dir(char *parent_path)
+void nfs4_clean_recov_dir_no_lock(char *parent_path)
 {
 	DIR *dp;
 	struct dirent *dentp;
@@ -999,7 +1153,7 @@ void nfs4_clean_old_recov_dir(char *parent_path)
 	dp = opendir(parent_path);
 	if (dp == NULL) {
 		LogEvent(COMPONENT_CLIENTID,
-			 "Failed to open old v4 recovery dir (%s), errno=%d",
+			 "Failed to open v4 recovery dir (%s), errno=%d",
 			 v4_old_dir, errno);
 		return;
 	}
@@ -1037,7 +1191,7 @@ void nfs4_clean_old_recov_dir(char *parent_path)
 
 		snprintf(path, total_len, "%s/%s", parent_path, dentp->d_name);
 
-		nfs4_clean_old_recov_dir(path);
+		nfs4_clean_recov_dir_no_lock(path);
 		rc = rmdir(path);
 		if (rc == -1) {
 			LogEvent(COMPONENT_CLIENTID,
@@ -1046,6 +1200,76 @@ void nfs4_clean_old_recov_dir(char *parent_path)
 		gsh_free(path);
 	}
 	(void)closedir(dp);
+}
+
+/**
+ *
+ */ 
+void  nfs4_load_all_ip_recov_dirs(void)
+{
+  struct sockaddr_in6 sa6;
+  DIR *maindp, *recovdp;
+  struct dirent *dentp;
+  char old_rec_dir[PATH_MAX];
+  int rc;
+
+  maindp = opendir(NFS_V4_RECOV_ROOT);
+  if (maindp == NULL) {
+    LogEvent(COMPONENT_CLIENTID, "opendir %s failed errno=%d",
+	     NFS_V4_RECOV_ROOT, errno);
+    return;
+  }
+    for (dentp = readdir(maindp); dentp != NULL; dentp = readdir(maindp)) {
+      /* don't add '.' and '..' entry */
+      if (!strcmp(dentp->d_name, ".") || !strcmp(dentp->d_name, ".."))
+	continue;
+
+      /* We formatted all dir names as ipv6. */
+      if (inet_pton(AF_INET6, dentp->d_name, &(sa6.sin6_addr)) == 1) {
+	snprintf(old_rec_dir, sizeof(old_rec_dir), "%s/%s/%s",
+		 NFS_V4_RECOV_ROOT, dentp->d_name, NFS_V4_OLD_DIR);
+	recovdp = opendir(old_rec_dir);
+		if (recovdp == NULL) {
+			LogEvent(COMPONENT_CLIENTID,
+				 "Failed to open v4 recovery dir (%s), errno=%d",
+				 old_rec_dir, errno);
+			return;
+		}
+		rc = nfs4_read_recov_clids(recovdp, old_rec_dir, NULL, NULL, 0);
+		if (rc == -1) {
+			(void)closedir(recovdp);
+			LogEvent(COMPONENT_CLIENTID,
+				 "Failed to read v4 recovery dir (%s)",
+				 old_rec_dir);
+			return;
+		}
+		(void)closedir(recovdp);	
+      }
+    }
+    (void)closedir(maindp);
+}
+
+/**
+ * @brief Clean up old ip-based recovery directories.
+ */
+void nfs4_clean_ip_recov_dirs(void)
+{
+	struct glist_head *node, *noden;
+	clean_entry_t *dir_to_clean;
+
+	/* Find IP-based recovery directories and clean up. */
+	glist_for_each_safe(node, noden, &clean_list) {
+		dir_to_clean = glist_entry(node, clean_entry_t, clean_list);
+
+		LogFullDebug(COMPONENT_CLIENTID,
+			     "Cleaning old ip-based recov dir: %s",
+			     dir_to_clean->old_rec_dir_path);
+		nfs4_clean_recov_dir_no_lock(dir_to_clean->old_rec_dir_path);
+
+		glist_del(node);
+		gsh_free(dir_to_clean->old_rec_dir_path);
+		gsh_free(dir_to_clean);
+	}
 }
 
 /**

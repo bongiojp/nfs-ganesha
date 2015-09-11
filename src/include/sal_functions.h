@@ -866,11 +866,12 @@ void nfs4_add_clid(nfs_client_id_t *);
 void nfs4_rm_clid(const char *, char *, int);
 void nfs4_chk_clid(nfs_client_id_t *);
 void nfs4_load_recov_clids(nfs_grace_start_t *gsp);
-void nfs4_clean_old_recov_dir(char *);
+void nfs4_clean_recov_dir_no_lock(char *);
+void nfs4_clean_ip_recov_dirs(void);
 void nfs4_create_recov_dir(void);
 void nfs4_record_revoke(nfs_client_id_t *, nfs_fh4 *);
 bool nfs4_check_deleg_reclaim(nfs_client_id_t *, nfs_fh4 *);
-
+void clean_old_recov_state();
 
 #endif				/* SAL_FUNCTIONS_H */
 
