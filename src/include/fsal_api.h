@@ -414,6 +414,8 @@ struct req_op_context {
 	void *fsal_private;		/*< private for FSAL use */
 	struct fsal_module *fsal_module;	/*< current fsal module */
 	struct fsal_pnfs_ds *fsal_pnfs_ds;	/*< current pNFS DS */
+
+	sockaddr_t *server_addr;	/*< IP to which client connected */
 	/* add new context members here */
 };
 
