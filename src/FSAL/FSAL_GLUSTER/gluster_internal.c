@@ -267,24 +267,24 @@ int construct_handle(struct glusterfs_export *glexport, const struct stat *sb,
 
 	stat2fsal_attributes(sb, &constructing->handle.attributes);
 
-	switch (constructing->handle.type) {
-	case REGULAR_FILE:
-		buffxstat.is_dir = false;
-		break;
-	case DIRECTORY:
+	if (constructing->attributes.type == DIRECTORY)
 		buffxstat.is_dir = true;
-		break;
-	default:
-		break;
-	}
+	else
+		buffxstat.is_dir = false;
+
 	status = glusterfs_get_acl(glexport, glhandle, &buffxstat,
 				   &constructing->handle.attributes);
 
 	if (FSAL_IS_ERROR(status)) {
 		/* TODO: Is the error appropriate */
-		errno = EINVAL;
-		gsh_free(constructing);
-		return -1;
+
+		/* For dead links , we should not return error */
+		if (!(constructing->attributes.type == SYMBOLIC_LINK
+					&& status.minor == ENOENT)) {
+			errno = EINVAL;
+			gsh_free(constructing);
+			return -1;
+		}
 	}
 
 	constructing->glhandle = glhandle;

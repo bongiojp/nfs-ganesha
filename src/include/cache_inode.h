@@ -103,7 +103,7 @@ struct cache_inode_parameter {
 	uint32_t entries_hwmark;
 	/** Base interval in seconds between runs of the LRU cleaner
 	    thread. Defaults to 60, settable with LRU_Run_Interval. */
-	time_t lru_run_interval;
+	uint32_t lru_run_interval;
 	/** Whether to cache open files.  Defaults to true, settable
 	    with Cache_FDs. */
 	bool use_fd_cache;
@@ -967,8 +967,9 @@ cache_inode_refresh_attrs(cache_entry_t *entry)
 	fsal_status =
 	    entry->obj_handle->obj_ops.getattrs(entry->obj_handle);
 	if (FSAL_IS_ERROR(fsal_status)) {
-		cache_inode_kill_entry(entry);
 		cache_status = cache_inode_error_convert(fsal_status);
+		if (cache_status == CACHE_INODE_ESTALE)
+			cache_inode_kill_entry(entry);
 		LogDebug(COMPONENT_CACHE_INODE, "Failed on entry %p %s", entry,
 			 cache_inode_err_str(cache_status));
 		goto out;

@@ -46,7 +46,7 @@ CONFFILE=/etc/ganesha/gpfs.ganesha.nfsd.conf
 
 ###########################################################
 
-OPTIONS="-f $CONFFILE -L $LOGFILE -N NIV_INFO -p $PIDFILE"
+OPTIONS="-f $CONFFILE -L $LOGFILE -N INFO -p $PIDFILE"
 RETVAL=0
 prog="ganesha.nfsd"
 CMD_LOGGER="/usr/bin/logger -i -t ganesha.gpfs-init "

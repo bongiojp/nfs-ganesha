@@ -168,6 +168,7 @@ be used with NFS-Ganesha to support PROXY based filesystems
 %package utils
 Summary: The NFS-GANESHA's util scripts
 Group: Applications/System
+Requires:	dbus-python, pygobject2
 %if %{with gui_utils}
 BuildRequires:	PyQt4-devel
 Requires:	PyQt4
@@ -580,6 +581,8 @@ make DESTDIR=%{buildroot} install
 %{_bindir}/manage_exports
 %{_bindir}/manage_logger
 %{_bindir}/ganeshactl
+%{_bindir}/client_stats_9pOps
+%{_bindir}/export_stats_9pOps
 %endif
 %{_bindir}/fake_recall
 %{_bindir}/get_clientids

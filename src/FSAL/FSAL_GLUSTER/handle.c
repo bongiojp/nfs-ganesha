@@ -244,7 +244,7 @@ static fsal_status_t create(struct fsal_obj_handle *dir_hdl,
 	/* FIXME: what else from attrib should we use? */
 	glhandle =
 	    glfs_h_creat(glfs_export->gl_fs, parenthandle->glhandle, name,
-			 O_CREAT, fsal2unix_mode(attrib->mode), &sb);
+			 O_CREAT | O_EXCL, fsal2unix_mode(attrib->mode), &sb);
 
 	rc = setglustercreds(glfs_export, NULL, NULL, 0, NULL);
 	if (rc != 0) {
@@ -681,18 +681,17 @@ static fsal_status_t getattrs(struct fsal_obj_handle *obj_hdl)
 
 	fsalattr = &objhandle->handle.attributes;
 	stat2fsal_attributes(&buffxstat.buffstat, fsalattr);
-	switch (obj_hdl->type) {
-	case REGULAR_FILE:
-		buffxstat.is_dir = false;
-		break;
-	case DIRECTORY:
+	if (obj_hdl->type == DIRECTORY)
 		buffxstat.is_dir = true;
-		break;
-	default:
-		break;
-	}
+	else
+		buffxstat.is_dir = false;
+
 	status = glusterfs_get_acl(glfs_export, objhandle->glhandle,
 				   &buffxstat, fsalattr);
+
+	/* for dead links we should not return error */
+	if (obj_hdl->type == SYMBOLIC_LINK && status.minor == ENOENT)
+		status = fsalstat(ERR_FSAL_NO_ERROR, 0);
 
  out:
 #ifdef GLTIMING
@@ -791,16 +790,11 @@ static fsal_status_t setattrs(struct fsal_obj_handle *obj_hdl,
 
 	if (NFSv4_ACL_SUPPORT) {
 		if (FSAL_TEST_MASK(attrs->mask, ATTR_ACL)) {
-			switch (obj_hdl->type) {
-			case REGULAR_FILE:
-				buffxstat.is_dir = false;
-				break;
-			case DIRECTORY:
+			if (obj_hdl->type == DIRECTORY)
 				buffxstat.is_dir = true;
-				break;
-			default:
-				break;
-			}
+			else
+				buffxstat.is_dir = false;
+
 			FSAL_SET_MASK(attr_valid, XATTR_ACL);
 			status =
 			  glusterfs_process_acl(glfs_export->gl_fs,
@@ -1250,6 +1244,21 @@ static fsal_status_t lock_op(struct fsal_obj_handle *obj_hdl,
 	flock.l_len = request_lock->lock_length;
 	flock.l_start = request_lock->lock_start;
 	flock.l_whence = SEEK_SET;
+
+	/* flock.l_len being signed long integer, larger lock ranges may
+	 * get mapped to negative values. As per 'man 3 fcntl', posix
+	 * locks can accept negative l_len values which may lead to
+	 * unlocking an unintended range. Better bail out to prevent that.
+	 *
+	 * TODO: How do we support larger ranges (>INT64_MAX) then?
+	 */
+	if (flock.l_len < 0) {
+		LogCrit(COMPONENT_FSAL,
+			"The requested lock length is out of range- flock.l_len(%ld), request_lock_length(%lu)",
+			flock.l_len, request_lock->lock_length);
+		status.major = ERR_FSAL_BAD_RANGE;
+		goto out;
+	}
 
 	rc = glfs_posix_lock(objhandle->glfd, cmd, &flock);
 	if (rc != 0 && lock_op == FSAL_OP_LOCK
