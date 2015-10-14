@@ -1205,15 +1205,6 @@ void nfs4_clean_recov_dir_no_lock(char *parent_path)
 	(void)closedir(dp);
 }
 
-void nfs4_clean_recov_dir(char *parent_path)
-{
-	PTHREAD_MUTEX_lock(&grace_mutex);
-
-	nfs4_clean_recov_dir_no_lock(parent_path);
-
-	PTHREAD_MUTEX_unlock(&grace_mutex);
-}
-
 /**
  *
  */ 
@@ -1275,7 +1266,7 @@ void nfs4_clean_ip_recov_dirs(void)
 		LogFullDebug(COMPONENT_CLIENTID,
 			     "Cleaning old ip-based recov dir: %s",
 			     dir_to_clean->old_rec_dir_path);
-		nfs4_clean_recov_dir(dir_to_clean->old_rec_dir_path);
+		nfs4_clean_recov_dir_no_lock(dir_to_clean->old_rec_dir_path);
 
 		glist_del(node);
 		gsh_free(dir_to_clean);

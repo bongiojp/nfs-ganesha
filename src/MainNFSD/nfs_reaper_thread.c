@@ -35,6 +35,9 @@
 #include "log.h"
 #include "fridgethr.h"
 
+/* Shared and initiated by SAL/nfs4_recovery.c */
+extern pthread_mutex_t grace_mutex;
+
 #define REAPER_DELAY 10
 
 unsigned int reaper_delay = REAPER_DELAY;
@@ -247,15 +250,17 @@ static void reaper_run(struct fridgethr_context *ctx)
 	char ip_v4_old_dir[PATH_MAX];
 
 	SetNameFunction("reaper");
-	rst->in_grace = nfs_in_grace();
 
 	/* if not in grace period, clean up the old state */
+	PTHREAD_MUTEX_lock(&grace_mutex);
+	rst->in_grace = nfs_in_grace();
 	if (!rst->old_state_cleaned && !rst->in_grace) {
-		nfs4_clean_recov_dir(v4_old_dir);
+		nfs4_clean_recov_dir_no_lock(v4_old_dir);
 		nfs4_clean_ip_recov_dirs();
 
 		rst->old_state_cleaned = true;
 	}
+	PTHREAD_MUTEX_unlock(&grace_mutex);
 
 	if (isDebug(COMPONENT_CLIENTID) && ((rst->count > 0) || !rst->logged)) {
 		LogDebug(COMPONENT_CLIENTID,
