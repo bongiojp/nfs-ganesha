@@ -56,7 +56,6 @@ static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp);
 static void nfs_release_nlm_state(char *release_ip);
 static void nfs_release_v4_client(char *ip);
 static void nfs4_load_all_ip_recov_dirs(void);
-static void nfs4_clean_recov_dir_no_lock(char *);
 
 /**
  * @brief Start grace period
