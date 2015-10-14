@@ -1110,7 +1110,7 @@ static void nfs4_load_recov_clids_nolock(nfs_grace_start_t *gsp)
 					 "Alloc Failed: clean_entry_t");
 				return;
 			}
-			clean_ent->old_rec_dir_path = old_rec_dir;
+			clean_ent->old_rec_dir_path = strdup(old_rec_dir);
 			glist_add(&clean_list, &clean_ent->clean_list);
 			LogDebug(COMPONENT_CLIENTID,
 				 "added directory %s to cleaning list",
@@ -1268,6 +1268,7 @@ void nfs4_clean_ip_recov_dirs(void)
 		nfs4_clean_recov_dir_no_lock(dir_to_clean->old_rec_dir_path);
 
 		glist_del(node);
+		gsh_free(dir_to_clean->old_rec_dir_path);
 		gsh_free(dir_to_clean);
 	}
 }
