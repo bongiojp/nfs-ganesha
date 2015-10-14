@@ -1249,6 +1249,7 @@ void  nfs4_load_all_ip_recov_dirs(void)
 		(void)closedir(recovdp);	
       }
     }
+    (void)closedir(maindp);
 }
 
 /**
