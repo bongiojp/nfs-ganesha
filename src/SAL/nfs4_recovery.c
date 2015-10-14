@@ -366,7 +366,6 @@ void nfs4_add_clid(nfs_client_id_t *clientid)
 			strcat(ip_path, "/");
 			strncat(ip_path, &clientid->cid_recov_dir[position], len);
 			err = mkdir(ip_path, 0700);
-	  LogEvent(COMPONENT_CLIENTID, "MKDIR %s", ip_path);
 			break;
 		}
 
@@ -383,7 +382,6 @@ void nfs4_add_clid(nfs_client_id_t *clientid)
 		strcat(ip_path, "/");
 		strncat(ip_path, segment, NAME_MAX);
 		err = mkdir(ip_path, 0700);
-	  LogEvent(COMPONENT_CLIENTID, "MKDIR %s", ip_path);
 		if (err == -1 && errno != EEXIST)
 		  break;
 
